@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>TorrStream</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(145deg, #0b1020 0%, #0a0e1a 100%);
+            font-family: 'Segoe UI', 'Inter', system-ui, -apple-system, 'Roboto', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1.5rem;
+        }
+
+        .glass-card {
+            background: rgba(18, 25, 45, 0.75);
+            backdrop-filter: blur(12px);
+            border-radius: 2.5rem;
+            box-shadow: 0 25px 45px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(75, 130, 200, 0.2);
+            padding: 2rem 2rem 2.5rem;
+            width: 100%;
+            max-width: 540px;
+            transition: all 0.2s ease;
+        }
+
+        h1 {
+            font-size: 1.9rem;
+            font-weight: 600;
+            margin: 0 0 0.35rem 0;
+            background: linear-gradient(135deg, #E6F0FF, #9DC6FF);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+            letter-spacing: -0.3px;
+        }
+
+        .sub {
+            color: #8e9db5;
+            margin-bottom: 2rem;
+            font-size: 0.9rem;
+            border-left: 3px solid #3b82f6;
+            padding-left: 0.75rem;
+            font-weight: 450;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+        }
+
+        label {
+            font-weight: 500;
+            color: #cbd5ff;
+            font-size: 0.9rem;
+            letter-spacing: 0.3px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        label::before {
+            content: "⌨️";
+            font-size: 1rem;
+            opacity: 0.8;
+        }
+
+        input {
+            background: #0f1422;
+            border: 1.5px solid #2a3448;
+            border-radius: 1.75rem;
+            padding: 0.9rem 1.3rem;
+            font-size: 1rem;
+            color: #f0f4fe;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            transition: all 0.2s;
+            outline: none;
+            width: 100%;
+        }
+
+        input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+            background: #0b1022;
+        }
+
+        input::placeholder {
+            color: #4c5a7a;
+            font-family: inherit;
+            font-size: 0.9rem;
+        }
+
+        button {
+            background: linear-gradient(105deg, #2563eb, #1e40af);
+            border: none;
+            border-radius: 3rem;
+            padding: 0.9rem 1.5rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: white;
+            width: 100%;
+            cursor: pointer;
+            transition: transform 0.15s, box-shadow 0.2s, background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 8px 20px rgba(37, 99, 235, 0.25);
+        }
+
+        button:hover {
+            background: linear-gradient(105deg, #3b82f6, #1e3a8a);
+            transform: scale(1.01);
+            box-shadow: 0 12px 26px rgba(37, 99, 235, 0.4);
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        .info-block {
+            margin-top: 2rem;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 1.5rem;
+            padding: 1rem 1.2rem;
+            font-size: 0.75rem;
+            color: #7e8bb0;
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            word-break: break-all;
+        }
+
+        .info-block code {
+            background: #0a0f1a;
+            padding: 0.2rem 0.4rem;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            color: #b9d0ff;
+            font-family: monospace;
+        }
+
+        .demo-hint {
+            font-size: 0.7rem;
+            margin-top: 1rem;
+            text-align: center;
+            color: #5f6e92;
+        }
+
+        .error-msg {
+            color: #f98b6e;
+            background: rgba(220, 60, 50, 0.12);
+            padding: 0.5rem 1rem;
+            border-radius: 2rem;
+            font-size: 0.8rem;
+            margin-top: 0.75rem;
+            display: inline-block;
+            backdrop-filter: blur(4px);
+        }
+
+        .flex-between {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        hr {
+            margin: 1rem 0;
+            border-color: #2a3448;
+        }
+
+        @media (max-width: 480px) {
+            .glass-card {
+                padding: 1.5rem;
+            }
+            h1 {
+                font-size: 1.6rem;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="glass-card">
+    <div class="flex-between">
+        <h1>TorrStream<br><span style="font-size: 1rem; background: none; color:#8aa3d0;"></span></h1>
+    </div>
+
+    <div class="input-group">
+        <label>Введите TorrStream</label>
+        <input type="text" id="torrInput" placeholder="http://192.168.1.30:3000" value="">
+    </div>
+
+    <button id="continueBtn">
+        <span>➡️</span> Продолжить
+    </button>
+
+    <div id="errorZone" style="min-height: 50px;"></div>
+
+</div>
+
+<script>
+    (function() {
+        // DOM элементы
+        const inputField = document.getElementById('torrInput');
+        const continueButton = document.getElementById('continueBtn');
+        const errorZone = document.getElementById('errorZone');
+
+        // Функция для очистки / показа ошибок
+        function showError(message) {
+            errorZone.innerHTML = `<div class="error-msg">⚠️ ${escapeHtml(message)}</div>`;
+        }
+
+        function clearError() {
+            errorZone.innerHTML = '';
+        }
+
+        // Простейший escape для безопасного вывода сообщений (XSS protection)
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            }).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, function(c) {
+                return c;
+            });
+        }
+
+        // Кодирование содержимого для URL (сохраняем слэши и буквенно-цифровые, но безопасно)
+        // По условию требуется: http://msx.benzac.de/?start=content:вот тут содержимое из "Введите TorrStream"/msx/start.json
+        // Содержимое может содержать любые символы, но URL должен быть корректен.
+        // Используем encodeURIComponent для значения после "content:".
+        // Важно: НО! Оригинальный URL имеет структуру: ?start=content:[значение]/msx/start.json
+        // То есть после двоеточия идёт raw значение, затем добавляется "/msx/start.json".
+        // Чтобы URL был валидным, нужно закодировать только ту часть, которая вставляется, но без повреждения "/msx/start.json".
+        // Поэтому собираем: base + encodeURIComponent(userInput) + "/msx/start.json"
+        function buildUrl(userInput) {
+            if (!userInput || userInput.trim() === '') {
+                return null;
+            }
+            // удаляем лишние пробелы в начале и конце, но оставляем внутренние пробелы
+            const trimmed = userInput.trim();
+            if (trimmed === "") return null;
+            // Кодируем содержимое для параметра start=content:ENCODED_PART/msx/start.json
+            // Обратите внимание: спецсимволы типа &, #, ?, / будут экранированы корректно,
+            // но нативный encodeURIComponent кодирует также слэши, что может быть желательно для безопасности.
+            // Однако в задании нет требования сохранять слэши буквально, поэтому encodeURIComponent — правильный выбор.
+            const encodedContent = encodeURIComponent(trimmed);
+            // Собираем полный URL
+            const fullUrl = `http://msx.benzac.de/?start=content:${encodedContent}/msx/start.json`;
+            return fullUrl;
+        }
+
+        // Функция открытия URL
+        function openTorrStream() {
+            clearError();
+            let rawValue = inputField.value;
+            
+            if (!rawValue) {
+                showError('Пожалуйста, введите текст в поле "Введите TorrStream"');
+                inputField.focus();
+                return;
+            }
+            
+            // Проверка на пустую строку после обрезки пробелов
+            if (rawValue.trim() === "") {
+                showError('Содержимое не может состоять только из пробелов. Введите корректный текст.');
+                inputField.focus();
+                return;
+            }
+            
+            const targetUrl = buildUrl(rawValue);
+            if (!targetUrl) {
+                showError('Не удалось сформировать URL (недопустимое содержимое).');
+                return;
+            }
+            
+            // Открываем ссылку в текущей вкладке (можно также _blank, но по классике "перейти")
+            // Согласно ТЗ: "по кнопке продолжить нужно открыть вот такой url"
+            // Открываем в этой же вкладке (аналог window.location)
+            window.location.href = targetUrl;
+        }
+
+        // Функция обработки нажатия Enter в поле ввода
+        function onInputKeyPress(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                openTorrStream();
+            }
+        }
+
+        // Добавляем слушатели
+        continueButton.addEventListener('click', openTorrStream);
+        inputField.addEventListener('keypress', onInputKeyPress);
+        
+        // Небольшой акцент — автофокус на поле при загрузке
+        inputField.focus();
+        
+        // Делаем приятный фикс: если пользователь случайно вставляет многострочный текст, чистим лишние переносы
+        inputField.addEventListener('paste', function(e) {
+            // небольшая задержка, чтобы обработать вставленное значение
+            setTimeout(() => {
+                let pasted = inputField.value;
+                if (pasted.includes('\n')) {
+                    inputField.value = pasted.replace(/\n/g, ' ').replace(/\r/g, '');
+                }
+            }, 10);
+        });
+    })();
+</script>
+</body>
+</html>
