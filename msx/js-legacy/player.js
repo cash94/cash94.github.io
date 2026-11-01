@@ -4608,8 +4608,8 @@ function renderSubtitleTracks() {
     var format = sub.format || sub.codec || '';
     var title = sub.title || 'Субтитры ' + (idx + 1);
     var badges = '';
-    if (sub.default) badges += ' <span style="color: #4eff6a; font-size: 18px;">[DEFAULT]</span>';
-    if (sub.forced) badges += ' <span style="color: #ffd966; font-size: 18px;">[FORCED]</span>';
+    if (sub.default) badges += ' <span style="color: #4eff6a; font-size: 0.6em;">[DEFAULT]</span>';
+    if (sub.forced) badges += ' <span style="color: #ffd966; font-size: 0.6em;">[FORCED]</span>';
     html += '<div class="subtitle-item ' + (isActive ? 'active' : '') + '" data-track-index="' + idx + '"><div class="subtitle-icon">💬</div><div class="subtitle-info"><div class="subtitle-title">' + escapeHtml(title) + badges + '</div><div class="subtitle-details"><span class="subtitle-language">' + language.toUpperCase() + '</span>' + (format ? '<span class="subtitle-format">' + escapeHtml(format) + '</span>' : '') + '</div></div><div class="subtitle-check">✓</div></div>';
   }
   subtitlesList.innerHTML = html;

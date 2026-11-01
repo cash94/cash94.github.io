@@ -8723,7 +8723,10 @@ html.kbd-540 .voice-search-btn {
   }
 }
 
-/* 960x540: ТВ 1080p при DPR 2 */
+/* 960x540: ТВ 1080p при DPR 2. Текст панелей здесь ×1.6 от исходного, а не
+   ×2, как на остальных экранах: при ×2 в 40vw (384px) помещалось 4 строки
+   списка. Значки и переключатели — в той же пропорции; чипы, галочки и
+   переключатели перечислены здесь же, иначе им достались бы базовые ×2. */
 @media screen and (min-width: 720px) and (max-width: 1024px) and (max-height: 620px) {
   .audio-panel,
   .episodes-panel,
@@ -8743,24 +8746,24 @@ html.kbd-540 .voice-search-btn {
   .episodes-panel-header h3,
   .subtitles-panel-header h3,
   .player-menu-header h3 {
-    font-size: 30px;
+    font-size: 24px;
   }
 
   .close-panel-btn {
-    width: 45px;
-    height: 45px;
-    font-size: 28px;
-    border-radius: 15px;
+    width: 36px;
+    height: 36px;
+    font-size: 22.5px;
+    border-radius: 12px;
   }
 
   .current-episode-info {
     padding: 7px 10px;
-    font-size: 23px;
+    font-size: 18.5px;
   }
 
   .current-episode-badge {
     padding: 2px 8px;
-    font-size: 21px;
+    font-size: 17px;
   }
 
   .audio-list,
@@ -8783,18 +8786,18 @@ html.kbd-540 .voice-search-btn {
   .subtitle-icon,
   .episode-number,
   .player-menu-icon {
-    width: 52px;
-    height: 52px;
-    margin-right: 12px;
-    font-size: 24px;
-    border-radius: 12px;
+    width: 41.5px;
+    height: 41.5px;
+    margin-right: 10px;
+    font-size: 19px;
+    border-radius: 10px;
   }
 
   .audio-title,
   .subtitle-title,
   .episode-title,
   .player-menu-title {
-    font-size: 26px;
+    font-size: 21px;
     margin-bottom: 2px;
   }
 
@@ -8802,14 +8805,49 @@ html.kbd-540 .voice-search-btn {
   .episode-duration,
   .subtitle-details,
   .player-menu-value {
-    font-size: 23px;
+    font-size: 18.5px;
+  }
+
+  .audio-language,
+  .audio-channels,
+  .audio-codec,
+  .subtitle-language,
+  .subtitle-format {
+    font-size: 18.5px;
+  }
+
+  .audio-check,
+  .subtitle-check {
+    font-size: 25.5px;
   }
 
   .episode-play {
-    width: 52px;
-    height: 52px;
-    font-size: 22px;
-    border-radius: 12px;
+    width: 41.5px;
+    height: 41.5px;
+    font-size: 17.5px;
+    border-radius: 10px;
+  }
+
+  .player-menu-chevron {
+    width: 35px;
+    height: 35px;
+  }
+
+  .player-menu-switch {
+    width: 70px;
+    height: 38px;
+    border-radius: 19px;
+  }
+
+  .player-menu-switch::after {
+    top: 5px;
+    left: 5px;
+    width: 28px;
+    height: 28px;
+  }
+
+  .player-menu-item.is-on .player-menu-switch::after {
+    transform: translateX(32px);
   }
 
   .seek-speed-indicator {
