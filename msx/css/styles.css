@@ -2138,40 +2138,43 @@ body.detail-open {
    Отступы margin'ами, без gap (Chrome 66 на Vidaa OS). */
 
 .close-panel-btn {
-  /* Квадрат со скруглением 12px: рамка фокуса (.focused) тоже рисуется
-     с радиусом 12px, у круглой кнопки она бы не совпала */
-  width: 38px;
-  height: 38px;
+  /* Квадрат со скруглением: рамка фокуса (.focused) — box-shadow и идёт по
+     тому же радиусу, у круглой кнопки она бы не совпала */
+  width: 57px;
+  height: 57px;
   flex-shrink: 0;
-  border-radius: 12px;
+  border-radius: 18px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: #98a1b0;
-  font-size: 16px;
+  font-size: 32px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-/* Текст панелей плеера (дорожки, субтитры, серии, меню) увеличен в 1.3 раза
-   против прежнего — жалобы, что с дивана не читается. Множитель уже
-   применён к font-size здесь и во всех размерных тирах ниже по файлу. */
+/* Текст панелей плеера (дорожки, субтитры, серии, «Аудио и субтитры»,
+   «Настройки плеера») вдвое крупнее прежнего — жалобы, что с дивана не
+   читается. Множитель уже применён к font-size здесь и во всех размерных
+   тирах ниже по файлу; квадратики значков, ▶ и переключатели — тоже ×2,
+   кнопка X — ×1.5, иначе цифры и эмодзи вылезали из своих плашек.
+   Ширина панелей — 40vw (на телефонах свои 85vw/100%). */
 .audio-icon,
 .subtitle-icon,
 .episode-number,
 .player-menu-icon {
-  width: 34px;
-  height: 34px;
+  width: 68px;
+  height: 68px;
   flex-shrink: 0;
   background: var(--focus-color-bg, rgba(255, 140, 0, 0.14));
   color: #fff;
-  border-radius: 10px;
+  border-radius: 15px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 12px;
-  font-size: 18px;
+  margin-right: 18px;
+  font-size: 28px;
   font-weight: 600;
 }
 
@@ -2187,18 +2190,23 @@ body.detail-open {
 .episode-title,
 .player-menu-title {
   color: #fff;
-  font-size: 19.5px;
+  font-size: 30px;
   font-weight: 500;
+  line-height: 1.2;
   margin-bottom: 4px;
-  white-space: nowrap;
+  /* До двух строк, дальше многоточие: при двойном шрифте в одну строку на
+     960x540 не влезало и «Многоголосый, HDRezka» */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: break-word;
 }
 
 .audio-details,
 .episode-duration {
   color: #98a1b0;
-  font-size: 16px;
+  font-size: 25px;
 }
 
 /* Язык, каналы, кодек — такие же чипы, как метаданные раздачи в поиске */
@@ -2211,7 +2219,7 @@ body.detail-open {
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.05);
   color: #98a1b0;
-  font-size: 15px;
+  font-size: 23px;
 }
 
 .audio-language {
@@ -2226,7 +2234,7 @@ body.detail-open {
 .subtitle-check {
   margin-left: 10px;
   color: #6fe3a1;
-  font-size: 21px;
+  font-size: 32px;
   font-weight: 700;
   opacity: 0;
 }
@@ -2240,16 +2248,16 @@ body.detail-open {
   background: var(--focus-color-bg, rgba(255, 140, 0, 0.14));
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  width: 32px;
-  height: 32px;
+  width: 64px;
+  height: 64px;
   flex-shrink: 0;
-  border-radius: 10px;
-  font-size: 15.5px;
+  border-radius: 15px;
+  font-size: 24px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-left: 8px;
+  margin-left: 12px;
 }
 
 .current-episode-badge {
@@ -2257,7 +2265,7 @@ body.detail-open {
   color: #fff;
   padding: 3px 10px;
   border-radius: 8px;
-  font-size: 15px;
+  font-size: 23px;
   font-weight: 600;
 }
 
@@ -3849,7 +3857,7 @@ html.tizen-avplay #video-player {
   position: fixed;
   top: 0;
   right: 0;
-  width: 400px;
+  width: 40vw;
   height: 100vh;
   max-height: 100vh;
   background: rgba(13, 13, 20, 0.92);
@@ -3902,7 +3910,7 @@ html.tizen-avplay #video-player {
 .subtitles-panel-header h3,
 .player-menu-header h3 {
   color: #fff;
-  font-size: 23.5px;
+  font-size: 36px;
   font-weight: 600;
   margin: 0;
 }
@@ -3915,7 +3923,7 @@ html.tizen-avplay #video-player {
   background: rgba(255, 255, 255, 0.02);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   color: #98a1b0;
-  font-size: 17px;
+  font-size: 26px;
   flex-shrink: 0;
 }
 
@@ -3991,7 +3999,7 @@ html.tizen-avplay #video-player {
 .subtitle-details,
 .player-menu-value {
   color: #98a1b0;
-  font-size: 16px;
+  font-size: 25px;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -4009,7 +4017,7 @@ html.tizen-avplay #video-player {
   color: #fff;
   padding: 2px 8px;
   border-radius: 8px;
-  font-size: 15px;
+  font-size: 23px;
   font-weight: 600;
   letter-spacing: 0.04em;
   display: inline-block;
@@ -4017,7 +4025,7 @@ html.tizen-avplay #video-player {
 
 .subtitle-format {
   color: #98a1b0;
-  font-size: 15px;
+  font-size: 23px;
   background: rgba(255, 255, 255, 0.05);
   padding: 2px 8px;
   border-radius: 8px;
@@ -8590,7 +8598,7 @@ html.kbd-540 .voice-search-btn {
   .episodes-panel,
   .subtitles-panel,
   .player-menu-panel {
-    width: 420px;
+    width: 40vw;
   }
 
   .audio-panel-header,
@@ -8604,12 +8612,12 @@ html.kbd-540 .voice-search-btn {
   .episodes-panel-header h3,
   .subtitles-panel-header h3,
   .player-menu-header h3 {
-    font-size: 24.5px;
+    font-size: 38px;
   }
 
   .close-panel-btn {
-    width: 40px;
-    height: 40px;
+    width: 60px;
+    height: 60px;
   }
 
   .audio-item,
@@ -8623,7 +8631,7 @@ html.kbd-540 .voice-search-btn {
   .subtitle-title,
   .episode-title,
   .player-menu-title {
-    font-size: 21px;
+    font-size: 32px;
   }
 
   .seek-indicator-time {
@@ -8640,7 +8648,7 @@ html.kbd-540 .voice-search-btn {
   .episodes-panel,
   .subtitles-panel,
   .player-menu-panel {
-    width: 460px;
+    width: 40vw;
   }
 
   .audio-panel-header,
@@ -8654,13 +8662,13 @@ html.kbd-540 .voice-search-btn {
   .episodes-panel-header h3,
   .subtitles-panel-header h3,
   .player-menu-header h3 {
-    font-size: 27.5px;
+    font-size: 42px;
   }
 
   .close-panel-btn {
-    width: 44px;
-    height: 44px;
-    font-size: 18px;
+    width: 66px;
+    height: 66px;
+    font-size: 36px;
   }
 
   .audio-list,
@@ -8682,28 +8690,28 @@ html.kbd-540 .voice-search-btn {
   .subtitle-icon,
   .episode-number,
   .player-menu-icon {
-    width: 38px;
-    height: 38px;
-    font-size: 21px;
+    width: 76px;
+    height: 76px;
+    font-size: 32px;
   }
 
   .audio-title,
   .subtitle-title,
   .episode-title,
   .player-menu-title {
-    font-size: 23px;
+    font-size: 35px;
   }
 
   .audio-details,
   .episode-duration,
   .subtitle-details,
   .player-menu-value {
-    font-size: 18px;
+    font-size: 28px;
   }
 
   .current-episode-info {
     padding: 12px 16px;
-    font-size: 18px;
+    font-size: 28px;
   }
 
   .seek-indicator-time {
@@ -8721,7 +8729,7 @@ html.kbd-540 .voice-search-btn {
   .episodes-panel,
   .subtitles-panel,
   .player-menu-panel {
-    width: 350px;
+    width: 40vw;
   }
 
   .audio-panel-header,
@@ -8735,24 +8743,24 @@ html.kbd-540 .voice-search-btn {
   .episodes-panel-header h3,
   .subtitles-panel-header h3,
   .player-menu-header h3 {
-    font-size: 19.5px;
+    font-size: 30px;
   }
 
   .close-panel-btn {
-    width: 30px;
-    height: 30px;
-    font-size: 14px;
-    border-radius: 10px;
+    width: 45px;
+    height: 45px;
+    font-size: 28px;
+    border-radius: 15px;
   }
 
   .current-episode-info {
     padding: 7px 10px;
-    font-size: 15px;
+    font-size: 23px;
   }
 
   .current-episode-badge {
     padding: 2px 8px;
-    font-size: 13.5px;
+    font-size: 21px;
   }
 
   .audio-list,
@@ -8775,18 +8783,18 @@ html.kbd-540 .voice-search-btn {
   .subtitle-icon,
   .episode-number,
   .player-menu-icon {
-    width: 26px;
-    height: 26px;
-    margin-right: 8px;
-    font-size: 15.5px;
-    border-radius: 8px;
+    width: 52px;
+    height: 52px;
+    margin-right: 12px;
+    font-size: 24px;
+    border-radius: 12px;
   }
 
   .audio-title,
   .subtitle-title,
   .episode-title,
   .player-menu-title {
-    font-size: 17px;
+    font-size: 26px;
     margin-bottom: 2px;
   }
 
@@ -8794,14 +8802,14 @@ html.kbd-540 .voice-search-btn {
   .episode-duration,
   .subtitle-details,
   .player-menu-value {
-    font-size: 15px;
+    font-size: 23px;
   }
 
   .episode-play {
-    width: 26px;
-    height: 26px;
-    font-size: 14.5px;
-    border-radius: 8px;
+    width: 52px;
+    height: 52px;
+    font-size: 22px;
+    border-radius: 12px;
   }
 
   .seek-speed-indicator {
@@ -8825,7 +8833,7 @@ html.kbd-540 .voice-search-btn {
   .episodes-panel,
   .subtitles-panel,
   .player-menu-panel {
-    width: 380px;
+    width: 40vw;
   }
 
   .audio-panel-header,
@@ -8839,13 +8847,13 @@ html.kbd-540 .voice-search-btn {
   .episodes-panel-header h3,
   .subtitles-panel-header h3,
   .player-menu-header h3 {
-    font-size: 22px;
+    font-size: 34px;
   }
 
   .close-panel-btn {
-    width: 34px;
-    height: 34px;
-    font-size: 15px;
+    width: 51px;
+    height: 51px;
+    font-size: 30px;
   }
 
   .audio-item,
@@ -8859,23 +8867,23 @@ html.kbd-540 .voice-search-btn {
   .subtitle-icon,
   .episode-number,
   .player-menu-icon {
-    width: 32px;
-    height: 32px;
-    font-size: 17px;
+    width: 64px;
+    height: 64px;
+    font-size: 26px;
   }
 
   .audio-title,
   .subtitle-title,
   .episode-title,
   .player-menu-title {
-    font-size: 19px;
+    font-size: 29px;
   }
 
   .audio-details,
   .episode-duration,
   .subtitle-details,
   .player-menu-value {
-    font-size: 15.5px;
+    font-size: 24px;
   }
 
   .seek-speed-indicator {
@@ -10236,18 +10244,18 @@ html.apple-device {
 }
 
 .player-menu-value {
-  display: block;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   margin: 0;
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .player-menu-chevron {
-  width: 22px;
-  height: 22px;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
-  margin-left: 10px;
+  margin-left: 15px;
   color: #98a1b0;
 }
 
@@ -10258,11 +10266,11 @@ html.apple-device {
 
 .player-menu-switch {
   position: relative;
-  width: 44px;
-  height: 24px;
+  width: 88px;
+  height: 48px;
   flex-shrink: 0;
-  margin-left: 12px;
-  border-radius: 12px;
+  margin-left: 18px;
+  border-radius: 24px;
   background: rgba(255, 255, 255, 0.16);
   transition: background 0.2s ease;
 }
@@ -10270,10 +10278,10 @@ html.apple-device {
 .player-menu-switch::after {
   content: '';
   position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
+  top: 6px;
+  left: 6px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: #fff;
   transition: transform 0.2s ease;
@@ -10284,7 +10292,7 @@ html.apple-device {
 }
 
 .player-menu-item.is-on .player-menu-switch::after {
-  transform: translateX(20px);
+  transform: translateX(40px);
 }
 
 /* --- Фокус: появляется плавно, гаснет сразу (без шлейфа) ---
