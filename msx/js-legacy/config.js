@@ -478,7 +478,7 @@ if (typeof window.isSeasonActive !== 'function') {
 window.getEl = getEl;
 window.clearFocused = clearFocused;
 function tsWorkerUrl(file) {
-  var path = file + '?v=' + (window.VERSION || Date.now());
+  var path = file + '?v=' + (window.assetV ? window.assetV('js/' + file) : Date.now());
   if (location.search.indexOf('local=1') !== -1) path += '&local=1';
   if (!window.TS_SERVER || !window.Blob || !window.URL || !URL.createObjectURL) {
     return new URL(path, document.baseURI).href;

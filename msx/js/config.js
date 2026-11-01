@@ -723,7 +723,8 @@ window.clearFocused = clearFocused;
  * сервера и токен входа, а сам воркер подгружает importScripts'ом с сервера.
  */
 function tsWorkerUrl(file) {
-  var path = file + '?v=' + (window.VERSION || Date.now());
+  // ?v= — хеш файла из карты index.html (assetV), как у остальных модулей
+  var path = file + '?v=' + (window.assetV ? window.assetV('js/' + file) : Date.now());
   if (location.search.indexOf('local=1') !== -1) path += '&local=1';
   if (!window.TS_SERVER || !window.Blob || !window.URL || !URL.createObjectURL) {
     return new URL(path, document.baseURI).href;

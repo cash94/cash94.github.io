@@ -13,6 +13,12 @@
  *
  * После любых правок в msx/js/ — пересобрать, иначе на webOS 4 будет старый код.
  *
+ * Заодно сборка пишет в index.html карту ASSET_V — хеши css/ и js/ для ?v=
+ * (см. assetV там же). Поэтому пересобирать и после правок в msx/css/:
+ * иначе телевизоры до 10 минут (max-age у GitHub Pages) берут старый файл
+ * из кэша. --check проверяет и карту, и то, что каждый assetV('…') в
+ * index.html назван тем же путём, что стоит в адресе рядом.
+ *
  * Воркеры (*-worker.js) не собираются: их запускают из js/ (bridge-модули),
  * они и так на ES5 и сами подтягивают legacy-polyfills.js через importScripts.
  * --check проверяет, что так и осталось.
@@ -20,6 +26,7 @@
 'use strict';
 
 var fs = require('fs');
+var crypto = require('crypto');
 var path = require('path');
 var babel = require('@babel/core');
 var acorn = require('acorn');
@@ -29,6 +36,7 @@ var SRC = path.join(ROOT, 'msx/js');
 var OUT = path.join(ROOT, 'msx/js-legacy');
 var INDEX = path.join(ROOT, 'msx/index.html');
 var POLYFILLS = path.join(__dirname, 'polyfills.js');
+var MSX = path.join(ROOT, 'msx');
 
 var CHECK = process.argv.indexOf('--check') !== -1;
 
@@ -87,6 +95,54 @@ expected['legacy-polyfills.js'] = header('tools/legacy-build/polyfills.js') + fs
 
 var problems = [];
 
+// ── Карта ASSET_V для index.html ─────────────────────────────────────────
+// Хеш js/X.js — по нему и по собранному js-legacy/X.js вместе: старые
+// браузеры грузят js-legacy/X.js с тем же ?v=, и ему тоже нужен новый адрес,
+// когда меняется только сборка (версия Babel, polyfills.js).
+function hash(text) {
+  return crypto.createHash('sha1').update(text).digest('hex').slice(0, 8);
+}
+
+var assetMap = {};
+fs.readdirSync(path.join(MSX, 'css')).filter(function (n) { return /\.css$/.test(n); })
+  .forEach(function (name) {
+    assetMap['css/' + name] = hash(fs.readFileSync(path.join(MSX, 'css', name)));
+  });
+fs.readdirSync(SRC).filter(function (n) { return /\.js$/.test(n); }).forEach(function (name) {
+  assetMap['js/' + name] = hash(fs.readFileSync(path.join(SRC, name), 'utf8') + (expected[name] || ''));
+});
+assetMap['js-legacy/legacy-polyfills.js'] = hash(expected['legacy-polyfills.js']);
+
+var ASSET_RE = /([ \t]*)\/\/ ASSET_V:begin\r?\n[\s\S]*?([ \t]*)\/\/ ASSET_V:end/;
+var html = fs.readFileSync(INDEX, 'utf8');
+var block = ASSET_RE.exec(html);
+if (!block) {
+  problems.push('index.html: нет маркеров // ASSET_V:begin … // ASSET_V:end');
+} else {
+  var keys = Object.keys(assetMap).sort();
+  var eol = /\r\n/.test(html) ? '\r\n' : '\n'; // index.html — в CRLF, не перекрашивать
+  var newHtml = html.replace(ASSET_RE, function (m, indent, endIndent) {
+    return indent + '// ASSET_V:begin' + eol + keys.map(function (k, i) {
+      return indent + JSON.stringify(k) + ': ' + JSON.stringify(assetMap[k]) + (i < keys.length - 1 ? ',' : '') + eol;
+    }).join('') + endIndent + '// ASSET_V:end';
+  });
+  if (newHtml !== html) {
+    if (CHECK) problems.push('index.html: карта ASSET_V устарела');
+    else fs.writeFileSync(INDEX, html = newHtml);
+  }
+}
+
+// assetV('путь') должен совпадать с адресом в той же строке: опечатка не
+// ломает загрузку (assetV вернёт Date.now()), но молча возвращает старое
+// поведение для этого файла
+html.split('\n').forEach(function (line, i) {
+  var re = /assetV\('([^']+)'\)/g, m;
+  while ((m = re.exec(line))) {
+    if (!assetMap[m[1]]) problems.push('index.html:' + (i + 1) + ': assetV(\'' + m[1] + '\') — нет такого файла');
+    else if (line.indexOf('/msx/' + m[1] + '?v=') === -1) problems.push('index.html:' + (i + 1) + ': assetV(\'' + m[1] + '\') не совпадает с адресом в строке');
+  }
+});
+
 Object.keys(expected).forEach(function (name) {
   var err = parseError(expected[name], name === 'legacy-polyfills.js' ? 5 : 2016);
   if (err) problems.push('js-legacy/' + name + ': ' + err);
@@ -118,7 +174,8 @@ if (CHECK) {
   Object.keys(expected).forEach(function (name) {
     fs.writeFileSync(path.join(OUT, name), expected[name]);
   });
-  console.log('js-legacy/: ' + Object.keys(expected).length + ' файлов');
+  console.log('js-legacy/: ' + Object.keys(expected).length + ' файлов, index.html: ASSET_V — ' +
+    Object.keys(assetMap).length + ' хешей');
 }
 
 if (problems.length) {
@@ -126,4 +183,4 @@ if (problems.length) {
   if (!CHECK) console.error('Без пересборки не обойтись: поправьте источник (см. выше)');
   process.exit(1);
 }
-if (CHECK) console.log('js-legacy/ в порядке');
+if (CHECK) console.log('js-legacy/ и ASSET_V в порядке');
