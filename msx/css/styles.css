@@ -4759,7 +4759,8 @@ html.tizen-avplay #video-player {
   display: none;
 }
 
-/* Опыт ?rowtx=1 (AppState.homeRowTransform, только Главная): ряд снова
+/* AppState.homeRowTransform (по умолчанию включён, ?rowtx=0 — выключить на
+   заход; только Главная): ряд снова
    двигает transform трека, но переходом CSS на композиторе (setScrollX в
    control.js), и слой у трека постоянный. Прошлая попытка спотыкалась ровно о
    слой, который появлялся и пропадал на каждое нажатие. В каталог не
@@ -6082,18 +6083,32 @@ html.tizen-avplay #video-player {
   top: 0;
   right: 0;
   bottom: 0;
-  background-repeat: no-repeat;
-  background-position: center 22%;
-  background-size: cover;
+  overflow: hidden;
   transition: opacity 0.5s ease;
 }
 
+/* Кадр — сам загруженный <img> (home.js, showBackdropImg), а не
+   background-image: фон запрашивал картинку второй раз после проверочной
+   загрузки. object-fit/object-position — то же, что было cover / center 22% */
+#home-hero-backdrop > .home-hero-bd-img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 22%;
+}
+
 /* Кадра нет (или он не загрузился) — ровная подложка вместо белой вспышки.
-   !important здесь не для красоты: картинку ставит инлайновый background-image
-   (home.js), и без него класс не перебил бы кадр прошлого фильма. */
+   Сам кадр снимает clearHeroBackdrop; display: none — страховка, чтобы
+   прошлый кадр не проступил, если класс встал раньше */
 #home-hero-backdrop.home-hero-empty {
-  background-image: none !important;
   background-color: #101010;
+}
+
+#home-hero-backdrop.home-hero-empty > .home-hero-bd-img {
+  display: none;
 }
 
 /* Картинка баннера во время трейлера остаётся: кадр трейлера занимает только
@@ -6464,6 +6479,153 @@ html.legacy-browser #home-hero.home-hero-playing #home-hero-backdrop {
    «Главная под карточкой»). Класс, а не hidden: по атрибуту «назад» узнаёт,
    что под карточкой главная. */
 #content-home.home-under-detail {
+  display: none !important;
+}
+
+/* ===== Баннер категории (home.js, «БАННЕР: КАТЕГОРИЯ») =====
+   Фокус на плитке ряда «Категории»: баннер листает фильмы категории. */
+
+/* Ряд кнопок баннера. stretch — стрелки ровно той же высоты, что «Смотреть»:
+   кегль и отступы кнопок меняются в медиазапросах (.home-hero-btn ниже по
+   файлу), и подгонять стрелки под каждый не придётся */
+.home-hero-actions {
+  display: flex;
+  align-items: stretch;
+}
+
+/* Стрелки «‹ ›» рядом со «Смотреть». display у них, как и у .home-hero-btn,
+   не задаём — иначе [hidden] не спрятал бы их у обычной карточки (флекс-элемент
+   блочный и без него). Кегль и вертикальные отступы — от .home-hero-btn,
+   свои тут только боковые: кнопка почти квадратная */
+.home-hero-arrow {
+  margin-left: 10px;
+  padding-left: 0.85em;
+  padding-right: 0.85em;
+}
+
+.home-hero-arrow .fi {
+  display: block;
+  font-size: 1.1em;
+  line-height: 1;
+}
+
+/* Смена фильма: кадр и подписи гаснут, меняются и проявляются. Только
+   opacity — композитор, без перерисовки (кадр баннера и так свой слой) */
+#home-hero-body {
+  transition: opacity 0.35s ease;
+}
+
+#home-hero.home-hero-fading #home-hero-backdrop,
+#home-hero.home-hero-fading #home-hero-body {
+  opacity: 0;
+}
+
+/* Какой фильм из скольких — в ряду кнопок, правее стрелок. display не задаём
+   (hidden у обычной карточки); по вертикали — по центру кнопок */
+.home-hero-dots {
+  align-self: center;
+  margin-left: 14px;
+  font-size: 0;
+  line-height: 0;
+  white-space: nowrap;
+}
+
+.home-hero-dots span {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.home-hero-dots span.home-dot-on {
+  background: var(--focus-color, #ff8c00);
+}
+
+/* Узкий экран (телефон вертикально): десять точек рядом с кнопками не
+   влезают и уходят за край — переносим их отдельной строкой под кнопки */
+@media (max-width: 600px) {
+  .home-hero-actions {
+    flex-wrap: wrap;
+  }
+
+  .home-hero-dots {
+    flex-basis: 100%;
+    margin: 10px 0 0;
+  }
+}
+
+/* Плитка категории: широкая картинка и название под ней. Размеры плитки,
+   высоту подписи и кегль значков пишет home.js (categoryTileCss) — всё от
+   высоты ряда. Картинка своя: градиент категории (--cat-c1/--cat-c2,
+   CATEGORY_ART в home.js), блик сверху слева, крупный полупрозрачный значок
+   у правого края и чёткий — по центру. Ни одного запроса по сети. */
+.home-cat-art {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--cat-c2, #1c1d33);
+  background-image:
+    radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0) 45%),
+    linear-gradient(135deg, var(--cat-c1, #5a5f8a) 0%, var(--cat-c2, #1c1d33) 100%);
+}
+
+/* Глифы uicons: у .fi свой line-height и inline-flex — выравниваем сами */
+.home-cat-art .fi,
+.home-cat-art .fi:before {
+  line-height: 1;
+}
+
+.home-cat-watermark {
+  position: absolute;
+  right: -6%;
+  bottom: -24%;
+  color: rgba(255, 255, 255, 0.1);
+  transform: rotate(-14deg);
+}
+
+.home-cat-mark {
+  position: relative;
+  color: #fff;
+  text-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+}
+
+.home-cat-text {
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+/* Название под плиткой — у фильмов и у категорий одно. Высоту, межстрочный
+   и кегль пишет home.js (applyCardCss) от размера ряда; 17px — до первого
+   замера */
+.home-tile-label {
+  padding: 0 4px;
+  color: #c8c8c8;
+  font-size: 17px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-card.focused .home-tile-label {
+  color: #fff;
+}
+
+/* Кадр в плитке — середина чуть выше центра (лица в кадре обычно там); тот
+   же сдвиг годится и постеру, если кадра нет */
+.home-card .row-poster-img > img {
+  object-position: 50% 30%;
+}
+
+/* Раздела «Каталог» больше нет: его категории — ряд главной. Кнопку из
+   разметки не убираем — на #tab-catalog ссылаются app.js и catalog.js */
+#tab-catalog {
   display: none !important;
 }
 

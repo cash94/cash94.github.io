@@ -65,18 +65,17 @@ if (window.TS_SERVER) {
 
 // Состояние приложения
 /**
- * Флаг опыта AppState.homeRowTransform. ?rowtx=1 включает, ?rowtx=0 выключает,
- * и выбор запоминается: на телевизоре хватает одного захода с параметром (или
- * записи ts_home_row_tx в localStorage через DevTools).
+ * AppState.homeRowTransform — ряд Главной двигает transform трека (см.
+ * isTxScroller в control.js). Был опытом под ?rowtx=1; на телевизорах он
+ * оказался плавнее твина scrollLeft и теперь включён всегда. ?rowtx=0
+ * выключает его на один заход — для сравнения, без запоминания.
+ *
+ * Запомненный выбор прошлого опыта (ts_home_row_tx) стираем: у кого там
+ * остался '0' после сравнения, тот иначе так и сидел бы на старой прокрутке.
  */
 function readHomeRowTransformFlag() {
-  var m = /[?&]rowtx=([01])(?:&|$)/.exec(location.search);
-  try {
-    if (m) localStorage.setItem('ts_home_row_tx', m[1]);
-    return localStorage.getItem('ts_home_row_tx') === '1';
-  } catch (e) {
-    return !!m && m[1] === '1';
-  }
+  try { localStorage.removeItem('ts_home_row_tx'); } catch (e) { }
+  return !/[?&]rowtx=0(?:&|$)/.test(location.search);
 }
 
 var AppState = {
@@ -155,8 +154,9 @@ var AppState = {
   isSearch: false,
   inSearch: 'torrents',
   restoringFocus: false,
-  // Опыт: ряд Главной двигается transform'ом трека на композиторе, а не
-  // твином scrollLeft (isTxScroller в control.js)
+  // Ряд Главной двигается transform'ом трека на композиторе, а не твином
+  // scrollLeft (isTxScroller в control.js). По умолчанию включён
+  // (readHomeRowTransformFlag)
   homeRowTransform: readHomeRowTransformFlag(),
 
   //Синхронизация

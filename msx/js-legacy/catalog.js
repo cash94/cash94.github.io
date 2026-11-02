@@ -4486,11 +4486,36 @@ function _fetchAvailableCatalogs() {
   });
   return _fetchAvailableCatalogs.apply(this, arguments);
 }
+function releaseCatalogGrid() {
+  abortCatalogRequests();
+  catalogState.currentCatalog = null;
+  catalogState.items = [];
+  catalogState.cardElements = {};
+  catalogState.person = null;
+  AppState.backCurrentCatalog = '';
+  var oldGrid = getCatalogGridEl();
+  if (oldGrid && (oldGrid.hasChildNodes() || oldGrid.style.display !== 'none')) {
+    if (catalogFadedEl === oldGrid) catalogFadedEl = null;
+    oldGrid.style.display = 'none';
+    oldGrid.innerHTML = '';
+    resetGridVisibilityWindow();
+    resetGridChunks();
+  }
+}
+window.releaseCatalogGrid = releaseCatalogGrid;
 function showCatalogList(_x43) {
   return _showCatalogList.apply(this, arguments);
 }
 function _showCatalogList() {
   _showCatalogList = _asyncToGenerator(function* (force) {
+    if (window.HomeScreen && typeof HomeScreen.show === 'function') {
+      releaseCatalogGrid();
+      if (window.Nav) Nav.reset('home');
+      HomeScreen.show({
+        restoreFocus: true
+      });
+      return true;
+    }
     var rows = getCatalogRowsEl();
     if (!rows) return;
     abortCatalogRequests();

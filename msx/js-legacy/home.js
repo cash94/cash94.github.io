@@ -33,6 +33,16 @@
     RING_TICK_MS: 250,
     WATCHDOG_MS: 1000,
     PREFETCH_DELAY_MS: 700,
+    CATEGORY_ROTATE_MS: 20000,
+    CATEGORY_FADE_MS: 350,
+    CATEGORY_REVEAL_MAX_MS: 1500,
+    HERO_BACKDROP_KEEP: 3,
+    HERO_LOGO_KEEP: 10,
+    TILE_IMG_TIMEOUT_MS: 4000,
+    CATEGORY_PLACEHOLDER_MS: 400,
+    CATEGORY_LABEL_PX: 40,
+    CATEGORY_LABEL_MIN_PX: 22,
+    CATEGORY_TILE_MAX_SHARE: 0.62,
     WHEEL_STEP_PX: 40,
     SWIPE_STEP_PX: 60,
     SWIPE_AXIS_PX: 10,
@@ -44,6 +54,10 @@
     key: 'history',
     name: 'Продолжить просмотр',
     source: 'history'
+  }, {
+    key: 'categories',
+    name: 'Категории',
+    source: 'categories'
   }, {
     key: 'halloween',
     name: 'Хэллоуин',
@@ -102,7 +116,7 @@
     name: 'Кинопоиск · Мультфильмы детям',
     source: 'kinopoisk'
   }];
-  var NAV_BUTTONS = ['home-nav-home', 'tab-catalog', 'tab-torrents', 'tab-donate', 'tab-favorites', 'tab-search', 'settings-btn'];
+  var NAV_BUTTONS = ['home-nav-home', 'tab-torrents', 'tab-donate', 'tab-favorites', 'tab-search', 'settings-btn'];
   var homeState = {
     built: false,
     loading: false,
@@ -121,10 +135,14 @@
     prefetchTimer: null,
     resizeTimer: null,
     cardWidth: 0,
+    cardCssKey: null,
+    tileImgSize: 'w300',
     heroTopCache: null,
     heroDetails: {},
     logos: {},
     logoInflight: {},
+    goodBackdrops: {},
+    backdropWaiters: {},
     logoUnsupported: false,
     hero: {
       key: null,
@@ -141,7 +159,17 @@
       video: null,
       hls: null,
       watchdog: null,
-      logoTimer: null
+      logoTimer: null,
+      logoKey: null,
+      cat: {
+        key: null,
+        list: [],
+        index: 0,
+        seq: 0,
+        timer: null,
+        fadeTimer: null,
+        placeholderTimer: null
+      }
     }
   };
   function el(id) {
@@ -444,8 +472,23 @@
       });
     });
   }
+  function loadCategoryTiles() {
+    var cfgs = typeof CATALOG_CONFIG !== 'undefined' ? CATALOG_CONFIG : {};
+    var out = [];
+    for (var k in cfgs) {
+      if (!cfgs.hasOwnProperty(k)) continue;
+      var c = cfgs[k];
+      if (!c || c.isHistory || c.isFavorites || !c.url) continue;
+      out.push({
+        catKey: k,
+        name: c.name
+      });
+    }
+    return Promise.resolve(out);
+  }
   function loadRowItems(cfg) {
     if (cfg.source === 'history') return loadHistoryItems();
+    if (cfg.source === 'categories') return loadCategoryTiles();
     return loadCollectionItems(cfg);
   }
   function heroKey(item) {
@@ -459,12 +502,12 @@
     if (!screen) return null;
     hero = document.createElement('section');
     hero.id = 'home-hero';
-    hero.innerHTML = '<div id="home-hero-media">' + '<div id="home-hero-backdrop" class="home-hero-empty"></div>' + '</div>' + '<div id="home-hero-shade"></div>' + '<div class="home-hero-ring" id="home-hero-ring" hidden>' + '<svg viewBox="0 0 44 44">' + '<circle class="home-ring-track" cx="22" cy="22" r="19"></circle>' + '<circle class="home-ring-bar" cx="22" cy="22" r="19" transform="rotate(-90 22 22)"></circle>' + '</svg>' + '<div class="home-ring-icon">▶</div>' + '</div>' + '<div id="home-hero-body">' + '<div id="home-hero-head">' + '<div id="home-hero-logo"><img alt=""></div>' + '<h1 id="home-hero-title"></h1>' + '</div>' + '<div id="home-hero-meta"></div>' + '<div id="home-hero-overview"></div>' + '<button type="button" class="home-hero-btn" id="home-play-btn" hidden>' + '<span class="home-hero-btn-icon">▶</span>Смотреть</button>' + '</div>';
+    hero.innerHTML = '<div id="home-hero-media">' + '<div id="home-hero-backdrop" class="home-hero-empty"></div>' + '</div>' + '<div id="home-hero-shade"></div>' + '<div class="home-hero-ring" id="home-hero-ring" hidden>' + '<svg viewBox="0 0 44 44">' + '<circle class="home-ring-track" cx="22" cy="22" r="19"></circle>' + '<circle class="home-ring-bar" cx="22" cy="22" r="19" transform="rotate(-90 22 22)"></circle>' + '</svg>' + '<div class="home-ring-icon">▶</div>' + '</div>' + '<div id="home-hero-body">' + '<div id="home-hero-head">' + '<div id="home-hero-logo"><img alt=""></div>' + '<h1 id="home-hero-title"></h1>' + '</div>' + '<div id="home-hero-meta"></div>' + '<div id="home-hero-overview"></div>' + '<div class="home-hero-actions">' + '<button type="button" class="home-hero-btn" id="home-play-btn" hidden>' + '<span class="home-hero-btn-icon">▶</span>Смотреть</button>' + '<button type="button" class="home-hero-btn home-hero-arrow" id="home-prev-btn" hidden' + ' title="Предыдущий"><i class="fi fi-rr-angle-left"></i></button>' + '<button type="button" class="home-hero-btn home-hero-arrow" id="home-next-btn" hidden' + ' title="Следующий"><i class="fi fi-rr-angle-right"></i></button>' + '<div class="home-hero-dots" id="home-hero-dots" hidden></div>' + '</div>' + '</div>';
     var rows = el('home-rows');
     if (rows) screen.insertBefore(hero, rows);else screen.appendChild(hero);
     hero.addEventListener('click', function (e) {
       if (!e.target.closest) return;
-      if (e.target.closest('#home-play-btn')) playHeroItem();
+      if (e.target.closest('#home-play-btn')) playHeroItem();else if (e.target.closest('#home-prev-btn')) stepCategory(-1);else if (e.target.closest('#home-next-btn')) stepCategory(1);
     });
     return hero;
   }
@@ -494,10 +537,38 @@
       backdropTimer = null;
     }
   }
+  function createImgStore(max) {
+    var order = [];
+    var map = {};
+    return {
+      get: function (url) {
+        return url && map[url] || null;
+      },
+      put: function (url, img) {
+        if (!url || !img) return;
+        var i = order.indexOf(url);
+        if (i !== -1) order.splice(i, 1);
+        order.push(url);
+        map[url] = img;
+        while (order.length > max) delete map[order.shift()];
+      }
+    };
+  }
+  var backdropImgs = createImgStore(HOME.HERO_BACKDROP_KEEP);
+  var logoImgs = createImgStore(HOME.HERO_LOGO_KEEP);
+  function showBackdropImg(box, img) {
+    img.className = 'home-hero-bd-img';
+    img.alt = '';
+    if (img.parentNode !== box) {
+      while (box.firstChild) box.removeChild(box.firstChild);
+      box.appendChild(img);
+    }
+    box.classList.remove('home-hero-empty');
+  }
   function clearHeroBackdrop() {
     var box = el('home-hero-backdrop');
     if (!box) return;
-    box.style.removeProperty('background-image');
+    while (box.firstChild) box.removeChild(box.firstChild);
     box.classList.add('home-hero-empty');
   }
   function pushMirrors(out, url) {
@@ -511,9 +582,18 @@
       out.push(next);
     }
   }
-  function applyHeroBackdrop(url, extra) {
+  function applyHeroBackdrop(url, extra, onDone) {
     var box = el('home-hero-backdrop');
-    if (!box) return;
+    var doneCalled = false;
+    var done = function () {
+      if (doneCalled || typeof onDone !== 'function') return;
+      doneCalled = true;
+      onDone();
+    };
+    if (!box) {
+      done();
+      return;
+    }
     var queue = [];
     pushMirrors(queue, url);
     pushMirrors(queue, extra);
@@ -522,9 +602,24 @@
       cancelBackdropTimer();
       homeState.hero.backdropUrl = null;
       clearHeroBackdrop();
+      done();
       return;
     }
-    if (homeState.hero.backdropUrl === queue[0] && !backdropFailed) return;
+    if (homeState.hero.backdropUrl === queue[0] && !backdropFailed) {
+      done();
+      return;
+    }
+    for (var c = 0; c < queue.length; c++) {
+      var ready = backdropImgs.get(queue[c]);
+      if (!ready) continue;
+      backdropLoad++;
+      cancelBackdropTimer();
+      homeState.hero.backdropUrl = queue[0];
+      backdropFailed = false;
+      showBackdropImg(box, ready);
+      done();
+      return;
+    }
     homeState.hero.backdropUrl = queue[0];
     backdropFailed = false;
     var mine = ++backdropLoad;
@@ -540,6 +635,7 @@
       if (at >= queue.length) {
         backdropFailed = true;
         fallback();
+        done();
         return;
       }
       var candidate = queue[at++];
@@ -563,8 +659,9 @@
         cancelBackdropTimer();
         shown = true;
         backdropFailed = false;
-        box.style.backgroundImage = 'url("' + candidate + '")';
-        box.classList.remove('home-hero-empty');
+        backdropImgs.put(candidate, img);
+        showBackdropImg(box, img);
+        done();
       }
       img.onerror = function () {
         if (settled) return;
@@ -580,9 +677,12 @@
     }
     tryNext();
   }
-  function renderHero(item, details) {
+  function renderHero(item, details, onBackdrop) {
     var hero = ensureHeroDom();
-    if (!hero) return;
+    if (!hero) {
+      if (onBackdrop) onBackdrop();
+      return;
+    }
     var src = details || item || {};
     var t = el('home-hero-title');
     if (t) t.textContent = itemTitle(src) !== 'Без названия' ? itemTitle(src) : itemTitle(item);
@@ -597,7 +697,66 @@
     }
     var path = src.backdrop_path || item && item.backdrop_path;
     var poster = src.poster_path || item && item.poster_path || '';
-    applyHeroBackdrop(path ? backdropUrlFor(path) : '', poster ? posterUrlFor(poster) : '');
+    var bd = path ? homeState.goodBackdrops[path] || backdropUrlFor(path) : '';
+    applyHeroBackdrop(bd, poster ? posterUrlFor(poster) : '', onBackdrop);
+  }
+  function preloadBackdrop(path, done) {
+    if (!path) {
+      if (done) done(false);
+      return;
+    }
+    if (backdropImgs.get(homeState.goodBackdrops[path])) {
+      if (done) done(true);
+      return;
+    }
+    var waiting = homeState.backdropWaiters[path];
+    if (waiting) {
+      if (done) waiting.push(done);
+      return;
+    }
+    waiting = homeState.backdropWaiters[path] = done ? [done] : [];
+    var queue = [];
+    pushMirrors(queue, homeState.goodBackdrops[path] || backdropUrlFor(path));
+    loadFirstImg(queue, HOME.BACKDROP_GRACE_MS, function (img, url) {
+      if (url) {
+        homeState.goodBackdrops[path] = url;
+        backdropImgs.put(url, img);
+      }
+      delete homeState.backdropWaiters[path];
+      for (var i = 0; i < waiting.length; i++) waiting[i](!!url);
+    });
+  }
+  function loadFirstImg(queue, timeoutMs, done, alive) {
+    var at = 0;
+    var next = function () {
+      if (at >= queue.length || alive && !alive()) {
+        done(null, null);
+        return;
+      }
+      var url = queue[at++];
+      var img = new Image();
+      img.decoding = 'async';
+      var settled = false;
+      var timer = setTimeout(function () {
+        if (settled) return;
+        settled = true;
+        next();
+      }, timeoutMs);
+      img.onload = function () {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (img.naturalWidth) done(img, url);else next();
+      };
+      img.onerror = function () {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        next();
+      };
+      img.src = url;
+    };
+    next();
   }
   function setHeroItem(item) {
     var k = heroKey(item);
@@ -616,6 +775,7 @@
     if (!hero || !item) return;
     var k = heroKey(item);
     var gen = ++homeState.hero.gen;
+    leaveCategoryHero();
     stopHeroTrailer();
     resetHeroRing();
     homeState.hero.key = k;
@@ -625,7 +785,7 @@
     homeState.hero.trailerSearched = false;
     var cached = homeState.heroDetails[k] || null;
     renderHero(item, cached);
-    applyHeroLogo(item, k, gen);
+    applyHeroLogo(item, k);
     if (cached || item.backdrop_path && item.overview) {
       if (!cached) homeState.heroDetails[k] = item;
       startTrailerCountdown(item, cached || item, gen);
@@ -705,7 +865,7 @@
     if (done) info.waiters.push(done);
     if (info.loading) return;
     info.loading = true;
-    var im = new Image();
+    var tries = 0;
     var finish = function (ok) {
       info.loading = false;
       info.loaded = ok;
@@ -714,13 +874,31 @@
       info.waiters = [];
       for (var i = 0; i < w.length; i++) w[i](ok);
     };
-    im.onload = function () {
-      finish(true);
+    var tryUrl = function (url) {
+      var im = new Image();
+      var settled = false;
+      var fail = function () {
+        if (settled) return;
+        settled = true;
+        var next = ++tries < HOME.BACKDROP_MIRROR_TRIES && typeof window.getTmdbNextMirrorUrl === 'function' ? window.getTmdbNextMirrorUrl(url) : null;
+        if (next && next !== url) tryUrl(next);else finish(false);
+      };
+      var timer = setTimeout(fail, HOME.BACKDROP_GRACE_MS);
+      im.onload = function () {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        info.url = url;
+        logoImgs.put(url, im);
+        finish(true);
+      };
+      im.onerror = function () {
+        clearTimeout(timer);
+        fail();
+      };
+      im.src = url;
     };
-    im.onerror = function () {
-      finish(false);
-    };
-    im.src = info.url;
+    tryUrl(info.url);
   }
   var logoPreloadJob = null;
   function preloadNearLogos(items, idx) {
@@ -754,15 +932,27 @@
       clearTimeout(homeState.hero.logoTimer);
       homeState.hero.logoTimer = null;
     }
-    var img = hasLogo ? document.querySelector('#home-hero-logo img') : null;
-    if (img && img.getAttribute('src') !== url) img.setAttribute('src', url);
+    var box = hasLogo ? el('home-hero-logo') : null;
+    if (box) {
+      var cur = box.querySelector('img');
+      var ready = logoImgs.get(url);
+      if (ready) {
+        if (cur !== ready) {
+          ready.alt = '';
+          if (cur) box.replaceChild(ready, cur);else box.appendChild(ready);
+        }
+      } else if (cur && cur.getAttribute('src') !== url) {
+        cur.setAttribute('src', url);
+      }
+    }
     var cl = body.classList;
     if (cl.contains('home-hero-has-logo') !== !!hasLogo) cl.toggle('home-hero-has-logo', !!hasLogo);
     if (cl.contains('home-hero-logo-wait')) cl.remove('home-hero-logo-wait');
   }
-  function applyHeroLogo(item, k, gen) {
+  function applyHeroLogo(item, k) {
     var body = el('home-hero-body');
     if (!body) return;
+    homeState.hero.logoKey = k;
     var known = k ? knownLogo(item, k) : null;
     if (known === null || known === undefined && homeState.logoUnsupported) {
       setHeroLogoState(false);
@@ -777,18 +967,271 @@
     if (homeState.hero.logoTimer) clearTimeout(homeState.hero.logoTimer);
     homeState.hero.logoTimer = setTimeout(function () {
       homeState.hero.logoTimer = null;
-      if (gen === homeState.hero.gen) body.classList.remove('home-hero-logo-wait');
+      if (homeState.hero.logoKey === k) body.classList.remove('home-hero-logo-wait');
     }, HOME.LOGO_WAIT_MS);
     fetchHeroLogo(item, k).then(function (info) {
-      if (gen !== homeState.hero.gen) return;
+      if (homeState.hero.logoKey !== k) return;
       if (!info) {
         setHeroLogoState(false);
         return;
       }
       preloadLogo(k, info, function (ok) {
-        if (gen === homeState.hero.gen) setHeroLogoState(ok, info.url);
+        if (homeState.hero.logoKey === k) setHeroLogoState(ok, info.url);
       });
     });
+  }
+  function stopCategoryTimers() {
+    var c = homeState.hero.cat;
+    if (c.timer) {
+      clearTimeout(c.timer);
+      c.timer = null;
+    }
+    if (c.fadeTimer) {
+      clearTimeout(c.fadeTimer);
+      c.fadeTimer = null;
+    }
+    if (c.placeholderTimer) {
+      clearTimeout(c.placeholderTimer);
+      c.placeholderTimer = null;
+    }
+    var hero = el('home-hero');
+    if (hero && hero.classList.contains('home-hero-fading')) hero.classList.remove('home-hero-fading');
+  }
+  function leaveCategoryHero() {
+    var c = homeState.hero.cat;
+    if (!c.key) return;
+    stopCategoryTimers();
+    c.seq++;
+    c.key = null;
+    c.list = [];
+    c.index = 0;
+    renderCategoryDots();
+    setCategoryArrows(false);
+  }
+  function renderCategoryDots() {
+    var box = el('home-hero-dots');
+    if (!box) return;
+    var c = homeState.hero.cat;
+    var n = c.key ? c.list.length : 0;
+    if (n < 2) {
+      if (!box.hidden) {
+        box.hidden = true;
+        box.innerHTML = '';
+      }
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < n; i++) html += '<span' + (i === c.index ? ' class="home-dot-on"' : '') + '></span>';
+    box.innerHTML = html;
+    box.hidden = false;
+  }
+  function setCategoryArrows(on) {
+    var changed = false;
+    var ids = ['home-prev-btn', 'home-next-btn'];
+    for (var i = 0; i < ids.length; i++) {
+      var b = el(ids[i]);
+      if (b && b.hidden === !!on) {
+        b.hidden = !on;
+        changed = true;
+      }
+    }
+    if (changed) invalidateFocus();
+  }
+  function categoryName(key) {
+    var cfg = typeof CATALOG_CONFIG !== 'undefined' ? CATALOG_CONFIG[key] : null;
+    return cfg && cfg.name || '';
+  }
+  function setHeroCategory(catKey) {
+    var pk = 'cat:' + catKey;
+    if (pk === homeState.hero.pendingKey) return;
+    homeState.hero.pendingKey = pk;
+    if (homeState.hero.timer) clearTimeout(homeState.hero.timer);
+    homeState.hero.timer = setTimeout(function () {
+      homeState.hero.timer = null;
+      applyCategoryHero(catKey);
+    }, HOME.HERO_DEBOUNCE_MS);
+  }
+  function applyCategoryHero(catKey) {
+    if (!ensureHeroDom()) return;
+    var c = homeState.hero.cat;
+    homeState.hero.key = 'cat:' + catKey;
+    homeState.hero.pendingKey = homeState.hero.key;
+    if (c.key === catKey && c.list.length) {
+      showCategoryItem(c.index, false);
+      return;
+    }
+    homeState.hero.gen++;
+    stopHeroTrailer();
+    resetHeroRing();
+    stopCategoryTimers();
+    var seq = ++c.seq;
+    c.key = catKey;
+    c.list = [];
+    c.index = 0;
+    renderCategoryDots();
+    setCategoryArrows(false);
+    if (!window.CategoryBanners) {
+      renderCategoryPlaceholder(catKey, true);
+      return;
+    }
+    var shown = false;
+    c.placeholderTimer = setTimeout(function () {
+      c.placeholderTimer = null;
+      if (seq === c.seq && !shown) renderCategoryPlaceholder(catKey, false);
+    }, HOME.CATEGORY_PLACEHOLDER_MS);
+    function first(list) {
+      if (seq !== c.seq || shown || !list.length) return;
+      shown = true;
+      c.list = list;
+      showCategoryItem(0, false);
+    }
+    CategoryBanners.get(catKey, first).then(function (list) {
+      if (seq !== c.seq) return;
+      if (c.placeholderTimer) {
+        clearTimeout(c.placeholderTimer);
+        c.placeholderTimer = null;
+      }
+      if (!list.length) {
+        if (!shown) renderCategoryPlaceholder(catKey, true);
+        return;
+      }
+      if (!shown) {
+        first(list);
+        return;
+      }
+      var cur = c.list[c.index];
+      c.list = list;
+      var idx = list.indexOf(cur);
+      c.index = idx === -1 ? 0 : idx;
+      renderCategoryDots();
+      setCategoryArrows(list.length > 1);
+    });
+  }
+  function renderCategoryPlaceholder(catKey, empty) {
+    homeState.hero.item = null;
+    var t = el('home-hero-title');
+    if (t) t.textContent = categoryName(catKey);
+    var m = el('home-hero-meta');
+    if (m) m.textContent = empty ? 'Категория' : 'Подбираем фильмы…';
+    var o = el('home-hero-overview');
+    if (o) o.textContent = '';
+    homeState.hero.logoKey = null;
+    setHeroLogoState(false);
+    var poster = typeof POSTER_URLS !== 'undefined' && POSTER_URLS[catKey] || '';
+    applyHeroBackdrop(poster, '');
+  }
+  function showCategoryItem(idx, fade) {
+    var c = homeState.hero.cat;
+    if (!c.key || !c.list.length) return;
+    var n = c.list.length;
+    idx = (idx % n + n) % n;
+    stopCategoryTimers();
+    stopHeroTrailer();
+    resetHeroRing();
+    var gen = ++homeState.hero.gen;
+    var hero = el('home-hero');
+    if (!fade || !hero) {
+      renderCategoryItem(idx, gen, null);
+      return;
+    }
+    hero.classList.add('home-hero-fading');
+    var item = c.list[idx];
+    var faded = false,
+      ready = false,
+      rendered = false,
+      shown = false;
+    var reveal = function () {
+      if (shown || gen !== homeState.hero.gen) return;
+      shown = true;
+      if (c.fadeTimer) {
+        clearTimeout(c.fadeTimer);
+        c.fadeTimer = null;
+      }
+      hero.classList.remove('home-hero-fading');
+    };
+    var tryRender = function () {
+      if (rendered || !faded || !ready || gen !== homeState.hero.gen) return;
+      rendered = true;
+      if (c.fadeTimer) {
+        clearTimeout(c.fadeTimer);
+        c.fadeTimer = null;
+      }
+      renderCategoryItem(idx, gen, reveal);
+      c.fadeTimer = setTimeout(reveal, HOME.CATEGORY_REVEAL_MAX_MS);
+    };
+    preloadBackdrop(item && item.backdrop_path, function () {
+      ready = true;
+      tryRender();
+    });
+    c.fadeTimer = setTimeout(function () {
+      c.fadeTimer = null;
+      faded = true;
+      if (!ready) {
+        c.fadeTimer = setTimeout(function () {
+          ready = true;
+          tryRender();
+        }, HOME.CATEGORY_REVEAL_MAX_MS);
+      }
+      tryRender();
+    }, HOME.CATEGORY_FADE_MS);
+  }
+  function preloadCategoryNeighbours(idx) {
+    var c = homeState.hero.cat;
+    var n = c.list.length;
+    if (n < 2) return;
+    var next = c.list[(idx + 1) % n];
+    var prev = c.list[(idx - 1 + n) % n];
+    preloadBackdrop(next && next.backdrop_path, null);
+    if (prev !== next) preloadBackdrop(prev && prev.backdrop_path, null);
+  }
+  function renderCategoryItem(idx, gen, onBackdrop) {
+    var c = homeState.hero.cat;
+    var item = c.list[idx];
+    if (!item) return;
+    c.index = idx;
+    var k = heroKey(item);
+    homeState.hero.item = item;
+    homeState.hero.trailerUrl = null;
+    homeState.hero.trailerSearched = false;
+    homeState.heroDetails[k] = item;
+    renderHero(item, item, onBackdrop);
+    var m = el('home-hero-meta');
+    if (m) m.textContent = categoryName(c.key) + '  •  ' + heroMetaText(item, item);
+    applyHeroLogo(item, k);
+    renderCategoryDots();
+    setCategoryArrows(c.list.length > 1);
+    preloadNearLogos(c.list, idx);
+    preloadCategoryNeighbours(idx);
+    c.timer = setTimeout(function () {
+      c.timer = null;
+      advanceCategory(gen);
+    }, HOME.CATEGORY_ROTATE_MS);
+    if (heroTrailersOn()) startTrailerCountdown(item, item, gen);else hideHeroRing();
+  }
+  function advanceCategory(gen) {
+    var c = homeState.hero.cat;
+    if (!c.key || gen !== homeState.hero.gen) return;
+    if (!isHomeVisible() || playerBusy() || moduleLoaderUp() || window.AppState && AppState.screensaverActive) {
+      c.timer = setTimeout(function () {
+        c.timer = null;
+        advanceCategory(gen);
+      }, HOME.CATEGORY_ROTATE_MS);
+      return;
+    }
+    if (c.list.length < 2) {
+      showCategoryItem(c.index, false);
+      return;
+    }
+    showCategoryItem(c.index + 1, true);
+  }
+  function stepCategory(delta) {
+    var c = homeState.hero.cat;
+    if (!c.key || c.list.length < 2) return true;
+    showCategoryItem(c.index + delta, true);
+    return true;
+  }
+  function isHeroButton(f) {
+    return !!(f && (f.id === 'home-play-btn' || f.id === 'home-prev-btn' || f.id === 'home-next-btn'));
   }
   function ringBar() {
     return document.querySelector('#home-hero-ring .home-ring-bar');
@@ -838,7 +1281,9 @@
   }
   function focusedIsHeroCard() {
     var f = document.querySelector('.focused');
+    if (homeState.hero.cat.key && isHeroButton(f)) return true;
     if (!f || !f.dataset || !findCardPosition(f)) return false;
+    if (f.dataset.homeCat) return f.dataset.homeCat === homeState.hero.cat.key;
     var items = homeState.data[f.dataset.homeKey];
     var idx = parseInt(f.dataset.itemIndex, 10);
     if (!items || isNaN(idx) || !items[idx]) return false;
@@ -941,7 +1386,8 @@
     video.className = 'home-hero-video';
     video.muted = true;
     video.volume = 0;
-    video.loop = true;
+    var catMode = !!homeState.hero.cat.key;
+    video.loop = !catMode;
     video.autoplay = true;
     video.playsInline = true;
     video.setAttribute('playsinline', '');
@@ -992,6 +1438,25 @@
       if (video.currentTime > 0) revealVideo();
       startVolumeFade();
     });
+    if (catMode) {
+      var catGuard = function () {
+        if (homeState.hero.video !== video) return;
+        var c = homeState.hero.cat;
+        if (c.timer) clearTimeout(c.timer);
+        var d = video.duration;
+        var ms = d && isFinite(d) ? Math.round(d * 1000) + 15000 : 5 * 60 * 1000;
+        c.timer = setTimeout(function () {
+          c.timer = null;
+          advanceCategory(gen);
+        }, ms);
+      };
+      var catNext = function () {
+        if (homeState.hero.video === video) advanceCategory(gen);
+      };
+      video.addEventListener('playing', catGuard);
+      video.addEventListener('ended', catNext);
+      video.addEventListener('error', catNext);
+    }
     if (window.trailerUsesHlsJs ? window.trailerUsesHlsJs() : window.Hls && Hls.isSupported()) {
       var hls = new Hls({
         maxBufferSize: 30 * 1024 * 1024,
@@ -1005,6 +1470,11 @@
         if (homeState.hero.video !== video) return;
         video.play().catch(function () {});
       });
+      if (catMode) {
+        hls.on(Hls.Events.ERROR, function (ev, data) {
+          if (data && data.fatal && homeState.hero.video === video) advanceCategory(gen);
+        });
+      }
       homeState.hero.hls = hls;
     } else {
       video.src = hlsUrl(url);
@@ -1122,6 +1592,7 @@
       clearTimeout(homeState.hero.timer);
       homeState.hero.timer = null;
     }
+    stopCategoryTimers();
     homeState.hero.key = null;
     homeState.hero.pendingKey = null;
     resetHeroRing();
@@ -1143,16 +1614,32 @@
     } catch (e) {}
     return 0;
   }
-  function applyCardCss(w, h) {
-    if (homeState.cardWidth === w) return;
-    homeState.cardWidth = w;
+  function tileGeometry(cardW, posterH, availW) {
+    var labelH = Math.max(HOME.CATEGORY_LABEL_MIN_PX, Math.min(HOME.CATEGORY_LABEL_PX, Math.round(posterH * 0.12)));
+    var w = Math.round(cardW * 2.08);
+    if (availW && w > availW * HOME.CATEGORY_TILE_MAX_SHARE) w = Math.round(availW * HOME.CATEGORY_TILE_MAX_SHARE);
+    var imgH = Math.round(w * 9 / 16);
+    return {
+      w: w,
+      imgH: imgH,
+      labelH: labelH,
+      h: imgH + labelH
+    };
+  }
+  function applyCardCss(g) {
+    var key = g.w + 'x' + g.h;
+    if (homeState.cardCssKey === key) return;
+    homeState.cardCssKey = key;
+    homeState.cardWidth = g.w;
+    var dpr = window.devicePixelRatio || 1;
+    homeState.tileImgSize = g.w * dpr <= 400 ? 'w300' : 'w780';
     var st = el('home-card-style');
     if (!st) {
       st = document.createElement('style');
       st.id = 'home-card-style';
       document.head.appendChild(st);
     }
-    st.textContent = '.catalog-row-card.home-card,' + '.catalog-row-viewport .catalog-row-card.home-card{' + 'flex:0 0 ' + w + 'px!important;width:' + w + 'px!important;height:' + h + 'px!important}' + '.catalog-row-card.home-card .torrent-poster,' + '.catalog-row-viewport .catalog-row-card.home-card .torrent-poster,' + '.catalog-row-card.home-card .row-poster-img{' + 'width:' + w + 'px!important;height:' + h + 'px!important}';
+    st.textContent = '.catalog-row-card.home-card,' + '.catalog-row-viewport .catalog-row-card.home-card{' + 'flex:0 0 ' + g.w + 'px!important;width:' + g.w + 'px!important;height:' + g.h + 'px!important}' + '.catalog-row-card.home-card .torrent-poster,' + '.catalog-row-viewport .catalog-row-card.home-card .torrent-poster,' + '.catalog-row-card.home-card .row-poster-img{' + 'width:' + g.w + 'px!important;height:' + g.imgH + 'px!important}' + '.home-tile-label{height:' + g.labelH + 'px;line-height:' + g.labelH + 'px;' + 'font-size:' + Math.round(g.labelH * 0.5) + 'px}' + '.home-cat-mark{font-size:' + Math.round(g.imgH * 0.34) + 'px}' + '.home-cat-text{font-size:' + Math.round(g.imgH * 0.3) + 'px}' + '.home-cat-watermark{font-size:' + Math.round(g.imgH * 1.15) + 'px}';
   }
   function rowChrome() {
     var row = homeState.rowEls[homeState.activeRow];
@@ -1203,9 +1690,10 @@
     if (lim && w > lim) w = lim;
     w = Math.max(HOME.CARD_MIN_W, Math.min(HOME.CARD_MAX_W, w));
     var posterH = Math.round(w * HOME.CARD_ASPECT);
-    var heroH = Math.max(heroMin, free - (posterH + chrome));
+    var tile = tileGeometry(w, posterH, availW);
+    var heroH = Math.max(heroMin, free - (tile.h + chrome));
     if (needScrollReset) mc.scrollTop = 0;
-    applyCardCss(w, posterH);
+    applyCardCss(tile);
     hero.style.marginTop = -heroTop + 'px';
     hero.style.height = heroH + heroTop + 'px';
     if (homeState.hero.video) fitTrailerBox(homeState.hero.video);
@@ -1213,7 +1701,6 @@
   function createHomeCard(item, key, index) {
     var title = itemTitle(item);
     var mt = item.media_type || 'movie';
-    var year = itemYear(item);
     var card = document.createElement('div');
     card.className = 'torrent-card catalog-card catalog-row-card home-card';
     card.dataset.homeKey = key;
@@ -1221,8 +1708,117 @@
     card.dataset.itemId = item.id;
     card.dataset.mediaType = mt;
     card.dataset.title = title;
-    card.innerHTML = '<div class="torrent-poster">' + '<div class="row-poster-img"><div class="no-poster catalog-poster-loading"></div></div>' + '</div>' + '<div class="torrent-info">' + '<div class="torrent-title">' + esc(title.length > 40 ? title.substring(0, 40) + '...' : title) + '</div>' + '<div class="torrent-meta"><span>' + (mt === 'tv' ? 'Сериал' : 'Фильм') + '</span>' + (year ? '<span>' + year + '</span>' : '') + '</div>' + '</div>';
+    card.innerHTML = '<div class="torrent-poster">' + '<div class="row-poster-img"><div class="no-poster catalog-poster-loading"></div></div>' + '</div>' + '<div class="home-tile-label">' + esc(title) + '</div>';
     return card;
+  }
+  function createCategoryTile(item, key, index) {
+    var card = document.createElement('div');
+    card.className = 'torrent-card catalog-card catalog-row-card home-card home-cat-tile';
+    card.dataset.homeKey = key;
+    card.dataset.itemIndex = index;
+    card.dataset.homeCat = item.catKey;
+    card.dataset.title = item.name;
+    card.dataset.posterLoaded = '1';
+    card.innerHTML = '<div class="torrent-poster">' + '<div class="row-poster-img">' + categoryTileArt(item.catKey) + '</div>' + '</div>' + '<div class="home-tile-label">' + esc(item.name) + '</div>';
+    return card;
+  }
+  var CATEGORY_ART = {
+    halloween: {
+      icon: 'pumpkin',
+      c1: '#ff8a1f',
+      c2: '#3d1403'
+    },
+    movie: {
+      icon: 'film',
+      c1: '#e5383b',
+      c2: '#33090e'
+    },
+    tv: {
+      icon: 'tv-retro',
+      c1: '#3a86ff',
+      c2: '#0a1a40'
+    },
+    cartoons: {
+      icon: 'balloons',
+      c1: '#ffb703',
+      c2: '#4d2a00'
+    },
+    cartoons_tv: {
+      icon: 'child-head',
+      c1: '#14c9a0',
+      c2: '#03302a'
+    },
+    anime: {
+      icon: 'dragon',
+      c1: '#b86bff',
+      c2: '#250b3d'
+    },
+    rus: {
+      icon: 'flag',
+      c1: '#2f6fd6',
+      c2: '#7a1620'
+    },
+    kp_popular: {
+      icon: 'fire-flame-curved',
+      c1: '#ff6a00',
+      c2: '#2b1000'
+    },
+    kp_pop_movies: {
+      icon: 'clapperboard',
+      c1: '#ff7f11',
+      c2: '#2e1300'
+    },
+    kp_pop_series: {
+      icon: 'screen',
+      c1: '#f28c18',
+      c2: '#2b1500'
+    },
+    kp_top250: {
+      icon: 'trophy',
+      c1: '#f2b705',
+      c2: '#332500'
+    },
+    kp_top250_tv: {
+      icon: 'medal',
+      c1: '#e8a33d',
+      c2: '#2e1d00'
+    },
+    kp_family: {
+      icon: 'family',
+      c1: '#ff9b42',
+      c2: '#33190a'
+    },
+    kp_comics: {
+      icon: 'bolt',
+      c1: '#ff5e3a',
+      c2: '#330d05'
+    },
+    kp_love: {
+      icon: 'heart',
+      c1: '#ff5a76',
+      c2: '#3a0a16'
+    },
+    quadhd: {
+      text: '4K',
+      icon: 'diamond',
+      c1: '#00b4d8',
+      c2: '#031c4a'
+    },
+    legends: {
+      icon: 'crown',
+      c1: '#d9a62e',
+      c2: '#261b00'
+    }
+  };
+  var CATEGORY_ART_DEFAULT = {
+    icon: 'film',
+    c1: '#5a5f8a',
+    c2: '#1c1d33'
+  };
+  function categoryTileArt(catKey) {
+    var a = CATEGORY_ART[catKey] || CATEGORY_ART_DEFAULT;
+    var mark = a.text ? '<span class="home-cat-mark home-cat-text">' + esc(a.text) + '</span>' : '<i class="fi fi-rr-' + a.icon + ' home-cat-mark"></i>';
+    return '<div class="home-cat-art" style="--cat-c1:' + a.c1 + ';--cat-c2:' + a.c2 + '">' + '<i class="fi fi-rr-' + a.icon + ' home-cat-watermark"></i>' + mark + '</div>';
   }
   function createHomeRow(cfg, items) {
     var row = document.createElement('section');
@@ -1245,7 +1841,7 @@
     homeState.data[cfg.key] = items;
     var cards = [];
     for (var i = 0; i < items.length; i++) {
-      var card = createHomeCard(items[i], cfg.key, i);
+      var card = items[i].catKey ? createCategoryTile(items[i], cfg.key, i) : createHomeCard(items[i], cfg.key, i);
       track.appendChild(card);
       cards.push(card);
     }
@@ -1269,6 +1865,7 @@
     return new Promise(function (resolve) {
       var img = new Image();
       img.style.cssText = 'width:100%;height:100%;object-fit:cover';
+      img.className = 'loaded poster-instant';
       img.onload = function () {
         if (box.isConnected) {
           box.innerHTML = '';
@@ -1285,16 +1882,61 @@
   }
   function loadCardPoster(card, item) {
     var box = card.querySelector('.row-poster-img');
-    if (!box) return Promise.resolve();
-    var url = item && item.poster_path ? posterUrlFor(item.poster_path) : '';
+    if (!box || !item) return Promise.resolve();
+    return tileBackdropPath(item).then(function (path) {
+      if (path) {
+        return loadTileImg(box, tmdbImage(path, homeState.tileImgSize)).then(function (url) {
+          if (!url) return loadTilePoster(box, item);
+        });
+      }
+      return loadTilePoster(box, item);
+    });
+  }
+  function tileBackdropPath(item) {
+    if (item.backdrop_path) return Promise.resolve(item.backdrop_path);
+    if (item.backdropChecked || item.id == null) return Promise.resolve(null);
+    var url = serverUrl() + '/api/tmdb/item?id=' + encodeURIComponent(item.id) + '&type=' + (item.media_type === 'tv' ? 'tv' : 'movie');
+    return homeFetch(url).then(function (d) {
+      item.backdropChecked = true;
+      if (d && d.backdrop_path) item.backdrop_path = d.backdrop_path;
+      if (d && d.overview && !item.overview) item.overview = d.overview;
+      return item.backdrop_path || null;
+    });
+  }
+  function loadTilePoster(box, item) {
+    var url = item.poster_path ? posterUrlFor(item.poster_path) : '';
     if (!url) {
       box.innerHTML = '<div class="no-poster">Нет постера</div>';
       return Promise.resolve();
     }
-    if (typeof window.setRowPosterImg === 'function') {
-      return window.setRowPosterImg(box, url);
-    }
-    return setPosterFallback(box, url);
+    return loadTileImg(box, url).then(function (ok) {
+      if (!ok && box.isConnected) box.innerHTML = '<div class="no-poster">Нет постера</div>';
+    });
+  }
+  function loadTileImg(box, url) {
+    return new Promise(function (resolve) {
+      var queue = [];
+      pushMirrors(queue, url);
+      loadFirstImg(queue, HOME.TILE_IMG_TIMEOUT_MS, function (img, src) {
+        if (!img) {
+          resolve(null);
+          return;
+        }
+        var insert = function () {
+          if (!box.isConnected) {
+            resolve(null);
+            return;
+          }
+          img.className = 'loaded poster-instant';
+          box.innerHTML = '';
+          box.appendChild(img);
+          resolve(src);
+        };
+        if (typeof img.decode === 'function') img.decode().then(insert, insert);else insert();
+      }, function () {
+        return box.isConnected;
+      });
+    });
   }
   function processPosterQueue() {
     while (homeState.activePosterLoads < HOME.POSTER_CONCURRENCY && homeState.posterQueue.length > 0) {
@@ -1321,6 +1963,7 @@
       var card = cards[i];
       var box = card.querySelector('.row-poster-img');
       if (card.dataset.posterPending === '1') continue;
+      if (card.dataset.homeCat) continue;
       if (card.dataset.posterLoaded === '1' && box && box.querySelector('img')) continue;
       var idx = parseInt(card.dataset.itemIndex, 10);
       if (isNaN(idx) || !items[idx]) continue;
@@ -1388,6 +2031,15 @@
     var b = el('home-play-btn');
     return b && !b.hidden && b.offsetParent !== null ? b : null;
   }
+  function heroButtons() {
+    var out = [];
+    var ids = ['home-play-btn', 'home-prev-btn', 'home-next-btn'];
+    for (var i = 0; i < ids.length; i++) {
+      var b = el(ids[i]);
+      if (b && !b.hidden && b.offsetParent !== null) out.push(b);
+    }
+    return out;
+  }
   function focusHomeEl(target) {
     if (!target) return true;
     if (typeof updateFocusableElements === 'function') updateFocusableElements();
@@ -1425,6 +2077,10 @@
     return true;
   }
   function setHeroFromCard(card) {
+    if (card.dataset.homeCat) {
+      setHeroCategory(card.dataset.homeCat);
+      return;
+    }
     var items = homeState.data[card.dataset.homeKey];
     var idx = parseInt(card.dataset.itemIndex, 10);
     if (!items || isNaN(idx) || !items[idx]) return;
@@ -1543,11 +2199,18 @@
       }
       return true;
     }
-    if (f && f.id === 'home-play-btn') {
-      if (dir === 'up') return focusTopbar();
+    if (isHeroButton(f)) {
+      var hb = heroButtons();
+      var hi = hb.indexOf(f);
+      if (dir === 'left') return hi > 0 ? focusHomeEl(hb[hi - 1]) : true;
+      if (dir === 'right') return hi < hb.length - 1 ? focusHomeEl(hb[hi + 1]) : true;
       if (dir === 'down') {
         if (!homeState.rowEls.length) return true;
         return focusActiveRowCard();
+      }
+      if (dir === 'up') {
+        if (homeState.hero.cat.key && homeState.activeRow > 0) return focusRow(homeState.activeRow - 1);
+        return focusTopbar();
       }
       return true;
     }
@@ -1563,6 +2226,10 @@
       return true;
     }
     if (dir === 'up') {
+      if (f.dataset && f.dataset.homeCat && f.dataset.homeCat === homeState.hero.cat.key) {
+        var pbc = playButton();
+        if (pbc) return focusHomeEl(pbc);
+      }
       if (pos.row > 0) return focusRow(pos.row - 1);
       var pb2 = playButton();
       if (pb2) return focusHomeEl(pb2);
@@ -1578,7 +2245,7 @@
     var f = document.querySelector('.focused');
     var btns = getNavButtons();
     if (f && btns.indexOf(f) !== -1) return true;
-    if (f && f.id === 'home-play-btn') {
+    if (isHeroButton(f)) {
       focusTopbar();
       return true;
     }
@@ -1594,7 +2261,33 @@
     ensureHomeFocus(true);
     return true;
   }
+  function openCategory(catKey, key, index) {
+    homeState.lastRowKey = key;
+    homeState.lastColIndex = index;
+    if (typeof window.loadCatalog !== 'function') return true;
+    suspendHero();
+    scrollHomeToTop();
+    if (window.Nav) Nav.push('grid', {
+      key: 'cat:' + catKey,
+      label: catKey
+    });
+    if (window.AppState) AppState.inSearch = 'catalog';
+    if (typeof catalogState !== 'undefined') catalogState.favoritesFromTopbar = false;
+    try {
+      localStorage.removeItem('lastCatalogCardIndex');
+    } catch (e) {}
+    if (typeof window.showContentScreen === 'function') window.showContentScreen('catalog');
+    Promise.resolve(window.loadCatalog(catKey)).then(function () {
+      setTimeout(function () {
+        if (!window.AppState || AppState.currentScreen !== 'catalog') return;
+        if (typeof catalogState !== 'undefined' && catalogState.currentCatalog !== catKey) return;
+        if (typeof window.ensureCatalogFocus === 'function') window.ensureCatalogFocus(true);
+      }, HOME.FOCUS_DELAY_MS);
+    });
+    return true;
+  }
   function openHomeItem(item, key, index) {
+    if (item && item.catKey) return openCategory(item.catKey, key, index);
     homeState.lastRowKey = key;
     homeState.lastColIndex = index;
     if (window.Nav) Nav.push('detail', Nav.detailData(item, index));
@@ -1681,6 +2374,8 @@
   function onHomeOk(f) {
     if (!f) return ensureHomeFocus(true);
     if (f.id === 'home-play-btn') return playHeroItem();
+    if (f.id === 'home-prev-btn') return stepCategory(-1);
+    if (f.id === 'home-next-btn') return stepCategory(1);
     if (f.classList && f.classList.contains('home-nav-btn')) return onNavButton(f.id);
     var pos = findCardPosition(f);
     if (pos) {
@@ -1824,6 +2519,9 @@
       AppState.inSearch = 'home';
       AppState.isCatalogSearch = false;
     }
+    if (typeof catalogState !== 'undefined' && catalogState.currentCatalog && typeof window.releaseCatalogGrid === 'function') {
+      window.releaseCatalogGrid();
+    }
     ensureHeroDom();
     invalidateFocus();
     if (!homeState.built && !homeState.loading) {
@@ -1837,7 +2535,7 @@
     }
     homeState.hero.key = null;
     homeState.hero.pendingKey = null;
-    homeState.cardWidth = 0;
+    homeState.cardCssKey = null;
     invalidateHeroTop();
     homeState.activated = true;
     setActiveRow(Math.min(homeState.activeRow, Math.max(0, homeState.rowEls.length - 1)));
@@ -1853,7 +2551,9 @@
     return true;
   }
   function refreshHome() {
-    return dbClear().then(function () {
+    var clearBanners = window.CategoryBanners ? CategoryBanners.clear() : null;
+    return Promise.all([dbClear(), clearBanners]).then(function () {
+      leaveCategoryHero();
       suspendHero();
       homeState.built = false;
       homeState.loading = false;
@@ -1930,7 +2630,7 @@
       if (homeState.resizeTimer) clearTimeout(homeState.resizeTimer);
       homeState.resizeTimer = setTimeout(function () {
         homeState.resizeTimer = null;
-        homeState.cardWidth = 0;
+        homeState.cardCssKey = null;
         invalidateHeroTop();
         layoutHome();
       }, 150);
@@ -1952,9 +2652,7 @@
     if (ScreenStrategies.home) return;
     ScreenStrategies.home = {
       getItems: function () {
-        var out = getNavButtons();
-        var pb = playButton();
-        if (pb) out.push(pb);
+        var out = getNavButtons().concat(heroButtons());
         var rows = document.querySelectorAll('#home-rows .catalog-row');
         for (var i = 0; i < rows.length; i++) {
           if (rows[i].classList.contains(HOME.HIDDEN_ROW_CLASS)) continue;

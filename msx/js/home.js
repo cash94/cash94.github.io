@@ -115,6 +115,31 @@
         // Постеры соседних рядов подтягиваем заранее, но не мешая текущему
         PREFETCH_DELAY_MS: 700,
 
+        // --- плитки категорий (ряд «Категории», см. раздел «БАННЕР: КАТЕГОРИЯ») ---
+        // Фильмы категории на баннере сменяются по концу трейлера, а если
+        // трейлеры выключены (или трейлер не нашёлся, не запустился) — через
+        // столько после показа фильма
+        CATEGORY_ROTATE_MS: 20000,
+        // Затухание кадра и подписей при смене фильма; то же число — transition в CSS
+        CATEGORY_FADE_MS: 350,
+        // Дольше этого погасший баннер кадра следующего фильма не ждёт
+        CATEGORY_REVEAL_MAX_MS: 1500,
+        // Сколько загруженных картинок баннера держать элементами (createImgStore)
+        HERO_BACKDROP_KEEP: 3,
+        // Логотипы лёгкие; запас — на соседей обоих рядов (preloadNearLogos ±2)
+        // и плитки категории, иначе вытесненный логотип грузился бы второй раз
+        HERO_LOGO_KEEP: 10,
+        // Сколько ждать картинку плитки с одного зеркала, прежде чем идти на следующее
+        TILE_IMG_TIMEOUT_MS: 4000,
+        // Списка категории нет в памяти: столько ждём его, не трогая прежний
+        // баннер, потом показываем заглушку с названием категории
+        CATEGORY_PLACEHOLDER_MS: 400,
+        // Подпись под плиткой категории (название): 12% высоты ряда в этих пределах
+        CATEGORY_LABEL_PX: 40,
+        CATEGORY_LABEL_MIN_PX: 22,
+        // Плитка не шире этой доли экрана — соседняя выглядывает и на телефоне
+        CATEGORY_TILE_MAX_SHARE: 0.62,
+
         // --- мышь и палец (см. раздел «ЖЕСТЫ») ---
         // Сколько «прокрутить» колесом, чтобы сменить подборку. Одна засечка
         // мыши — это уже 100 (у тачпада бывает 3-5), так что берём меньше.
@@ -137,6 +162,10 @@
     // Порядок рядов сверху вниз. key для подборок TMDB — это preset эндпоинта.
     var HOME_ROWS = [
         { key: 'history', name: 'Продолжить просмотр', source: 'history' },
+        // Плитки категорий каталога (CATALOG_CONFIG в catalog.js) — вместо
+        // отдельного раздела «Каталог». OK открывает категорию сеткой, а
+        // «назад» из неё возвращает сюда (showCatalogList → главная)
+        { key: 'categories', name: 'Категории', source: 'categories' },
         // Сезонная подборка (SEASONS в config.js): вне окна ряда нет вовсе.
         // Отдаёт её модуль halloween-collection — url вместо source: 'tmdb',
         // формат ответа тот же. Модуль не установлен — 404, ряд пустой и не рисуется.
@@ -166,8 +195,10 @@
     // Кнопки общей шапки #home-topbar в порядке DOM — по нему ходит навигация
     // влево/вправо. Это те же самые элементы, что и вкладки разделов
     // (#tab-*, #settings-btn): свои обработчики у них уже есть, новая тут
-    // только «Главная» (#home-nav-home).
-    var NAV_BUTTONS = ['home-nav-home', 'tab-catalog', 'tab-torrents',
+    // только «Главная» (#home-nav-home). «Каталога» нет: его категории — ряд
+    // главной, а кнопка #tab-catalog осталась в разметке скрытой (на неё
+    // ссылаются app.js и catalog.js)
+    var NAV_BUTTONS = ['home-nav-home', 'tab-torrents',
         'tab-donate', 'tab-favorites', 'tab-search', 'settings-btn'];
 
     var homeState = {
@@ -187,13 +218,19 @@
         activePosterLoads: 0,
         prefetchTimer: null,
         resizeTimer: null,
-        cardWidth: 0,            // текущая ширина карточки (её же держит <style>)
+        cardWidth: 0,            // текущая ширина плитки ряда (её же держит <style>)
+        cardCssKey: null,        // размеры, под которые написан <style> (applyCardCss)
+        tileImgSize: 'w300',     // размер кадра TMDB для плиток — от их ширины
         heroTopCache: null,      // {h, w, top} — замер отступа баннера, см. cachedHeroTop
         heroDetails: {},         // id_mediaType → полные детали TMDB
         // id_mediaType → {url, loaded} | null (логотипа нет). Нет ключа — ещё
         // не спрашивали. На сессию: сервер держит свой кэш на неделю.
         logos: {},
         logoInflight: {},
+        // backdrop_path → адрес зеркала, отдавшего кадр (preloadBackdrop), и
+        // ожидающие его загрузки
+        goodBackdrops: {},
+        backdropWaiters: {},
         logoUnsupported: false,  // сервер без /api/tmdb/logo (старая версия)
         hero: {
             key: null,           // id_mediaType показанного элемента
@@ -210,7 +247,18 @@
             video: null,
             hls: null,
             watchdog: null,       // «главная ещё на экране?» пока играет трейлер
-            logoTimer: null       // LOGO_WAIT_MS: не дождались логотипа → текст
+            logoTimer: null,      // LOGO_WAIT_MS: не дождались логотипа → текст
+            logoKey: null,        // чей логотип ждёт баннер (applyHeroLogo)
+            // Фокус на плитке категории: баннер по кругу показывает её фильмы
+            cat: {
+                key: null,        // категория на баннере; null — обычный режим
+                list: [],
+                index: 0,
+                seq: 0,           // поколение показа категории (не путать с gen)
+                timer: null,      // смена фильма (CATEGORY_ROTATE_MS)
+                fadeTimer: null,
+                placeholderTimer: null
+            }
         }
     };
 
@@ -258,6 +306,12 @@
     }
 
     function posterUrlFor(path) { return tmdbImage(path, posterSize()); }
+    /**
+     * Кадр баннера — всегда w1280. Плитка ряда берёт тот же кадр меньшего
+     * размера (tileImgSize): общий файл с баннером значил бы w1280 в каждой
+     * плитке — около 3,6 МБ памяти на плитку после декодирования, на
+     * телевизоре это слишком, а w780 во всю ширину баннера выходит мыльным.
+     */
     function backdropUrlFor(path) { return tmdbImage(path, 'w1280'); }
 
     function invalidateFocus() {
@@ -579,8 +633,26 @@
         });
     }
 
+    /**
+     * Плитки ряда «Категории»: категории каталога в его порядке, без истории
+     * (она тут же рядом «Продолжить просмотр») и избранного (своя кнопка в
+     * шапке). Без сети: список задан в CATALOG_CONFIG, оформление — CATEGORY_ART.
+     */
+    function loadCategoryTiles() {
+        var cfgs = (typeof CATALOG_CONFIG !== 'undefined') ? CATALOG_CONFIG : {};
+        var out = [];
+        for (var k in cfgs) {
+            if (!cfgs.hasOwnProperty(k)) continue;
+            var c = cfgs[k];
+            if (!c || c.isHistory || c.isFavorites || !c.url) continue;
+            out.push({ catKey: k, name: c.name });
+        }
+        return Promise.resolve(out);
+    }
+
     function loadRowItems(cfg) {
         if (cfg.source === 'history') return loadHistoryItems();
+        if (cfg.source === 'categories') return loadCategoryTiles();
         return loadCollectionItems(cfg);
     }
 
@@ -627,9 +699,24 @@
             '</div>' +
             '<div id="home-hero-meta"></div>' +
             '<div id="home-hero-overview"></div>' +
+            // Кнопки — в одном flex-ряду: стрелки тянутся по высоте «Смотреть»
+            // при любом кегле из медиазапросов (styles.css, .home-hero-actions)
+            '<div class="home-hero-actions">' +
             // «Подробнее» тут намеренно нет: карточка открывается OK прямо с ряда
             '<button type="button" class="home-hero-btn" id="home-play-btn" hidden>' +
             '<span class="home-hero-btn-icon">▶</span>Смотреть</button>' +
+            // Листание фильмов категории — только пока фокус на её плитке
+            // (setCategoryArrows); у обычной карточки их нет
+            '<button type="button" class="home-hero-btn home-hero-arrow" id="home-prev-btn" hidden' +
+            ' title="Предыдущий"><i class="fi fi-rr-angle-left"></i></button>' +
+            '<button type="button" class="home-hero-btn home-hero-arrow" id="home-next-btn" hidden' +
+            ' title="Следующий"><i class="fi fi-rr-angle-right"></i></button>' +
+            // Какой фильм категории из скольких — только когда фокус на плитке
+            // категории (раздел «БАННЕР: КАТЕГОРИЯ»). В ряду кнопок, а не в
+            // углу баннера: там кругляшок трейлера, и его место в каждом
+            // медиазапросе своё
+            '<div class="home-hero-dots" id="home-hero-dots" hidden></div>' +
+            '</div>' +
             '</div>';
 
         var rows = el('home-rows');
@@ -639,6 +726,8 @@
         hero.addEventListener('click', function (e) {
             if (!e.target.closest) return;
             if (e.target.closest('#home-play-btn')) playHeroItem();
+            else if (e.target.closest('#home-prev-btn')) stepCategory(-1);
+            else if (e.target.closest('#home-next-btn')) stepCategory(1);
         });
         return hero;
     }
@@ -679,14 +768,55 @@
     }
 
     /**
-     * Ровная тёмная подложка вместо картинки. Инлайновый background-image именно
-     * снимаем: у .home-hero-empty специфичность класса, инлайн её перебивает —
-     * и в баннере оставался кадр ПРОШЛОГО фильма, хотя новый не загрузился.
+     * Загруженные картинки баннера — сами элементы <img>, по адресу.
+     *
+     * Раньше картинку проверяли отдельным new Image(), а показывали адресом:
+     * кадр — через background-image, логотип — через src у <img> в разметке.
+     * Это второй запрос той же картинки: из кэша памяти, а у зеркал без
+     * заголовков кэширования — и по сети заново. Теперь в баннер встаёт тот
+     * самый элемент, что уже загрузился, и второго запроса нет вовсе.
+     *
+     * Держим немного: декодированный кадр 1280 — мегабайты памяти, а на
+     * телевизоре её мало. Кадров — текущий и два соседа (смена фильма
+     * категории), логотипов — побольше, они маленькие.
+     */
+    function createImgStore(max) {
+        var order = [];
+        var map = {};
+        return {
+            get: function (url) { return (url && map[url]) || null; },
+            put: function (url, img) {
+                if (!url || !img) return;
+                var i = order.indexOf(url);
+                if (i !== -1) order.splice(i, 1);
+                order.push(url);
+                map[url] = img;
+                while (order.length > max) delete map[order.shift()];
+            }
+        };
+    }
+    var backdropImgs = createImgStore(HOME.HERO_BACKDROP_KEEP);
+    var logoImgs = createImgStore(HOME.HERO_LOGO_KEEP);
+
+    /** Кадр в баннер — загруженным элементом (см. createImgStore) */
+    function showBackdropImg(box, img) {
+        img.className = 'home-hero-bd-img';
+        img.alt = '';
+        if (img.parentNode !== box) {
+            while (box.firstChild) box.removeChild(box.firstChild);
+            box.appendChild(img);
+        }
+        box.classList.remove('home-hero-empty');
+    }
+
+    /**
+     * Ровная тёмная подложка вместо картинки: снимаем и сам кадр, иначе в
+     * баннере оставался кадр ПРОШЛОГО фильма, хотя новый не загрузился.
      */
     function clearHeroBackdrop() {
         var box = el('home-hero-backdrop');
         if (!box) return;
-        box.style.removeProperty('background-image');
+        while (box.firstChild) box.removeChild(box.firstChild);
         box.classList.add('home-hero-empty');
     }
 
@@ -715,9 +845,17 @@
      * кадр предыдущего фильма под названием нового — тот самый баг. Повезёт
      * дальше по списку — кадр появится (хоть и позже), нет — останется подложка.
      */
-    function applyHeroBackdrop(url, extra) {
+    function applyHeroBackdrop(url, extra, onDone) {
         var box = el('home-hero-backdrop');
-        if (!box) return;
+        // onDone — один раз, когда кадр встал или показывать нечего: по нему
+        // смена фильма категории проявляет баннер (showCategoryItem)
+        var doneCalled = false;
+        var done = function () {
+            if (doneCalled || typeof onDone !== 'function') return;
+            doneCalled = true;
+            onDone();
+        };
+        if (!box) { done(); return; }
 
         var queue = [];
         pushMirrors(queue, url);
@@ -727,13 +865,28 @@
             cancelBackdropTimer();
             homeState.hero.backdropUrl = null;
             clearHeroBackdrop();
+            done();
             return;
         }
         // Этот кадр уже запрашивали (renderHero зовётся второй раз, с деталями) —
         // не перезапускаем цепочку, пока она идёт или уже показала картинку.
         // Ключ — первый кандидат, а не удавшийся: иначе успех с запасного
         // зеркала выглядел бы как новый запрос и мигал бы подложкой.
-        if (homeState.hero.backdropUrl === queue[0] && !backdropFailed) return;
+        if (homeState.hero.backdropUrl === queue[0] && !backdropFailed) { done(); return; }
+
+        // Кадр уже загружен (заранее — preloadBackdrop, или показывали его
+        // недавно) — ставим тот же элемент сразу, без запроса и без перебора
+        for (var c = 0; c < queue.length; c++) {
+            var ready = backdropImgs.get(queue[c]);
+            if (!ready) continue;
+            backdropLoad++;
+            cancelBackdropTimer();
+            homeState.hero.backdropUrl = queue[0];
+            backdropFailed = false;
+            showBackdropImg(box, ready);
+            done();
+            return;
+        }
         homeState.hero.backdropUrl = queue[0];
         backdropFailed = false;
 
@@ -751,7 +904,7 @@
             cancelBackdropTimer();
             if (shown) return;                              // уже нашли, дальше не ищем
             if (mine !== backdropLoad) return;              // элемент успели сменить
-            if (at >= queue.length) { backdropFailed = true; fallback(); return; }
+            if (at >= queue.length) { backdropFailed = true; fallback(); done(); return; }
             var candidate = queue[at++];
             var img = new Image();
             var settled = false;
@@ -779,8 +932,9 @@
                 cancelBackdropTimer();
                 shown = true;
                 backdropFailed = false;     // мог успеть выставиться, если это опоздавший ответ
-                box.style.backgroundImage = 'url("' + candidate + '")';
-                box.classList.remove('home-hero-empty');
+                backdropImgs.put(candidate, img);
+                showBackdropImg(box, img);
+                done();
             }
 
             img.onerror = function () {
@@ -800,9 +954,9 @@
         tryNext();
     }
 
-    function renderHero(item, details) {
+    function renderHero(item, details, onBackdrop) {
         var hero = ensureHeroDom();
-        if (!hero) return;
+        if (!hero) { if (onBackdrop) onBackdrop(); return; }
         var src = details || item || {};
 
         var t = el('home-hero-title');
@@ -824,9 +978,77 @@
         // Размер тот же, что у карточки: этот файл уже лежит в кэше браузера.
         var path = src.backdrop_path || (item && item.backdrop_path);
         var poster = (src.poster_path || (item && item.poster_path)) || '';
-        applyHeroBackdrop(path ? backdropUrlFor(path) : '',
-            poster ? posterUrlFor(poster) : '');
+        // Кадр уже загружали заранее (preloadBackdrop) — начинаем с зеркала,
+        // которое его отдало: картинка в кэше, и встанет она без перебора
+        var bd = path ? (homeState.goodBackdrops[path] || backdropUrlFor(path)) : '';
+        applyHeroBackdrop(bd, poster ? posterUrlFor(poster) : '', onBackdrop);
     }
+
+    /**
+     * Кадр баннера — в кэш браузера заранее, с тем же перебором зеркал, что у
+     * applyHeroBackdrop. Удачный адрес запоминаем (goodBackdrops): по нему
+     * renderHero потом ставит кадр сразу. done(ok) — когда кадр готов или
+     * зеркала кончились.
+     */
+    function preloadBackdrop(path, done) {
+        if (!path) { if (done) done(false); return; }
+        // Готово, только пока сам элемент ещё в backdropImgs: вытесненный
+        // оттуда кадр показ загрузил бы заново
+        if (backdropImgs.get(homeState.goodBackdrops[path])) { if (done) done(true); return; }
+        var waiting = homeState.backdropWaiters[path];
+        if (waiting) { if (done) waiting.push(done); return; }
+        waiting = homeState.backdropWaiters[path] = done ? [done] : [];
+        var queue = [];
+        // Кадр уже отдавало какое-то зеркало (прошлый показ) — с него и
+        // начинаем, не ждём упавшее первое
+        pushMirrors(queue, homeState.goodBackdrops[path] || backdropUrlFor(path));
+        loadFirstImg(queue, HOME.BACKDROP_GRACE_MS, function (img, url) {
+            if (url) {
+                homeState.goodBackdrops[path] = url;
+                // Показ возьмёт этот же элемент — второго запроса не будет
+                backdropImgs.put(url, img);
+            }
+            delete homeState.backdropWaiters[path];
+            for (var i = 0; i < waiting.length; i++) waiting[i](!!url);
+        });
+    }
+
+    /**
+     * Первая отдавшая картинка из queue — адреса по порядку, обычно зеркала
+     * одного файла (pushMirrors). На каждого — не дольше timeoutMs: зеркало
+     * может молчать вовсе, ни load, ни error. done(img, url), не вышло —
+     * done(null, null). alive() — ещё нужна ли картинка (плитку могли убрать).
+     */
+    function loadFirstImg(queue, timeoutMs, done, alive) {
+        var at = 0;
+        var next = function () {
+            if (at >= queue.length || (alive && !alive())) { done(null, null); return; }
+            var url = queue[at++];
+            var img = new Image();
+            img.decoding = 'async';
+            var settled = false;
+            var timer = setTimeout(function () {
+                if (settled) return;
+                settled = true;
+                next();
+            }, timeoutMs);
+            img.onload = function () {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                if (img.naturalWidth) done(img, url); else next();
+            };
+            img.onerror = function () {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                next();
+            };
+            img.src = url;
+        };
+        next();
+    }
+
 
     // ==================== БАННЕР: СМЕНА ЭЛЕМЕНТА ====================
 
@@ -853,6 +1075,8 @@
         // Поколение отсекает ответы (детали, поиск трейлера) по прошлому элементу
         var gen = ++homeState.hero.gen;
 
+        // С плитки категории ушли на фильм — её показ закончен
+        leaveCategoryHero();
         stopHeroTrailer();
         resetHeroRing();
         homeState.hero.key = k;
@@ -863,7 +1087,7 @@
 
         var cached = homeState.heroDetails[k] || null;
         renderHero(item, cached);
-        applyHeroLogo(item, k, gen);
+        applyHeroLogo(item, k);
 
         if (cached || (item.backdrop_path && item.overview)) {
             if (!cached) homeState.heroDetails[k] = item;
@@ -958,7 +1182,7 @@
         if (done) info.waiters.push(done);
         if (info.loading) return;
         info.loading = true;
-        var im = new Image();
+        var tries = 0;
         var finish = function (ok) {
             info.loading = false;
             info.loaded = ok;
@@ -967,9 +1191,35 @@
             info.waiters = [];
             for (var i = 0; i < w.length; i++) w[i](ok);
         };
-        im.onload = function () { finish(true); };
-        im.onerror = function () { finish(false); };
-        im.src = info.url;
+        // Зеркало выбирается по пути картинки, и упавшее зеркало валит один и
+        // тот же набор логотипов всегда. Поэтому, как и у кадра баннера
+        // (pushMirrors), пробуем следующие; удачный адрес запоминаем в info.url
+        var tryUrl = function (url) {
+            var im = new Image();
+            var settled = false;
+            var fail = function () {
+                if (settled) return;
+                settled = true;
+                var next = (++tries < HOME.BACKDROP_MIRROR_TRIES && typeof window.getTmdbNextMirrorUrl === 'function')
+                    ? window.getTmdbNextMirrorUrl(url) : null;
+                if (next && next !== url) tryUrl(next);
+                else finish(false);
+            };
+            // Зеркало может молчать вовсе — ни load, ни error; ждём как кадр баннера
+            var timer = setTimeout(fail, HOME.BACKDROP_GRACE_MS);
+            im.onload = function () {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                info.url = url;
+                // Баннер поставит этот же элемент (setHeroLogoState)
+                logoImgs.put(url, im);
+                finish(true);
+            };
+            im.onerror = function () { clearTimeout(timer); fail(); };
+            im.src = url;
+        };
+        tryUrl(info.url);
     }
 
     /**
@@ -1016,8 +1266,22 @@
             clearTimeout(homeState.hero.logoTimer);
             homeState.hero.logoTimer = null;
         }
-        var img = hasLogo ? document.querySelector('#home-hero-logo img') : null;
-        if (img && img.getAttribute('src') !== url) img.setAttribute('src', url);
+        var box = hasLogo ? el('home-hero-logo') : null;
+        if (box) {
+            var cur = box.querySelector('img');
+            // Уже загруженный элемент (preloadLogo) — вставляем его самого:
+            // src у разметки запросил бы ту же картинку второй раз
+            var ready = logoImgs.get(url);
+            if (ready) {
+                if (cur !== ready) {
+                    ready.alt = '';
+                    if (cur) box.replaceChild(ready, cur);
+                    else box.appendChild(ready);
+                }
+            } else if (cur && cur.getAttribute('src') !== url) {
+                cur.setAttribute('src', url);
+            }
+        }
         // Классы трогаем, только если они меняются: каждое касание — пересчёт
         // стилей подписей баннера, а зовётся это на каждой смене карточки
         var cl = body.classList;
@@ -1030,9 +1294,17 @@
      * только загруженную ставим в баннер — иначе на месте названия мелькала бы
      * пустота. Уже загруженный в этой сессии логотип ставится сразу.
      */
-    function applyHeroLogo(item, k, gen) {
+    /**
+     * «Свой» ли ответ, решает logoKey — какой элемент сейчас НАРИСОВАН в
+     * баннере, — а не поколение hero.gen. Поколение растёт и без перерисовки:
+     * suspendHero (ушли с главной на миг, плеер, заставка), повторный показ
+     * той же категории. Логотип при этом догружался, но считался чужим, и
+     * название оставалось спрятанным (home-hero-logo-wait) навсегда.
+     */
+    function applyHeroLogo(item, k) {
         var body = el('home-hero-body');
         if (!body) return;
+        homeState.hero.logoKey = k;
         var known = k ? knownLogo(item, k) : null;
         if (known === null || (known === undefined && homeState.logoUnsupported)) {
             setHeroLogoState(false);
@@ -1045,16 +1317,299 @@
         if (homeState.hero.logoTimer) clearTimeout(homeState.hero.logoTimer);
         homeState.hero.logoTimer = setTimeout(function () {
             homeState.hero.logoTimer = null;
-            if (gen === homeState.hero.gen) body.classList.remove('home-hero-logo-wait');
+            if (homeState.hero.logoKey === k) body.classList.remove('home-hero-logo-wait');
         }, HOME.LOGO_WAIT_MS);
 
         fetchHeroLogo(item, k).then(function (info) {
-            if (gen !== homeState.hero.gen) return;
+            if (homeState.hero.logoKey !== k) return;
             if (!info) { setHeroLogoState(false); return; }
             preloadLogo(k, info, function (ok) {
-                if (gen === homeState.hero.gen) setHeroLogoState(ok, info.url);
+                if (homeState.hero.logoKey === k) setHeroLogoState(ok, info.url);
             });
         });
+    }
+
+    // ==================== БАННЕР: КАТЕГОРИЯ ====================
+    //
+    // Фокус на плитке категории (ряд «Категории») — баннер по кругу показывает
+    // её фильмы: первые десять с описанием, кадром и логотипом. Список собирает
+    // и держит сутки в IndexedDB category-banners.js.
+    //
+    // Каждый фильм показывается так же, как карточка ряда: кругляшок, потом
+    // трейлер. Смена фильма — по концу трейлера; если трейлеры выключены, не
+    // нашлись или не пошли — через CATEGORY_ROTATE_MS после показа. Кнопки
+    // «‹» и «›» на баннере листают фильмы вручную, «Смотреть» ищет торренты
+    // показанного фильма.
+    //
+    // hero.cat.key — признак режима. hero.gen по-прежнему меняется на каждом
+    // фильме (им отсекаются логотип, поиск трейлера и сам трейлер прошлого
+    // фильма), а hero.cat.seq — на каждой смене категории: им отсекается
+    // сборка списка, которая может идти несколько секунд.
+
+    function stopCategoryTimers() {
+        var c = homeState.hero.cat;
+        if (c.timer) { clearTimeout(c.timer); c.timer = null; }
+        if (c.fadeTimer) { clearTimeout(c.fadeTimer); c.fadeTimer = null; }
+        if (c.placeholderTimer) { clearTimeout(c.placeholderTimer); c.placeholderTimer = null; }
+        var hero = el('home-hero');
+        if (hero && hero.classList.contains('home-hero-fading')) hero.classList.remove('home-hero-fading');
+    }
+
+    /** Обычный режим баннера: точки и стрелки прячем, категорию забываем */
+    function leaveCategoryHero() {
+        var c = homeState.hero.cat;
+        if (!c.key) return;
+        stopCategoryTimers();
+        c.seq++;
+        c.key = null;
+        c.list = [];
+        c.index = 0;
+        renderCategoryDots();
+        setCategoryArrows(false);
+    }
+
+    function renderCategoryDots() {
+        var box = el('home-hero-dots');
+        if (!box) return;
+        var c = homeState.hero.cat;
+        var n = c.key ? c.list.length : 0;
+        if (n < 2) {
+            if (!box.hidden) { box.hidden = true; box.innerHTML = ''; }
+            return;
+        }
+        var html = '';
+        for (var i = 0; i < n; i++) html += '<span' + (i === c.index ? ' class="home-dot-on"' : '') + '></span>';
+        box.innerHTML = html;
+        box.hidden = false;
+    }
+
+    /** Стрелки «‹ ›» видны только у категории, где есть что листать */
+    function setCategoryArrows(on) {
+        var changed = false;
+        var ids = ['home-prev-btn', 'home-next-btn'];
+        for (var i = 0; i < ids.length; i++) {
+            var b = el(ids[i]);
+            if (b && b.hidden === !!on) { b.hidden = !on; changed = true; }
+        }
+        // Кнопки входят в список фокуса control.js только видимыми
+        if (changed) invalidateFocus();
+    }
+
+    function categoryName(key) {
+        var cfg = (typeof CATALOG_CONFIG !== 'undefined') ? CATALOG_CONFIG[key] : null;
+        return (cfg && cfg.name) || '';
+    }
+
+    /** Дебаунс, как у setHeroItem: пролистывая ряд, категорию меняем один раз */
+    function setHeroCategory(catKey) {
+        var pk = 'cat:' + catKey;
+        if (pk === homeState.hero.pendingKey) return;
+        homeState.hero.pendingKey = pk;
+        if (homeState.hero.timer) clearTimeout(homeState.hero.timer);
+        homeState.hero.timer = setTimeout(function () {
+            homeState.hero.timer = null;
+            applyCategoryHero(catKey);
+        }, HOME.HERO_DEBOUNCE_MS);
+    }
+
+    function applyCategoryHero(catKey) {
+        if (!ensureHeroDom()) return;
+        var c = homeState.hero.cat;
+        homeState.hero.key = 'cat:' + catKey;
+        homeState.hero.pendingKey = homeState.hero.key;
+
+        // Та же категория (вернулись на плитку из карточки, поиска, с кнопок
+        // баннера) — продолжаем с того фильма, на котором остановились
+        if (c.key === catKey && c.list.length) {
+            showCategoryItem(c.index, false);
+            return;
+        }
+
+        homeState.hero.gen++;
+        stopHeroTrailer();
+        resetHeroRing();
+        stopCategoryTimers();
+        var seq = ++c.seq;
+        c.key = catKey;
+        c.list = [];
+        c.index = 0;
+        renderCategoryDots();
+        setCategoryArrows(false);
+
+        if (!window.CategoryBanners) { renderCategoryPlaceholder(catKey, true); return; }
+
+        var shown = false;
+        c.placeholderTimer = setTimeout(function () {
+            c.placeholderTimer = null;
+            if (seq === c.seq && !shown) renderCategoryPlaceholder(catKey, false);
+        }, HOME.CATEGORY_PLACEHOLDER_MS);
+
+        function first(list) {
+            if (seq !== c.seq || shown || !list.length) return;
+            shown = true;
+            c.list = list;
+            showCategoryItem(0, false);
+        }
+
+        CategoryBanners.get(catKey, first).then(function (list) {
+            if (seq !== c.seq) return;
+            if (c.placeholderTimer) { clearTimeout(c.placeholderTimer); c.placeholderTimer = null; }
+            if (!list.length) { if (!shown) renderCategoryPlaceholder(catKey, true); return; }
+            if (!shown) { first(list); return; }
+            // Первые фильмы уже на экране — дописываем остальные, не начиная
+            // показ заново
+            var cur = c.list[c.index];
+            c.list = list;
+            var idx = list.indexOf(cur);
+            c.index = idx === -1 ? 0 : idx;
+            renderCategoryDots();
+            setCategoryArrows(list.length > 1);
+        });
+    }
+
+    /** Список ещё собирается (или пуст): название категории и её картинка */
+    function renderCategoryPlaceholder(catKey, empty) {
+        homeState.hero.item = null;
+        var t = el('home-hero-title');
+        if (t) t.textContent = categoryName(catKey);
+        var m = el('home-hero-meta');
+        if (m) m.textContent = empty ? 'Категория' : 'Подбираем фильмы…';
+        var o = el('home-hero-overview');
+        if (o) o.textContent = '';
+        // Опоздавший логотип прошлого фильма сюда не встанет
+        homeState.hero.logoKey = null;
+        setHeroLogoState(false);
+        var poster = (typeof POSTER_URLS !== 'undefined' && POSTER_URLS[catKey]) || '';
+        applyHeroBackdrop(poster, '');
+    }
+
+    /**
+     * Показать фильм категории под номером idx. fade — плавно (автосмена и
+     * стрелки): кадр и подписи гаснут, меняются и проявляются.
+     */
+    function showCategoryItem(idx, fade) {
+        var c = homeState.hero.cat;
+        if (!c.key || !c.list.length) return;
+        var n = c.list.length;
+        idx = ((idx % n) + n) % n;
+        stopCategoryTimers();
+        stopHeroTrailer();
+        resetHeroRing();
+        var gen = ++homeState.hero.gen;
+
+        var hero = el('home-hero');
+        if (!fade || !hero) { renderCategoryItem(idx, gen, null); return; }
+
+        // Плавная смена: баннер гаснет, и проявляется только когда НОВЫЙ кадр
+        // встал. Раньше проявление шло по сроку затухания, а кадр следующего
+        // фильма ещё грузился — и полсекунды под новым названием был виден
+        // прежний. Кадр к этому моменту обычно уже в кэше (preloadBackdrop
+        // соседей), но ждём не дольше CATEGORY_REVEAL_MAX_MS.
+        hero.classList.add('home-hero-fading');
+        var item = c.list[idx];
+        var faded = false, ready = false, rendered = false, shown = false;
+        var reveal = function () {
+            if (shown || gen !== homeState.hero.gen) return;
+            shown = true;
+            if (c.fadeTimer) { clearTimeout(c.fadeTimer); c.fadeTimer = null; }
+            hero.classList.remove('home-hero-fading');
+        };
+        // И догрузка кадра, и запасной срок ведут сюда — рисуем один раз
+        var tryRender = function () {
+            if (rendered || !faded || !ready || gen !== homeState.hero.gen) return;
+            rendered = true;
+            if (c.fadeTimer) { clearTimeout(c.fadeTimer); c.fadeTimer = null; }
+            renderCategoryItem(idx, gen, reveal);
+            c.fadeTimer = setTimeout(reveal, HOME.CATEGORY_REVEAL_MAX_MS);
+        };
+        preloadBackdrop(item && item.backdrop_path, function () { ready = true; tryRender(); });
+        c.fadeTimer = setTimeout(function () {
+            c.fadeTimer = null;
+            faded = true;
+            if (!ready) {
+                // Кадр всё ещё грузится — не держим баннер пустым бесконечно
+                c.fadeTimer = setTimeout(function () { ready = true; tryRender(); }, HOME.CATEGORY_REVEAL_MAX_MS);
+            }
+            tryRender();
+        }, HOME.CATEGORY_FADE_MS);
+    }
+
+    /** Кадры соседних фильмов — заранее: «‹ ›» и автосмена не ждут сети */
+    function preloadCategoryNeighbours(idx) {
+        var c = homeState.hero.cat;
+        var n = c.list.length;
+        if (n < 2) return;
+        var next = c.list[(idx + 1) % n];
+        var prev = c.list[(idx - 1 + n) % n];
+        preloadBackdrop(next && next.backdrop_path, null);
+        if (prev !== next) preloadBackdrop(prev && prev.backdrop_path, null);
+    }
+
+    function renderCategoryItem(idx, gen, onBackdrop) {
+        var c = homeState.hero.cat;
+        var item = c.list[idx];
+        if (!item) return;
+        c.index = idx;
+        var k = heroKey(item);
+        // «Смотреть» и поиск трейлера берут фильм отсюда
+        homeState.hero.item = item;
+        homeState.hero.trailerUrl = null;
+        homeState.hero.trailerSearched = false;
+        homeState.heroDetails[k] = item;
+
+        renderHero(item, item, onBackdrop);
+        // Категория первой: на этом баннере фильм — пример того, что внутри
+        var m = el('home-hero-meta');
+        if (m) m.textContent = categoryName(c.key) + '  •  ' + heroMetaText(item, item);
+        applyHeroLogo(item, k);
+        renderCategoryDots();
+        setCategoryArrows(c.list.length > 1);
+        // Логотипы и кадры соседних — заранее, чтобы смена не мигала текстом
+        // названия и прежним кадром
+        preloadNearLogos(c.list, idx);
+        preloadCategoryNeighbours(idx);
+
+        // Запасной срок смены. Пошёл трейлер — срок снимается, и смену делает
+        // конец ролика (startHeroTrailer); трейлеров нет — смена по сроку
+        c.timer = setTimeout(function () {
+            c.timer = null;
+            advanceCategory(gen);
+        }, HOME.CATEGORY_ROTATE_MS);
+        if (heroTrailersOn()) startTrailerCountdown(item, item, gen);
+        else hideHeroRing();
+    }
+
+    /** Следующий фильм. Главная не на экране — ждём следующего срока */
+    function advanceCategory(gen) {
+        var c = homeState.hero.cat;
+        if (!c.key || gen !== homeState.hero.gen) return;
+        if (!isHomeVisible() || playerBusy() || moduleLoaderUp() ||
+            (window.AppState && AppState.screensaverActive)) {
+            c.timer = setTimeout(function () {
+                c.timer = null;
+                advanceCategory(gen);
+            }, HOME.CATEGORY_ROTATE_MS);
+            return;
+        }
+        if (c.list.length < 2) {
+            // Один фильм: трейлер отыграл — показываем его же заново (кругляшок)
+            showCategoryItem(c.index, false);
+            return;
+        }
+        showCategoryItem(c.index + 1, true);
+    }
+
+    /** Кнопки «‹ ›» на баннере */
+    function stepCategory(delta) {
+        var c = homeState.hero.cat;
+        if (!c.key || c.list.length < 2) return true;
+        showCategoryItem(c.index + delta, true);
+        return true;
+    }
+
+    /** Кнопка баннера: «Смотреть» или стрелка категории */
+    function isHeroButton(f) {
+        return !!(f && (f.id === 'home-play-btn' || f.id === 'home-prev-btn' || f.id === 'home-next-btn'));
     }
 
     // ==================== БАННЕР: КРУГЛЯШОК ====================
@@ -1111,7 +1666,12 @@
     /** Фокус всё ещё на той карточке, чей элемент показан в баннере */
     function focusedIsHeroCard() {
         var f = document.querySelector('.focused');
+        // Кнопки баннера категории («Смотреть», «‹ ›») — часть её показа:
+        // трейлер под ними играет дальше
+        if (homeState.hero.cat.key && isHeroButton(f)) return true;
         if (!f || !f.dataset || !findCardPosition(f)) return false;
+        // Плитка категории «своя», пока баннер показывает её фильмы
+        if (f.dataset.homeCat) return f.dataset.homeCat === homeState.hero.cat.key;
         var items = homeState.data[f.dataset.homeKey];
         var idx = parseInt(f.dataset.itemIndex, 10);
         if (!items || isNaN(idx) || !items[idx]) return false;
@@ -1232,7 +1792,9 @@
         video.className = 'home-hero-video';
         video.muted = true;
         video.volume = 0;
-        video.loop = true;
+        // У категории ролик не крутится по кругу: его конец — смена фильма
+        var catMode = !!homeState.hero.cat.key;
+        video.loop = !catMode;
         video.autoplay = true;
         video.playsInline = true;
         video.setAttribute('playsinline', '');
@@ -1289,6 +1851,28 @@
             if (video.currentTime > 0) revealVideo();
             startVolumeFade();
         });
+        if (catMode) {
+            // Ролик пошёл — смену делает его конец, а не CATEGORY_ROTATE_MS.
+            // Запасной срок всё же оставляем — на длину ролика с запасом: поток
+            // может встать без ошибки, и баннер застыл бы навсегда
+            var catGuard = function () {
+                if (homeState.hero.video !== video) return;
+                var c = homeState.hero.cat;
+                if (c.timer) clearTimeout(c.timer);
+                var d = video.duration;
+                var ms = (d && isFinite(d)) ? Math.round(d * 1000) + 15000 : 5 * 60 * 1000;
+                c.timer = setTimeout(function () {
+                    c.timer = null;
+                    advanceCategory(gen);
+                }, ms);
+            };
+            var catNext = function () {
+                if (homeState.hero.video === video) advanceCategory(gen);
+            };
+            video.addEventListener('playing', catGuard);
+            video.addEventListener('ended', catNext);
+            video.addEventListener('error', catNext);
+        }
 
         if (window.trailerUsesHlsJs ? window.trailerUsesHlsJs() : (window.Hls && Hls.isSupported())) {
             var hls = new Hls({
@@ -1305,6 +1889,11 @@
                 if (homeState.hero.video !== video) return;
                 video.play().catch(function () { });
             });
+            if (catMode) {
+                hls.on(Hls.Events.ERROR, function (ev, data) {
+                    if (data && data.fatal && homeState.hero.video === video) advanceCategory(gen);
+                });
+            }
             homeState.hero.hls = hls;
         } else {
             video.src = hlsUrl(url);
@@ -1462,6 +2051,9 @@
     function suspendHero(now) {
         homeState.hero.gen++;
         if (homeState.hero.timer) { clearTimeout(homeState.hero.timer); homeState.hero.timer = null; }
+        // Смену фильмов категории останавливаем, но саму категорию помним:
+        // вернёмся на плитку — показ продолжится с того же фильма
+        stopCategoryTimers();
         homeState.hero.key = null;
         homeState.hero.pendingKey = null;
         resetHeroRing();
@@ -1495,14 +2087,44 @@
     }
 
     /**
-     * Размер карточек нижнего ряда. Отдельным <style>, потому что геометрию
+     * Геометрия плитки ряда — у фильмов и у категорий одна: картинка 16:9 и
+     * название под ней.
+     *
+     * Ширина — два постера с зазором (cardW — ширина постера, которую
+     * layoutHome считает, как раньше, от высоты ряда и ползунка «Размер
+     * карточек»). Так плиток в экране столько же, сколько было бы пар
+     * постеров: от высоты ряда напрямую плитка выходила втрое шире постера, и
+     * на 1080p в экран влезало три. Телефон вертикально: два постера шире
+     * экрана — плитка не шире CATEGORY_TILE_MAX_SHARE, соседняя выглядывает.
+     *
+     * Подпись — от высоты постера (на телефоне 40px были бы в полплитки).
+     * Зазор между карточками в медиазапросах разный (18/14/10px) — берём долю
+     * ширины, это около него.
+     */
+    function tileGeometry(cardW, posterH, availW) {
+        var labelH = Math.max(HOME.CATEGORY_LABEL_MIN_PX,
+            Math.min(HOME.CATEGORY_LABEL_PX, Math.round(posterH * 0.12)));
+        var w = Math.round(cardW * 2.08);
+        if (availW && w > availW * HOME.CATEGORY_TILE_MAX_SHARE) w = Math.round(availW * HOME.CATEGORY_TILE_MAX_SHARE);
+        var imgH = Math.round(w * 9 / 16);
+        return { w: w, imgH: imgH, labelH: labelH, h: imgH + labelH };
+    }
+
+    /**
+     * Размер плиток ряда. Отдельным <style>, потому что геометрию
      * .catalog-row-card задаёт ui-customizer.js через !important — перебить его
      * можно только более специфичным селектором (.catalog-row-card.home-card:
      * два класса против одного), и порядок подключения тут уже не важен.
      */
-    function applyCardCss(w, h) {
-        if (homeState.cardWidth === w) return;
-        homeState.cardWidth = w;
+    function applyCardCss(g) {
+        var key = g.w + 'x' + g.h;
+        if (homeState.cardCssKey === key) return;
+        homeState.cardCssKey = key;
+        homeState.cardWidth = g.w;
+        // Кадр плитки: до 400 физических точек хватает w300 (720p, в том
+        // числе с масштабом 1.25), шире — w780 (1080p). w300 легче вчетверо
+        var dpr = window.devicePixelRatio || 1;
+        homeState.tileImgSize = g.w * dpr <= 400 ? 'w300' : 'w780';
         var st = el('home-card-style');
         if (!st) {
             st = document.createElement('style');
@@ -1512,11 +2134,17 @@
         st.textContent =
             '.catalog-row-card.home-card,' +
             '.catalog-row-viewport .catalog-row-card.home-card{' +
-            'flex:0 0 ' + w + 'px!important;width:' + w + 'px!important;height:' + h + 'px!important}' +
+            'flex:0 0 ' + g.w + 'px!important;width:' + g.w + 'px!important;height:' + g.h + 'px!important}' +
             '.catalog-row-card.home-card .torrent-poster,' +
             '.catalog-row-viewport .catalog-row-card.home-card .torrent-poster,' +
             '.catalog-row-card.home-card .row-poster-img{' +
-            'width:' + w + 'px!important;height:' + h + 'px!important}';
+            'width:' + g.w + 'px!important;height:' + g.imgH + 'px!important}' +
+            '.home-tile-label{height:' + g.labelH + 'px;line-height:' + g.labelH + 'px;' +
+            'font-size:' + Math.round(g.labelH * 0.5) + 'px}' +
+            // Значок категории — треть высоты плитки, водяной знак — больше самой плитки
+            '.home-cat-mark{font-size:' + Math.round(g.imgH * 0.34) + 'px}' +
+            '.home-cat-text{font-size:' + Math.round(g.imgH * 0.3) + 'px}' +
+            '.home-cat-watermark{font-size:' + Math.round(g.imgH * 1.15) + 'px}';
     }
 
     /** Заголовок ряда + вертикальные padding'и трека: высота ряда минус карточка */
@@ -1611,13 +2239,16 @@
         if (lim && w > lim) w = lim;
         w = Math.max(HOME.CARD_MIN_W, Math.min(HOME.CARD_MAX_W, w));
         var posterH = Math.round(w * HOME.CARD_ASPECT);
+        // В рядах — широкие плитки (tileGeometry), w и posterH — только мерка
+        // для них: плитка ниже постера, и освободившееся место уходит баннеру
+        var tile = tileGeometry(w, posterH, availW);
         // Остаток высоты — баннеру. Отрицательный margin заводит его под шапку:
         // та лежит выше по z-index и рисует поверх свой градиент.
-        var heroH = Math.max(heroMin, free - (posterH + chrome));
+        var heroH = Math.max(heroMin, free - (tile.h + chrome));
 
         // ===== ФАЗА ЗАПИСИ: копится до конца кадра, пересчёта не вызывает =====
         if (needScrollReset) mc.scrollTop = 0;
-        applyCardCss(w, posterH);
+        applyCardCss(tile);
         hero.style.marginTop = (-heroTop) + 'px';
         hero.style.height = (heroH + heroTop) + 'px';
         // Высота баннера сменилась, а трейлер играет — вписываем кадр заново.
@@ -1627,14 +2258,17 @@
 
     // ==================== РАЗМЕТКА РЯДОВ ====================
 
+    /**
+     * Плитка фильма: широкий кадр и название под ним — тот же вид, что у
+     * плиток категорий (createCategoryTile). Год, тип и оценка — на баннере,
+     * он показывает фильм под фокусом.
+     */
     function createHomeCard(item, key, index) {
         var title = itemTitle(item);
         var mt = item.media_type || 'movie';
-        var year = itemYear(item);
-        // Оценки на постере в рядах нет — как и в рядах каталога
 
-        // Классы те же, что у карточки ряда каталога: размеры, фокус и настройки
-        // из ui-customizer.js прописаны именно под них
+        // Классы те же, что у карточки ряда каталога: фокус и настройки из
+        // ui-customizer.js прописаны именно под них; размеры — applyCardCss
         var card = document.createElement('div');
         card.className = 'torrent-card catalog-card catalog-row-card home-card';
         // data-home-key, а не data-catalog-key: restoreRowFocus() в catalog.js
@@ -1650,13 +2284,69 @@
             '<div class="torrent-poster">' +
             '<div class="row-poster-img"><div class="no-poster catalog-poster-loading"></div></div>' +
             '</div>' +
-            '<div class="torrent-info">' +
-            '<div class="torrent-title">' + esc(title.length > 40 ? title.substring(0, 40) + '...' : title) + '</div>' +
-            '<div class="torrent-meta"><span>' + (mt === 'tv' ? 'Сериал' : 'Фильм') + '</span>' +
-            (year ? '<span>' + year + '</span>' : '') + '</div>' +
-            '</div>';
+            '<div class="home-tile-label">' + esc(title) + '</div>';
 
         return card;
+    }
+
+    /**
+     * Плитка категории: широкая картинка и название под ней. Классы те же, что
+     * у карточки фильма, — фокус и навигация общие, размеры свои
+     * (categoryTileCss); отличает её data-home-cat — по нему баннер переходит в
+     * режим категории, а OK открывает сетку.
+     */
+    function createCategoryTile(item, key, index) {
+        var card = document.createElement('div');
+        card.className = 'torrent-card catalog-card catalog-row-card home-card home-cat-tile';
+        card.dataset.homeKey = key;
+        card.dataset.itemIndex = index;
+        card.dataset.homeCat = item.catKey;
+        card.dataset.title = item.name;
+        // Грузить нечего — плитка готова сразу (visiblePostersReady ждёт этот флаг)
+        card.dataset.posterLoaded = '1';
+        card.innerHTML =
+            '<div class="torrent-poster">' +
+            '<div class="row-poster-img">' + categoryTileArt(item.catKey) + '</div>' +
+            '</div>' +
+            '<div class="home-tile-label">' + esc(item.name) + '</div>';
+        return card;
+    }
+
+    /**
+     * Оформление плиток: свои цвета и значок из шрифта uicons (он уже
+     * подключён для шапки). Ни одного запроса и ни одного декодирования
+     * картинки — плитка рисуется градиентом и глифом. Подборки Кинопоиска — в
+     * одной оранжевой гамме, чтобы читались семейством. text — надпись вместо
+     * значка. Категории, которой тут нет, достаётся CATEGORY_ART_DEFAULT.
+     */
+    var CATEGORY_ART = {
+        halloween: { icon: 'pumpkin', c1: '#ff8a1f', c2: '#3d1403' },
+        movie: { icon: 'film', c1: '#e5383b', c2: '#33090e' },
+        tv: { icon: 'tv-retro', c1: '#3a86ff', c2: '#0a1a40' },
+        cartoons: { icon: 'balloons', c1: '#ffb703', c2: '#4d2a00' },
+        cartoons_tv: { icon: 'child-head', c1: '#14c9a0', c2: '#03302a' },
+        anime: { icon: 'dragon', c1: '#b86bff', c2: '#250b3d' },
+        rus: { icon: 'flag', c1: '#2f6fd6', c2: '#7a1620' },
+        kp_popular: { icon: 'fire-flame-curved', c1: '#ff6a00', c2: '#2b1000' },
+        kp_pop_movies: { icon: 'clapperboard', c1: '#ff7f11', c2: '#2e1300' },
+        kp_pop_series: { icon: 'screen', c1: '#f28c18', c2: '#2b1500' },
+        kp_top250: { icon: 'trophy', c1: '#f2b705', c2: '#332500' },
+        kp_top250_tv: { icon: 'medal', c1: '#e8a33d', c2: '#2e1d00' },
+        kp_family: { icon: 'family', c1: '#ff9b42', c2: '#33190a' },
+        kp_comics: { icon: 'bolt', c1: '#ff5e3a', c2: '#330d05' },
+        kp_love: { icon: 'heart', c1: '#ff5a76', c2: '#3a0a16' },
+        quadhd: { text: '4K', icon: 'diamond', c1: '#00b4d8', c2: '#031c4a' },
+        legends: { icon: 'crown', c1: '#d9a62e', c2: '#261b00' }
+    };
+    var CATEGORY_ART_DEFAULT = { icon: 'film', c1: '#5a5f8a', c2: '#1c1d33' };
+
+    function categoryTileArt(catKey) {
+        var a = CATEGORY_ART[catKey] || CATEGORY_ART_DEFAULT;
+        var mark = a.text
+            ? '<span class="home-cat-mark home-cat-text">' + esc(a.text) + '</span>'
+            : '<i class="fi fi-rr-' + a.icon + ' home-cat-mark"></i>';
+        return '<div class="home-cat-art" style="--cat-c1:' + a.c1 + ';--cat-c2:' + a.c2 + '">' +
+            '<i class="fi fi-rr-' + a.icon + ' home-cat-watermark"></i>' + mark + '</div>';
     }
 
     function createHomeRow(cfg, items) {
@@ -1677,7 +2367,7 @@
 
         // Карусель: вьюпорт прокручивается нативно по scrollLeft, трек — просто
         // флекс-лента. Позицию читают/пишут getScrollX/setScrollX (control.js).
-        // В опыте AppState.homeRowTransform вьюпорт — окно-обрезка, а ряд
+        // При AppState.homeRowTransform (по умолчанию) вьюпорт — окно-обрезка, а ряд
         // двигает transform трека (isTxScroller в control.js). Только здесь:
         // в каталоге тот же приём дороже, см. createCatalogRow в catalog.js.
         var carousel = document.createElement('div');
@@ -1695,7 +2385,9 @@
 
         var cards = [];
         for (var i = 0; i < items.length; i++) {
-            var card = createHomeCard(items[i], cfg.key, i);
+            var card = items[i].catKey
+                ? createCategoryTile(items[i], cfg.key, i)
+                : createHomeCard(items[i], cfg.key, i);
             track.appendChild(card);
             cards.push(card);
         }
@@ -1729,6 +2421,9 @@
         return new Promise(function (resolve) {
             var img = new Image();
             img.style.cssText = 'width:100%;height:100%;object-fit:cover';
+            // .row-poster-img>img без .loaded прозрачна (проявление постера в
+            // styles.css); вставляем уже загруженную — значит, сразу видимой
+            img.className = 'loaded poster-instant';
             img.onload = function () {
                 if (box.isConnected) { box.innerHTML = ''; box.appendChild(img); }
                 resolve();
@@ -1741,20 +2436,77 @@
         });
     }
 
+    /**
+     * Картинка плитки фильма — широкий кадр (backdrop_path) размера
+     * tileImgSize: под ширину плитки, а не баннера (см. backdropUrlFor). Подборки отдают кадр сразу (routes/tmdb.js); у «Продолжить
+     * просмотр» его нет — спрашиваем /api/tmdb/item (у сервера свой кэш) и
+     * запоминаем в элементе. Кадра нет и там — постер, обрезанный по ширине.
+     */
     function loadCardPoster(card, item) {
         var box = card.querySelector('.row-poster-img');
-        if (!box) return Promise.resolve();
-        var url = item && item.poster_path ? posterUrlFor(item.poster_path) : '';
+        if (!box || !item) return Promise.resolve();
+        return tileBackdropPath(item).then(function (path) {
+            if (path) {
+                return loadTileImg(box, tmdbImage(path, homeState.tileImgSize)).then(function (url) {
+                    if (!url) return loadTilePoster(box, item);
+                });
+            }
+            return loadTilePoster(box, item);
+        });
+    }
+
+    function tileBackdropPath(item) {
+        if (item.backdrop_path) return Promise.resolve(item.backdrop_path);
+        if (item.backdropChecked || item.id == null) return Promise.resolve(null);
+        var url = serverUrl() + '/api/tmdb/item?id=' + encodeURIComponent(item.id) +
+            '&type=' + (item.media_type === 'tv' ? 'tv' : 'movie');
+        return homeFetch(url).then(function (d) {
+            item.backdropChecked = true;
+            if (d && d.backdrop_path) item.backdrop_path = d.backdrop_path;
+            // Баннеру пригодятся и описание с жанрами: «Продолжить просмотр»
+            // иначе дотягивал бы их отдельно (enrichHero)
+            if (d && d.overview && !item.overview) item.overview = d.overview;
+            return item.backdrop_path || null;
+        });
+    }
+
+    function loadTilePoster(box, item) {
+        var url = item.poster_path ? posterUrlFor(item.poster_path) : '';
         if (!url) {
             box.innerHTML = '<div class="no-poster">Нет постера</div>';
             return Promise.resolve();
         }
-        // setRowPosterImg (catalog.js) уже умеет img.decode() и переход на
-        // следующее зеркало по onerror — свой велосипед только как запас
-        if (typeof window.setRowPosterImg === 'function') {
-            return window.setRowPosterImg(box, url);
-        }
-        return setPosterFallback(box, url);
+        return loadTileImg(box, url).then(function (ok) {
+            if (!ok && box.isConnected) box.innerHTML = '<div class="no-poster">Нет постера</div>';
+        });
+    }
+
+    /**
+     * Картинка в плитку с перебором зеркал (pushMirrors) и сторожем на
+     * молчащее зеркало. setRowPosterImg из catalog.js тут не годится: он
+     * переписывает адрес под размер постера (getPosterCardSize), а у плитки
+     * размер кадра. resolve(адрес) — картинка на месте, с этого зеркала;
+     * resolve(null) — ни одно не отдало.
+     */
+    function loadTileImg(box, url) {
+        return new Promise(function (resolve) {
+            var queue = [];
+            pushMirrors(queue, url);
+            loadFirstImg(queue, HOME.TILE_IMG_TIMEOUT_MS, function (img, src) {
+                if (!img) { resolve(null); return; }
+                var insert = function () {
+                    if (!box.isConnected) { resolve(null); return; }
+                    // Вставляем уже загруженную — видимой сразу и без перехода:
+                    // .row-poster-img>img без .loaded прозрачна (styles.css)
+                    img.className = 'loaded poster-instant';
+                    box.innerHTML = '';
+                    box.appendChild(img);
+                    resolve(src);
+                };
+                if (typeof img.decode === 'function') img.decode().then(insert, insert);
+                else insert();
+            }, function () { return box.isConnected; });
+        });
     }
 
     /** Не больше POSTER_CONCURRENCY загрузок разом; между ними — кадр главному потоку */
@@ -1792,6 +2544,8 @@
             // prefetchNeighbourPosters, восстановление фокуса) — и одна карточка
             // грузилась дважды: два запроса, два декода и два <img> в рамке.
             if (card.dataset.posterPending === '1') continue;
+            // Плитка категории нарисована целиком в разметке — постера у неё нет
+            if (card.dataset.homeCat) continue;
             // Флаг ставится до самой загрузки, поэтому проверяем и картинку:
             // если очередь успели обнулить, карточка осталась бы пустой навсегда
             if (card.dataset.posterLoaded === '1' && box && box.querySelector('img')) continue;
@@ -1886,6 +2640,17 @@
         return (b && !b.hidden && b.offsetParent !== null) ? b : null;
     }
 
+    /** Видимые кнопки баннера слева направо */
+    function heroButtons() {
+        var out = [];
+        var ids = ['home-play-btn', 'home-prev-btn', 'home-next-btn'];
+        for (var i = 0; i < ids.length; i++) {
+            var b = el(ids[i]);
+            if (b && !b.hidden && b.offsetParent !== null) out.push(b);
+        }
+        return out;
+    }
+
     function focusHomeEl(target) {
         if (!target) return true;
         if (typeof updateFocusableElements === 'function') updateFocusableElements();
@@ -1928,6 +2693,7 @@
     }
 
     function setHeroFromCard(card) {
+        if (card.dataset.homeCat) { setHeroCategory(card.dataset.homeCat); return; }
         var items = homeState.data[card.dataset.homeKey];
         var idx = parseInt(card.dataset.itemIndex, 10);
         if (!items || isNaN(idx) || !items[idx]) return;
@@ -2068,14 +2834,24 @@
             return true;   // вверх с шапки уходить некуда
         }
 
-        // --- кнопка «Смотреть» на баннере ---
-        if (f && f.id === 'home-play-btn') {
-            if (dir === 'up') return focusTopbar();
+        // --- кнопки баннера: «Смотреть», у категории ещё «‹ ›» ---
+        if (isHeroButton(f)) {
+            var hb = heroButtons();
+            var hi = hb.indexOf(f);
+            if (dir === 'left') return hi > 0 ? focusHomeEl(hb[hi - 1]) : true;
+            if (dir === 'right') return hi < hb.length - 1 ? focusHomeEl(hb[hi + 1]) : true;
             if (dir === 'down') {
                 if (!homeState.rowEls.length) return true;
                 return focusActiveRowCard();
             }
-            return true;   // влево/вправо на баннере некуда: кнопка одна
+            if (dir === 'up') {
+                // Кнопки категории стоят «над» её рядом, а не над первым
+                // рядом: вверх с них — в ряд выше, иначе «Продолжить просмотр»
+                // был бы с плиток недостижим
+                if (homeState.hero.cat.key && homeState.activeRow > 0) return focusRow(homeState.activeRow - 1);
+                return focusTopbar();
+            }
+            return true;
         }
 
         // --- нижний ряд ---
@@ -2094,6 +2870,12 @@
         // Вверх/вниз меняют подборку в нижнем ряду, а не уводят фокус по вертикали:
         // на экране один ряд, остальные скрыты
         if (dir === 'up') {
+            // С плитки категории — на кнопки её баннера (листать фильмы,
+            // «Смотреть»); ряд выше — следующим «вверх» уже с них
+            if (f.dataset && f.dataset.homeCat && f.dataset.homeCat === homeState.hero.cat.key) {
+                var pbc = playButton();
+                if (pbc) return focusHomeEl(pbc);
+            }
             if (pos.row > 0) return focusRow(pos.row - 1);
             var pb2 = playButton();
             if (pb2) return focusHomeEl(pb2);
@@ -2110,7 +2892,7 @@
         var f = document.querySelector('.focused');
         var btns = getNavButtons();
         if (f && btns.indexOf(f) !== -1) return true;    // уже в шапке — уходить некуда
-        if (f && f.id === 'home-play-btn') { focusTopbar(); return true; }
+        if (isHeroButton(f)) { focusTopbar(); return true; }
         if (f && findCardPosition(f)) {
             var pb = playButton();
             if (pb) { focusHomeEl(pb); return true; }
@@ -2123,7 +2905,39 @@
 
     // ==================== ДЕЙСТВИЯ ====================
 
+    /**
+     * Плитка категории → её сетка в #content-catalog, как раньше карточка
+     * «Показать все» в рядах каталога. Шаг 'grid' в стеке переходов: «назад»
+     * из сетки снимает его (backToCatalogList), а showCatalogList — экрана
+     * списка категорий больше нет — возвращает на главную, на эту же плитку
+     * (lastRowKey / lastColIndex).
+     */
+    function openCategory(catKey, key, index) {
+        homeState.lastRowKey = key;
+        homeState.lastColIndex = index;
+        if (typeof window.loadCatalog !== 'function') return true;
+        suspendHero();
+        scrollHomeToTop();
+        if (window.Nav) Nav.push('grid', { key: 'cat:' + catKey, label: catKey });
+        if (window.AppState) AppState.inSearch = 'catalog';
+        if (typeof catalogState !== 'undefined') catalogState.favoritesFromTopbar = false;
+        // Сетка начинается с первой карточки, а не с той, где стояли в прошлый раз
+        try { localStorage.removeItem('lastCatalogCardIndex'); } catch (e) { }
+        if (typeof window.showContentScreen === 'function') window.showContentScreen('catalog');
+        // Фокус на первую карточку — сами, как вкладка «Избранное» (app.js):
+        // loadCatalog его не ставит, и пульт ждал бы подстраховку фокуса
+        Promise.resolve(window.loadCatalog(catKey)).then(function () {
+            setTimeout(function () {
+                if (!window.AppState || AppState.currentScreen !== 'catalog') return;
+                if (typeof catalogState !== 'undefined' && catalogState.currentCatalog !== catKey) return;
+                if (typeof window.ensureCatalogFocus === 'function') window.ensureCatalogFocus(true);
+            }, HOME.FOCUS_DELAY_MS);
+        });
+        return true;
+    }
+
     function openHomeItem(item, key, index) {
+        if (item && item.catKey) return openCategory(item.catKey, key, index);
         homeState.lastRowKey = key;
         homeState.lastColIndex = index;
         if (window.Nav) Nav.push('detail', Nav.detailData(item, index));
@@ -2245,6 +3059,8 @@
     function onHomeOk(f) {
         if (!f) return ensureHomeFocus(true);
         if (f.id === 'home-play-btn') return playHeroItem();
+        if (f.id === 'home-prev-btn') return stepCategory(-1);
+        if (f.id === 'home-next-btn') return stepCategory(1);
         if (f.classList && f.classList.contains('home-nav-btn')) return onNavButton(f.id);
         var pos = findCardPosition(f);
         if (pos) {
@@ -2415,6 +3231,13 @@
             AppState.inSearch = 'home';
             AppState.isCatalogSearch = false;
         }
+        // Пришли на главную, а категория так и осталась открытой (ушли из
+        // сетки кнопкой «Главная» в шапке): вернуться в неё теперь можно только
+        // плиткой, то есть заново, — карточки в скрытом DOM не держим
+        if (typeof catalogState !== 'undefined' && catalogState.currentCatalog &&
+            typeof window.releaseCatalogGrid === 'function') {
+            window.releaseCatalogGrid();
+        }
         ensureHeroDom();
         invalidateFocus();
 
@@ -2433,7 +3256,7 @@
         // измениться и размер карточек в настройках
         homeState.hero.key = null;
         homeState.hero.pendingKey = null;
-        homeState.cardWidth = 0;
+        homeState.cardCssKey = null;
         invalidateHeroTop();      // пока ходили по настройкам, шапка могла стать другой
         homeState.activated = true;
         setActiveRow(Math.min(homeState.activeRow, Math.max(0, homeState.rowEls.length - 1)));
@@ -2451,7 +3274,9 @@
     }
 
     function refreshHome() {
-        return dbClear().then(function () {
+        var clearBanners = window.CategoryBanners ? CategoryBanners.clear() : null;
+        return Promise.all([dbClear(), clearBanners]).then(function () {
+            leaveCategoryHero();
             suspendHero();
             homeState.built = false;
             homeState.loading = false;
@@ -2565,7 +3390,7 @@
             if (homeState.resizeTimer) clearTimeout(homeState.resizeTimer);
             homeState.resizeTimer = setTimeout(function () {
                 homeState.resizeTimer = null;
-                homeState.cardWidth = 0;      // размер мог не измениться — но пересчитать надо
+                homeState.cardCssKey = null;  // размер мог не измениться — но пересчитать надо
                 invalidateHeroTop();
                 layoutHome();
             }, 150);
@@ -2591,9 +3416,7 @@
         if (ScreenStrategies.home) return;
         ScreenStrategies.home = {
             getItems: function () {
-                var out = getNavButtons();
-                var pb = playButton();
-                if (pb) out.push(pb);
+                var out = getNavButtons().concat(heroButtons());
                 // Спрашиваем РЯД, а не каждую карточку: вне экрана ряд скрыт
                 // целиком (HIDDEN_ROW_CLASS, display: none), а offsetParent на
                 // карточке заставлял браузер пересчитать раскладку всего

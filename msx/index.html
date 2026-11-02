@@ -86,7 +86,7 @@
       "css/flex-gap-fallback.css": "8acd2bbb",
       "css/inter.css": "2caa5b93",
       "css/legacy.css": "100d5c5a",
-      "css/styles.css": "ab35e953",
+      "css/styles.css": "b2d4635c",
       "css/uicons-regular-rounded.css": "feee56fb",
       "css/uicons-thin-chubby.css": "1d6159cb",
       "css/uicons-thin-rounded.css": "365fbd61",
@@ -100,12 +100,13 @@
       "js/catalog-worker-posters-batch-patch.js": "0ba6a595",
       "js/catalog-worker-posters-patch.js": "d7d7dcc3",
       "js/catalog-worker.js": "3d08d8ba",
-      "js/catalog.js": "bb2e5f01",
-      "js/config.js": "554daf43",
-      "js/control.js": "1c74ee2c",
+      "js/catalog.js": "7a8d57e7",
+      "js/category-banners.js": "c5b8e743",
+      "js/config.js": "fb3aa7d8",
+      "js/control.js": "fb3345b8",
       "js/donate.js": "14adc57a",
       "js/favorites-db.js": "8772a3b7",
-      "js/home.js": "0b2c6909",
+      "js/home.js": "556d5c30",
       "js/nav.js": "02a98d5e",
       "js/osk.js": "acd5c812",
       "js/perf-probe.js": "7143cc61",
@@ -1494,6 +1495,8 @@
     document.write('<script src="https://cash94.github.io/msx/js/app.js?v=' + assetV('js/app.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/player-memory-fix.js?v=' + assetV('js/player-memory-fix.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/ui-customizer.js?v=' + assetV('js/ui-customizer.js') + '"><\/script>');
+    // Фильмы для баннера плиток категорий (данные и IndexedDB) — до главной
+    document.write('<script src="https://cash94.github.io/msx/js/category-banners.js?v=' + assetV('js/category-banners.js') + '"><\/script>');
     // Главная страница — последней: патчит showContentScreen / restoreFocusAfterNavigation
     // из app.js и closeDonateOverlay из donate.js, поэтому грузится после них
     document.write('<script src="https://cash94.github.io/msx/js/home.js?v=' + assetV('js/home.js') + '"><\/script>');

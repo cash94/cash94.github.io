@@ -56,13 +56,10 @@ if (window.TS_SERVER) {
   })();
 }
 function readHomeRowTransformFlag() {
-  var m = /[?&]rowtx=([01])(?:&|$)/.exec(location.search);
   try {
-    if (m) localStorage.setItem('ts_home_row_tx', m[1]);
-    return localStorage.getItem('ts_home_row_tx') === '1';
-  } catch (e) {
-    return !!m && m[1] === '1';
-  }
+    localStorage.removeItem('ts_home_row_tx');
+  } catch (e) {}
+  return !/[?&]rowtx=0(?:&|$)/.test(location.search);
 }
 var AppState = {
   protocol: window.TS_SERVER ? window.TS_SERVER.split('//')[0] : window.location.protocol,

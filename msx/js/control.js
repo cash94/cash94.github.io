@@ -3032,8 +3032,8 @@ function scrollAnimDurationX(duration) {
  * рывки и задержки, которых у вертикальной прокрутки нет. Нативный скроллер
  * рисует только окно вьюпорта и умеет сдвигать уже нарисованное.
  *
- * Исключение — опыт на ряду Главной (AppState.homeRowTransform, см. ниже
- * isTxScroller).
+ * Исключение — ряды Главной (AppState.homeRowTransform, по умолчанию включён,
+ * см. ниже isTxScroller).
  *
  * @param {Element} container контейнер прокрутки
  */
@@ -3055,7 +3055,7 @@ function getMaxScrollX(container) {
 }
 
 /*
- * Опыт: ряд Главной двигается не твином scrollLeft, а CSS-переходом transform
+ * Ряд Главной двигается не твином scrollLeft, а CSS-переходом transform
  * у трека (home.js при включённом AppState.homeRowTransform вешает на вьюпорт
  * класс row-tx и ссылку _txTrack). Твин scrollLeft пишет позицию из
  * requestAnimationFrame, то есть из основного потока, и стоит, пока тот занят

@@ -5848,7 +5848,43 @@ async function fetchAvailableCatalogs() {
  * загрузки постеров. Полная пересборка — только при первом входе или force === true
  * (window.refreshCatalogRows).
  */
+/**
+ * Закрыть открытую категорию совсем: запросы, состояние и карточки сетки.
+ * Раньше уход из сетки на другой раздел её сохранял — вкладка «Каталог»
+ * возвращала в неё же. Вкладки больше нет, категорию открывают с главной
+ * заново, а сотни скрытых карточек на слабом ТВ дороже повторной отрисовки.
+ * Зовут её выход из сетки (showCatalogList) и показ главной (home.js).
+ */
+function releaseCatalogGrid() {
+    abortCatalogRequests();
+    catalogState.currentCatalog = null;
+    catalogState.items = [];
+    catalogState.cardElements = {};
+    catalogState.person = null;
+    AppState.backCurrentCatalog = '';
+    var oldGrid = getCatalogGridEl();
+    if (oldGrid && (oldGrid.hasChildNodes() || oldGrid.style.display !== 'none')) {
+        if (catalogFadedEl === oldGrid) catalogFadedEl = null;
+        oldGrid.style.display = 'none';
+        oldGrid.innerHTML = '';
+        resetGridVisibilityWindow();
+        resetGridChunks();
+    }
+}
+window.releaseCatalogGrid = releaseCatalogGrid;
+
 async function showCatalogList(force) {
+    // Отдельного экрана со списком категорий больше нет: категории — ряд
+    // плиток на главной (home.js, ряд «Категории»). Сюда приходят все выходы
+    // из сетки — «назад» (backToCatalogList), ошибка загрузки, выход из плеера —
+    // и все они ведут туда, откуда категорию открывали.
+    if (window.HomeScreen && typeof HomeScreen.show === 'function') {
+        releaseCatalogGrid();
+        if (window.Nav) Nav.reset('home');
+        HomeScreen.show({ restoreFocus: true });
+        return true;
+    }
+
     var rows = getCatalogRowsEl();
     if (!rows) return;
     abortCatalogRequests();
