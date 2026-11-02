@@ -100,7 +100,7 @@
       "js/catalog-worker-posters-batch-patch.js": "0ba6a595",
       "js/catalog-worker-posters-patch.js": "d7d7dcc3",
       "js/catalog-worker.js": "3d08d8ba",
-      "js/catalog.js": "7a8d57e7",
+      "js/catalog.js": "41e8b66b",
       "js/category-banners.js": "c5b8e743",
       "js/config.js": "fb3aa7d8",
       "js/control.js": "fb3345b8",
@@ -113,6 +113,7 @@
       "js/player-memory-fix.js": "2fbf8c05",
       "js/player.js": "0242f512",
       "js/poster-db.js": "5133286b",
+      "js/poster-prefetch.js": "31fec0a9",
       "js/screensaver.js": "e775f7ed",
       "js/smooth-scroll.js": "d5298daa",
       "js/speedtest.js": "8815f616",
@@ -1473,6 +1474,8 @@
     document.write('<script src="https://cash94.github.io/msx/js/torrents-worker-patch.js?v=' + assetV('js/torrents-worker-patch.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/poster-db.js?v=' + assetV('js/poster-db.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/favorites-db.js?v=' + assetV('js/favorites-db.js') + '"><\/script>');
+    // Постеры заранее, фоновым потоком в HTTP-кэш (зовёт catalog.js)
+    document.write('<script src="https://cash94.github.io/msx/js/poster-prefetch.js?v=' + assetV('js/poster-prefetch.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/catalog.js?v=' + assetV('js/catalog.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/catalog-worker-bridge.js?v=' + assetV('js/catalog-worker-bridge.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/catalog-worker-patch.js?v=' + assetV('js/catalog-worker-patch.js') + '"><\/script>');

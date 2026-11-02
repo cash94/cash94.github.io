@@ -23,6 +23,8 @@ var CATALOG_CONSTANTS = {
   ROW_POSTER_PRELOAD_ROWS: 2,
   PRELOAD_ALL_ROW_POSTERS_ON_START: false,
   GRID_POSTER_PRELOAD_ROWS: 2,
+  GRID_PREFETCH_ROWS_AHEAD: 6,
+  GRID_PREFETCH_ROWS_BEHIND: 2,
   CATALOG_UPDATE_THRESHOLD_HOURS: 6,
   MAX_POSTER_DECODES: 8,
   FOCUS_DELAY_MS: 100,
@@ -2753,8 +2755,12 @@ function deferredPostersStep() {
 function flushDeferredPosters() {
   var pending = catalogState.posterDeferred;
   if (!pending.length) return;
-  pending.sort(function (a, b) {
+  var focused = document.querySelector('#catalog-grid .torrent-card.focused');
+  var center = focused ? parseInt(focused.dataset.catalogIndex, 10) : NaN;
+  if (isNaN(center)) pending.sort(function (a, b) {
     return a - b;
+  });else pending.sort(function (a, b) {
+    return Math.abs(a - center) - Math.abs(b - center);
   });
   var chunk = pending.splice(0, CATALOG_CONSTANTS.POSTER_DEFERRED_PER_FRAME);
   var slow = [];
@@ -2823,6 +2829,31 @@ function runGridPosterAhead() {
   }
   gridPosterAheadCard = null;
   preloadGridPostersAhead(card);
+}
+function prefetchGridPosters(card) {
+  if (!window.PosterPrefetch || !card || !card.dataset || !catalogState.items.length) return;
+  var idx = parseInt(card.dataset.catalogIndex, 10);
+  if (isNaN(idx)) return;
+  var cols = typeof getColumns === 'function' && getColumns() || 5;
+  if (cols < 1) cols = 5;
+  var up = window.lastNavDirection === 'up';
+  var ahead = CATALOG_CONSTANTS.GRID_PREFETCH_ROWS_AHEAD * cols;
+  var behind = CATALOG_CONSTANTS.GRID_PREFETCH_ROWS_BEHIND * cols;
+  var rowStart = Math.floor(idx / cols) * cols;
+  var from = Math.max(0, up ? rowStart - ahead : rowStart - behind);
+  var to = Math.min(catalogState.items.length, up ? rowStart + cols + behind : rowStart + cols + ahead);
+  var size = getPosterCardSize();
+  var urls = [];
+  var order = [];
+  for (var i = from; i < to; i++) order.push(i);
+  order.sort(function (a, b) {
+    return Math.abs(a - idx) - Math.abs(b - idx);
+  });
+  for (var k = 0; k < order.length; k++) {
+    var item = catalogState.items[order[k]];
+    if (item && item.poster_path) urls.push(getTmdbImageUrl(item.poster_path, size));
+  }
+  window.PosterPrefetch.want(urls);
 }
 function dropGridPosterAhead() {
   if (gridPosterAheadTimer) {
@@ -5093,6 +5124,7 @@ function revealCatalogElement(el) {
   el.classList.remove(OFFSCREEN_CLASS);
   if (!el.classList.contains('catalog-row-card')) {
     ensureChunksAroundFocus(el);
+    prefetchGridPosters(el);
     scheduleGridPosterAhead(el);
     return;
   }

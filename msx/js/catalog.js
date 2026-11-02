@@ -68,6 +68,11 @@ var CATALOG_CONSTANTS = {
     // быстром движении вниз фокус приезжал на пустые рамки. Две строки — это
     // запас на несколько нажатий, а очередь всё равно ждёт паузы в навигации.
     GRID_POSTER_PRELOAD_ROWS: 2,
+    // Скачивание постеров в HTTP-кэш фоновым потоком (prefetchGridPosters):
+    // строк вперёд по направлению движения и назад. Идёт и посреди движения —
+    // основного потока оно не касается
+    GRID_PREFETCH_ROWS_AHEAD: 6,
+    GRID_PREFETCH_ROWS_BEHIND: 2,
     CATALOG_UPDATE_THRESHOLD_HOURS: 6,
     MAX_POSTER_DECODES: 8,
     FOCUS_DELAY_MS: 100,
@@ -3489,7 +3494,16 @@ function flushDeferredPosters() {
     var pending = catalogState.posterDeferred;
     if (!pending.length) return;
 
-    pending.sort(function (a, b) { return a - b; });   // сверху вниз, как читают
+    // Ближние к фокусу — первыми. Раньше очередь шла сверху вниз, а пока
+    // листают вниз, в неё копятся постеры всех проеханных строк: после
+    // остановки первыми грузились строки, уже ушедшие за верх экрана, и до
+    // видимых очередь добиралась через десяток кадров (замер: 12 строк вниз —
+    // первые видимые постеры через ~150 мс после конца движения, теперь — в
+    // первом же кадре)
+    var focused = document.querySelector('#catalog-grid .torrent-card.focused');
+    var center = focused ? parseInt(focused.dataset.catalogIndex, 10) : NaN;
+    if (isNaN(center)) pending.sort(function (a, b) { return a - b; });
+    else pending.sort(function (a, b) { return Math.abs(a - center) - Math.abs(b - center); });
     var chunk = pending.splice(0, CATALOG_CONSTANTS.POSTER_DEFERRED_PER_FRAME);
 
     var slow = [];
@@ -3607,6 +3621,45 @@ function runGridPosterAhead() {
     }
     gridPosterAheadCard = null;
     preloadGridPostersAhead(card);
+}
+
+/**
+ * Постеры вокруг фокуса — в HTTP-кэш заранее, фоновым потоком
+ * (poster-prefetch.js), И ПОСРЕДИ движения: основной поток это не трогает.
+ *
+ * Сама вставка постера по-прежнему ждёт паузы (requestGridPoster) — старт
+ * загрузки и вставка на основном потоке, посреди твина прокрутки это рывки.
+ * Но к паузе файл уже в кэше, и постер встаёт за кадр-два, а не после
+ * сотен миллисекунд сети. Запас — GRID_PREFETCH_ROWS_AHEAD строк туда, куда
+ * едем, и GRID_PREFETCH_ROWS_BEHIND обратно; карточек в DOM для этого не
+ * нужно, адреса берутся из catalogState.items.
+ */
+function prefetchGridPosters(card) {
+    if (!window.PosterPrefetch || !card || !card.dataset || !catalogState.items.length) return;
+    var idx = parseInt(card.dataset.catalogIndex, 10);
+    if (isNaN(idx)) return;
+    var cols = (typeof getColumns === 'function' && getColumns()) || 5;
+    if (cols < 1) cols = 5;
+
+    var up = window.lastNavDirection === 'up';
+    var ahead = CATALOG_CONSTANTS.GRID_PREFETCH_ROWS_AHEAD * cols;
+    var behind = CATALOG_CONSTANTS.GRID_PREFETCH_ROWS_BEHIND * cols;
+    var rowStart = Math.floor(idx / cols) * cols;
+    var from = Math.max(0, up ? rowStart - ahead : rowStart - behind);
+    var to = Math.min(catalogState.items.length, up ? rowStart + cols + behind : rowStart + cols + ahead);
+
+    var size = getPosterCardSize();
+    var urls = [];
+    // Ближние к фокусу — первыми: воркер ставит переданное в начало очереди
+    // в том же порядке
+    var order = [];
+    for (var i = from; i < to; i++) order.push(i);
+    order.sort(function (a, b) { return Math.abs(a - idx) - Math.abs(b - idx); });
+    for (var k = 0; k < order.length; k++) {
+        var item = catalogState.items[order[k]];
+        if (item && item.poster_path) urls.push(getTmdbImageUrl(item.poster_path, size));
+    }
+    window.PosterPrefetch.want(urls);
 }
 
 /** Сетка выброшена — ждущая карточка указывает в никуда */
@@ -6805,6 +6858,7 @@ function revealCatalogElement(el) {
         // карточку, а не подождать её. А вот запас постеров вперёд — чистая
         // предзагрузка, в этой задаче она не нужна; см. scheduleGridPosterAhead.
         ensureChunksAroundFocus(el);
+        prefetchGridPosters(el);
         scheduleGridPosterAhead(el);
         return;
     }
