@@ -11670,7 +11670,8 @@ html.apple-device {
 }
 
 .detail-cinema-head,
-.detail-cinema-below .catalog-detail-crew-wrap {
+.detail-cinema-below .catalog-detail-crew-wrap,
+.detail-cinema-below .catalog-detail-collection-wrap {
   display: none;
 }
 
@@ -11936,16 +11937,19 @@ html.apple-device {
       rgba(0, 0, 0, 0.94) 100%);
 }
 
-#detail-view.catalog-detail-mode.detail-cinema .catalog-detail-crew-wrap {
+#detail-view.catalog-detail-mode.detail-cinema .catalog-detail-crew-wrap,
+#detail-view.catalog-detail-mode.detail-cinema .catalog-detail-collection-wrap {
   display: block;
   padding: 0;
 }
 
-#detail-view.catalog-detail-mode.detail-cinema .catalog-detail-crew-wrap.hidden {
+#detail-view.catalog-detail-mode.detail-cinema .catalog-detail-crew-wrap.hidden,
+#detail-view.catalog-detail-mode.detail-cinema .catalog-detail-collection-wrap.hidden {
   display: none;
 }
 
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew-wrap,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-collection-wrap,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actors-wrap,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-recommendations-wrap {
   margin: 0 !important;
@@ -11960,6 +11964,7 @@ html.apple-device {
 
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actors,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-collection,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-recommendations {
   display: -webkit-box !important;
   display: -webkit-flex !important;
@@ -11971,11 +11976,13 @@ html.apple-device {
   scrollbar-width: none;
 }
 
-#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew::-webkit-scrollbar {
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew::-webkit-scrollbar,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-collection::-webkit-scrollbar {
   display: none;
 }
 
-#detail-view .catalog-detail-crew-wrap.row-tx-clip {
+#detail-view .catalog-detail-crew-wrap.row-tx-clip,
+#detail-view .catalog-detail-collection-wrap.row-tx-clip {
   overflow: hidden !important;
 }
 
@@ -12159,12 +12166,14 @@ html.apple-device {
   #detail-view.catalog-detail-mode.detail-cinema .catalog-detail-section-title,
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew,
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actors,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-collection,
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-recommendations {
     padding-left: 16px !important;
   }
 
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew,
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actors,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-collection,
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-recommendations {
     padding-right: 16px !important;
   }
@@ -12185,6 +12194,7 @@ html.apple-device {
   #detail-view.catalog-detail-mode.detail-cinema .catalog-detail-section-title,
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew,
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actors,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-collection,
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-recommendations {
     padding-left: 24px !important;
   }

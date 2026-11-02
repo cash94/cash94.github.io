@@ -1742,8 +1742,13 @@ function showPersonCatalog(personId, personName) {
     AppState.inSearch = 'catalog';
     showCatalogLoading('Загрузка фильмографии...');
 
-    return safeFetch(SERVER_URL + '/api/tmdb/person/credits?id=' + encodeURIComponent(personId), { timeout: 15000 })
+    var ref = parsePersonRef(personId);
+    return safeFetch(SERVER_URL + '/api/tmdb/person/credits?id=' + encodeURIComponent(ref.id) +
+        (ref.crew ? '&role=crew' : ''), { timeout: 15000 })
         .then(function (d) {
+            // Сервер до 1.0.55 role не знает и отдал бы актёрские роли —
+            // у режиссёра это чужой список, лучше честное «ничего»
+            if (d && ref.crew && d.role !== 'crew') d = null;
             if (!d || !d.success || !d.items || !d.items.length) {
                 showEmptyPerson(personName);
                 return;
@@ -1767,6 +1772,17 @@ function showPersonCatalog(personId, personName) {
         .finally(function () {
             hideCatalogLoading();
         });
+}
+
+/**
+ * Персона фильмографии: «12345» — актёр, «crew:12345» — режиссёр или
+ * создатель сериала (плитка «Режиссёр» в карточке). Роль живёт прямо в id:
+ * его хранят шаг пути (Nav) и восстановление сетки (catalogState.person),
+ * и возврат «назад» приходит в ту же фильмографию без отдельного поля.
+ */
+function parsePersonRef(personId) {
+    var m = /^crew:(\d+)$/.exec(String(personId || ''));
+    return m ? { id: m[1], crew: true } : { id: String(personId || ''), crew: false };
 }
 
 function showEmptyPerson(personName) {
@@ -4136,6 +4152,10 @@ function ensureCinemaBlocks(panel) {
             '<div id="catalog-detail-crew-wrap" class="catalog-detail-crew-wrap hidden">' +
             '<div class="catalog-detail-section-title">Режиссёр</div>' +
             '<div id="catalog-detail-crew" class="catalog-detail-crew-grid"></div>' +
+            '</div>' +
+            '<div id="catalog-detail-collection-wrap" class="catalog-detail-collection-wrap hidden">' +
+            '<div class="catalog-detail-section-title"></div>' +
+            '<div id="catalog-detail-collection" class="catalog-detail-recommendations-grid"></div>' +
             '</div>';
         panel.parentElement.insertBefore(below, panel.nextSibling);
     }
@@ -4242,9 +4262,9 @@ function renderCinemaHead(item, src) {
 
 /**
  * Режиссёр (у сериала — создатели) — широкими плитками той же разметки, что
- * у актёров. Фильмографию по нему не открываем: /api/tmdb/person/credits
- * отдаёт только актёрские роли, и у режиссёра сетка вышла бы пустой или
- * чужой. Плитка фокусируется — по ленте ходят, как по остальным.
+ * у актёров. ОК открывает режиссёрскую фильмографию: id персоны с префиксом
+ * «crew:» (см. parsePersonRef) — клик-обработчик актёров (setupDetailDelegation)
+ * отрабатывает её без отдельной ветки.
  */
 function renderDetailCrew(item, src) {
     var wrap = getEl('catalog-detail-crew-wrap'), grid = getEl('catalog-detail-crew');
@@ -4269,6 +4289,8 @@ function renderDetailCrew(item, src) {
     for (var j = 0; j < pool.length; j++) {
         var c = pool[j], pp = people[j];
         if (!pp) { hideDetailCard(c); continue; }
+        if (pp.id) c.dataset.personId = 'crew:' + pp.id;
+        c.dataset.personName = pp.name;
         c._name.textContent = pp.name;
         c._character.textContent = role;
         c._placeholder.textContent = 'Нет фото';
@@ -4326,10 +4348,15 @@ function setupDetailLayout(item, index, posterUrl) {
     if (below) {
         if (aw && aw.parentNode !== below) below.appendChild(aw);
         if (rw && rw.parentNode !== below) below.appendChild(rw);
+        var cw = getEl('catalog-detail-collection-wrap');
+        if (cw && rw && cw.nextSibling !== rw) below.insertBefore(cw, rw);
     }
     var crew = getEl('catalog-detail-crew-wrap');
     if (crew) crew.classList.add('hidden');
+    var coll = getEl('catalog-detail-collection-wrap');
+    if (coll) coll.classList.add('hidden');
     enableDetailRowTransform(getEl('catalog-detail-crew'));
+    enableDetailRowTransform(getEl('catalog-detail-collection'));
     enableDetailRowTransform(getEl('catalog-detail-actors'));
     enableDetailRowTransform(getEl('catalog-detail-recommendations'));
     return { dv: dv, mc: mc, aw: aw, rw: rw, savedScroll: savedScroll };
@@ -5262,34 +5289,82 @@ function renderDetailRecommendations(src, rw, mt) {
     }
 
     for (var i = 0; i < pool.length; i++) {
-        var r = recs[i];
-        if (!r) { hideDetailCard(pool[i]); continue; }
-
-        var card = pool[i];
-        var title = r.title || r.name || 'Без названия';
-        card.dataset.tmdbId = r.id;
-        card.dataset.mediaType = mt;
-        card.dataset.title = title;
-        card._title.textContent = title;
-
-        // Пустую плашку года прячет :empty (styles.css), как в сетке каталога.
-        // Полосу без оценки гасим целиком: кроме оценки в ней ничего нет
-        var rating = r.vote_average ? Math.round(r.vote_average * 10) / 10 : 0;
-        card._rating.textContent = rating ? rating : '';
-        card._rating.style.color = rating ? getRatingColor(rating) : '';
-        card._bar.classList.toggle('hidden', !rating);
-
-        var date = r.release_date || r.first_air_date;
-        card._year.textContent = date ? String(date).substring(0, 4) : '';
-
-        setDetailCardPoster(card, r.poster_path
-            ? getTmdbImageUrl(r.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL)
-            : '');
-        card.classList.remove('hidden');
+        if (!recs[i]) { hideDetailCard(pool[i]); continue; }
+        fillRecommendationCard(pool[i], recs[i], mt);
     }
 
     rw.classList.remove('hidden');
     resetDetailRowScroll(re);
+}
+
+/** Карточка ряда «Похожие» / «Коллекция» по элементу TMDB */
+function fillRecommendationCard(card, r, mt) {
+    var title = r.title || r.name || 'Без названия';
+    card.dataset.tmdbId = r.id;
+    card.dataset.mediaType = r.media_type || mt;
+    card.dataset.title = title;
+    card._title.textContent = title;
+
+    // Пустую плашку года прячет :empty (styles.css), как в сетке каталога.
+    // Полосу без оценки гасим целиком: кроме оценки в ней ничего нет
+    var rating = r.vote_average ? Math.round(r.vote_average * 10) / 10 : 0;
+    card._rating.textContent = rating ? rating : '';
+    card._rating.style.color = rating ? getRatingColor(rating) : '';
+    card._bar.classList.toggle('hidden', !rating);
+
+    var date = r.release_date || r.first_air_date;
+    card._year.textContent = date ? String(date).substring(0, 4) : '';
+
+    setDetailCardPoster(card, r.poster_path
+        ? getTmdbImageUrl(r.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL)
+        : '');
+    card.classList.remove('hidden');
+}
+
+/**
+ * Ряд «Коллекция: …» — остальные фильмы франшизы (belongs_to_collection),
+ * по порядку выхода. Состав отдаёт сервер (/api/tmdb/collection/parts, с
+ * 1.0.55); старый сервер отвечает 404 — ряда просто нет. Ответ держим в
+ * памяти: в соседние фильмы той же коллекции переходят часто.
+ */
+var detailCollectionCache = {};
+
+function renderDetailCollection(item, src) {
+    var wrap = getEl('catalog-detail-collection-wrap'), grid = getEl('catalog-detail-collection');
+    if (!wrap || !grid) return;
+    wrap.classList.add('hidden');
+    var bc = src && src.belongs_to_collection;
+    if ((item.media_type || 'movie') !== 'movie' || !bc || !bc.id) return;
+
+    var key = String(bc.id);
+    var cached = detailCollectionCache[key];
+    var p = cached ? Promise.resolve(cached)
+        : safeFetch(SERVER_URL + '/api/tmdb/collection/parts?id=' + encodeURIComponent(key), { timeout: 15000 });
+    p.then(function (d) {
+        if (!d || !d.success || !Array.isArray(d.items)) return;
+        detailCollectionCache[key] = d;
+        if (!isDetailStillCurrent(item)) return;
+        var parts = [];
+        for (var i = 0; i < d.items.length; i++) {
+            if (String(d.items[i].id) !== String(item.id)) parts.push(d.items[i]);
+        }
+        if (!parts.length) return;
+
+        // «28 дней (Коллекция)» → «Коллекция: 28 дней»
+        var name = String(d.name || bc.name || '').replace(/\s*\((?:коллекция|collection)\)\s*$/i, '');
+        wrap.firstChild.textContent = name ? 'Коллекция: ' + name : 'Коллекция';
+
+        var pool = ensureDetailRowPool(grid, CATALOG_CONSTANTS.MAX_RECOMMENDATIONS, buildRecommendationCard);
+        hideDetailRowMessage(grid);
+        for (var j = 0; j < pool.length; j++) {
+            if (!parts[j]) { hideDetailCard(pool[j]); continue; }
+            fillRecommendationCard(pool[j], parts[j], 'movie');
+        }
+        resetDetailRowScroll(grid);
+        wrap.classList.remove('hidden');
+        // Ряд пришёл после того, как фокус и список фокусируемого собраны
+        if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+    });
 }
 
 /**
@@ -5541,6 +5616,7 @@ async function showCatalogDetail(item, index, posterUrl) {
     // Рекомендации — рендерим сразу из details
     var src = details || item || {};
     renderDetailCrew(item, src);
+    renderDetailCollection(item, src);
     renderDetailRecommendations(src, rw, mt);
 
     // ==================== RUTUBE ТРЕЙЛЕР (параллельно) ====================

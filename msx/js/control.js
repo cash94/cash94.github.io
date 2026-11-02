@@ -1013,7 +1013,7 @@ function detailLaneStep(dir) {
  * ушли; в первый раз — на ближайшую по горизонтали к той, откуда пришли.
  * В строку кнопок — на кнопку, с которой уходили, иначе на «Поиск торрентов».
  */
-var CINEMA_LANE_IDS = ['catalog-detail-crew', 'catalog-detail-actors', 'catalog-detail-recommendations'];
+var CINEMA_LANE_IDS = ['catalog-detail-crew', 'catalog-detail-actors', 'catalog-detail-collection', 'catalog-detail-recommendations'];
 var CINEMA_LANE_TOP = 0.08;          // лента встаёт под верхний край экрана с этим отступом (доля высоты)
 // Переезд между сценой и лентами — почти экран. Обычная прокрутка едет с
 // постоянной скоростью и всё длиннее SCROLL_SMOOTH.maxDuration ставит сразу, без
@@ -1028,7 +1028,7 @@ function isCinemaDetail() {
 }
 
 function isCinemaLaneWrap(el) {
-    return !!(el && el.id && /^catalog-detail-(crew|actors|recommendations)-wrap$/.test(el.id));
+    return !!(el && el.id && /^catalog-detail-(crew|actors|collection|recommendations)-wrap$/.test(el.id));
 }
 
 function getCinemaLanes() {
@@ -2880,6 +2880,7 @@ function isElementFullyVisible(el, container) {
     var isH = isRowVp ||
         container.id === 'files-list' ||
         container.id === 'catalog-detail-crew-wrap' ||
+        container.id === 'catalog-detail-collection-wrap' ||
         container.id === 'catalog-detail-actors-wrap' ||
         container.id === 'catalog-detail-recommendations-wrap' ||
         container.id === 'catalog-detail-trailers-wrap';
@@ -3789,6 +3790,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
 
     var isH = isRowViewport ||
         container.id === 'catalog-detail-crew-wrap' ||
+        container.id === 'catalog-detail-collection-wrap' ||
         container.id === 'catalog-detail-actors-wrap' ||
         container.id === 'catalog-detail-recommendations-wrap' ||
         container.id === 'catalog-detail-trailers-wrap' ||
@@ -3799,6 +3801,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         var cr = container.getBoundingClientRect();
         var con = "";
         if (container.id === 'catalog-detail-crew-wrap' ||
+            container.id === 'catalog-detail-collection-wrap' ||
             container.id === 'catalog-detail-actors-wrap' ||
             container.id === 'catalog-detail-recommendations-wrap' ||
             container.id === 'catalog-detail-trailers-wrap') {
@@ -4147,6 +4150,8 @@ function focusEl(el, opts) {
         } else if (isAC) {
             container = getEl('catalog-detail-actors-wrap');
             if (!container && el.closest) container = el.closest('.catalog-detail-actors-wrap');
+        } else if (isRC && el.closest && el.closest('#catalog-detail-collection-wrap')) {
+            container = getEl('catalog-detail-collection-wrap');
         } else if (isRC) {
             container = getEl('catalog-detail-recommendations-wrap');
             if (!container && el.closest) container = el.closest('.catalog-detail-recommendations-wrap');

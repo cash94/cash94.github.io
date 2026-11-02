@@ -582,7 +582,7 @@ function detailLaneStep(dir) {
   });
   return true;
 }
-var CINEMA_LANE_IDS = ['catalog-detail-crew', 'catalog-detail-actors', 'catalog-detail-recommendations'];
+var CINEMA_LANE_IDS = ['catalog-detail-crew', 'catalog-detail-actors', 'catalog-detail-collection', 'catalog-detail-recommendations'];
 var CINEMA_LANE_TOP = 0.08;
 var CINEMA_SCROLL_S = 0.5;
 var CINEMA_SCROLL_EASE = 'sine.inOut';
@@ -595,7 +595,7 @@ function isCinemaDetail() {
   return !!(dv && dv.classList.contains('detail-cinema') && dv.classList.contains('catalog-detail-mode'));
 }
 function isCinemaLaneWrap(el) {
-  return !!(el && el.id && /^catalog-detail-(crew|actors|recommendations)-wrap$/.test(el.id));
+  return !!(el && el.id && /^catalog-detail-(crew|actors|collection|recommendations)-wrap$/.test(el.id));
 }
 function getCinemaLanes() {
   var out = [];
@@ -2803,7 +2803,7 @@ function isElementFullyVisible(el, container) {
   var r = el.getBoundingClientRect();
   var cr = container.getBoundingClientRect();
   var isRowVp = !!(container.classList && container.classList.contains('catalog-row-viewport'));
-  var isH = isRowVp || container.id === 'files-list' || container.id === 'catalog-detail-crew-wrap' || container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers-wrap';
+  var isH = isRowVp || container.id === 'files-list' || container.id === 'catalog-detail-crew-wrap' || container.id === 'catalog-detail-collection-wrap' || container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers-wrap';
   if (isH) {
     var hp = 45;
     var vp = 65;
@@ -3225,12 +3225,12 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
   var isWindow = container === window || container === document.body;
   var scrollContainer = isWindow ? window.scrollingElement || document.documentElement : container;
   var isRowViewport = !!(container.classList && container.classList.contains('catalog-row-viewport'));
-  var isH = isRowViewport || container.id === 'catalog-detail-crew-wrap' || container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers-wrap' || container.id === 'files-list';
+  var isH = isRowViewport || container.id === 'catalog-detail-crew-wrap' || container.id === 'catalog-detail-collection-wrap' || container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers-wrap' || container.id === 'files-list';
   if (isH) {
     var r = el.getBoundingClientRect();
     var cr = container.getBoundingClientRect();
     var con = "";
-    if (container.id === 'catalog-detail-crew-wrap' || container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers-wrap') {
+    if (container.id === 'catalog-detail-crew-wrap' || container.id === 'catalog-detail-collection-wrap' || container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers-wrap') {
       con = container.id.replace('-wrap', '');
       con = getEl(con);
     } else {
@@ -3445,6 +3445,8 @@ function focusEl(el, opts) {
     } else if (isAC) {
       container = getEl('catalog-detail-actors-wrap');
       if (!container && el.closest) container = el.closest('.catalog-detail-actors-wrap');
+    } else if (isRC && el.closest && el.closest('#catalog-detail-collection-wrap')) {
+      container = getEl('catalog-detail-collection-wrap');
     } else if (isRC) {
       container = getEl('catalog-detail-recommendations-wrap');
       if (!container && el.closest) container = el.closest('.catalog-detail-recommendations-wrap');
