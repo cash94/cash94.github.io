@@ -58,6 +58,20 @@
     if (pb && pb.classList.contains('active')) return false;
     return true;
   }
+  function subtitlesOnScreen() {
+    var box = document.getElementById('tizen-avplay-subs');
+    if (box && box.style.display !== 'none' && box.textContent) return true;
+    var v = document.getElementById('video-player');
+    var list = v && v.textTracks;
+    if (!list) return false;
+    for (var i = 0; i < list.length; i++) {
+      var t = list[i];
+      try {
+        if (t.mode === 'showing' && t.activeCues && t.activeCues.length) return true;
+      } catch (e) {}
+    }
+    return false;
+  }
   function canStart() {
     if (document.hidden) return false;
     var st = window.AppState;
@@ -345,7 +359,7 @@
   function tick() {
     if (playerPaused()) {
       if (!pausedSince) pausedSince = Date.now();
-      if (!dimmed && Date.now() - Math.max(lastActivity, pausedSince) >= PLAYER_DIM_MS) dim();
+      if (!dimmed && Date.now() - Math.max(lastActivity, pausedSince) >= PLAYER_DIM_MS && !subtitlesOnScreen()) dim();
     } else {
       pausedSince = 0;
       undim();

@@ -11653,7 +11653,7 @@ html.apple-device {
    затемнён слева и снизу (#detail-view::before). Слева внизу колонка: логотип
    или название, «год · длительность · ★», плашки жанров и стран, белая
    «Поиск торрентов» и круглые «Подробнее» / «Избранное» / «Трейлер»,
-   описание в три строки. Ниже, по прокрутке, на тёмной подложке едут поверх
+   описание в пять строк. Ниже, по прокрутке, на тёмной подложке едут поверх
    кадра ленты «Режиссёр», «В главных ролях» (широкие плитки), «Похожие».
 
    Класс detail-cinema стоит на #detail-view в index.html постоянно, а все
@@ -11663,10 +11663,14 @@ html.apple-device {
 
    Размеры — в --cu (≈20px на 1080, 13,3 на 720, 10 на 540): одна единица от
    высоты экрана вместо отдельного медиазапроса на каждое разрешение ТВ.
+   Колонка сцены (логотип, мета, плашки, кнопки, описание) — в --cs = 1,5 --cu:
+   с дивана в --cu она читалась мелко. На телефоне --cs = --cu (медиазапросы
+   ниже), там колонка и так во всю ширину.
    min()/clamp() не используем — их нет в Chrome 66 (Vidaa).
    ============================================================================ */
 #detail-view.detail-cinema {
   --cu: 1.852vh;
+  --cs: calc(var(--cu) * 1.5);
 }
 
 .detail-cinema-head,
@@ -11684,13 +11688,15 @@ html.apple-device {
   opacity: 1 !important;
 }
 
+/* Слева темнее и шире, чем было под колонку в --cu: описание в --cs
+   доходит до ~65 % ширины экрана */
 #detail-view.catalog-detail-mode.detail-cinema::before {
   background:
     linear-gradient(to right,
       rgba(0, 0, 0, 0.92) 0%,
-      rgba(0, 0, 0, 0.72) 26%,
-      rgba(0, 0, 0, 0.3) 50%,
-      rgba(0, 0, 0, 0) 72%),
+      rgba(0, 0, 0, 0.78) 30%,
+      rgba(0, 0, 0, 0.45) 55%,
+      rgba(0, 0, 0, 0) 80%),
     linear-gradient(to top,
       #000 0%,
       rgba(0, 0, 0, 0.78) 18%,
@@ -11709,8 +11715,8 @@ html.apple-device {
   justify-content: flex-end;
   min-height: 100vh;
   box-sizing: border-box;
-  max-width: calc(var(--cu) * 52) !important;
-  padding: calc(var(--cu) * 5) calc(var(--cu) * 3.2) calc(var(--cu) * 4.6) !important;
+  max-width: calc(var(--cs) * 52) !important;
+  padding: calc(var(--cu) * 5) calc(var(--cu) * 3.2) calc(var(--cs) * 3.2) !important;
 }
 
 #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head {
@@ -11735,14 +11741,20 @@ html.apple-device {
   order: 4;
 }
 
-/* Логотип названия — те же пропорции, что у баннера главной */
+/* Логотип названия — те же пропорции, что у баннера главной. Рамка задана
+   жёстко, картинка вписана в неё (object-fit): с max-width/max-height файл
+   w500 не растягивался больше своих 500 px, и на 1080 логотип оставался
+   прежним при любом --cs. Прижат к левому нижнему углу — пустота у широкого
+   логотипа уходит вверх, к кадру */
 #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-logo {
   display: block;
-  width: auto;
-  height: auto;
-  max-width: calc(var(--cu) * 24);
-  max-height: calc(var(--cu) * 7.5);
-  margin: 0 0 calc(var(--cu) * 1.1);
+  width: calc(var(--cs) * 24);
+  height: calc(var(--cs) * 7.5);
+  -o-object-fit: contain;
+  object-fit: contain;
+  -o-object-position: left bottom;
+  object-position: left bottom;
+  margin: 0 0 calc(var(--cs) * 1.1);
 }
 
 #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-logo.hidden {
@@ -11750,11 +11762,11 @@ html.apple-device {
 }
 
 #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-name {
-  font-size: calc(var(--cu) * 2.9);
+  font-size: calc(var(--cs) * 2.9);
   font-weight: 700;
   line-height: 1.1;
   color: #fff;
-  margin: 0 0 calc(var(--cu) * 0.8);
+  margin: 0 0 calc(var(--cs) * 0.8);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -11762,11 +11774,11 @@ html.apple-device {
 }
 
 #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-meta {
-  font-size: calc(var(--cu) * 1.05);
+  font-size: calc(var(--cs) * 1.05);
   font-weight: 600;
   line-height: 1.3;
   color: rgba(255, 255, 255, 0.9);
-  margin: 0 0 calc(var(--cu) * 0.85);
+  margin: 0 0 calc(var(--cs) * 0.85);
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 }
 
@@ -11790,7 +11802,7 @@ html.apple-device {
   display: flex;
   -webkit-flex-wrap: wrap;
   flex-wrap: wrap;
-  margin: 0 0 calc(var(--cu) * 1.1);
+  margin: 0 0 calc(var(--cs) * 1.1);
 }
 
 #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-chips:empty {
@@ -11798,13 +11810,13 @@ html.apple-device {
 }
 
 #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-chip {
-  font-size: calc(var(--cu) * 0.8);
+  font-size: calc(var(--cs) * 0.8);
   line-height: 1.3;
   color: #fff;
   background: rgba(255, 255, 255, 0.14);
-  border-radius: calc(var(--cu) * 1);
-  padding: calc(var(--cu) * 0.3) calc(var(--cu) * 0.85);
-  margin: 0 calc(var(--cu) * 0.5) calc(var(--cu) * 0.5) 0;
+  border-radius: calc(var(--cs) * 1);
+  padding: calc(var(--cs) * 0.3) calc(var(--cs) * 0.85);
+  margin: 0 calc(var(--cs) * 0.5) calc(var(--cs) * 0.5) 0;
 }
 
 /* --- КНОПКИ: белая «Поиск торрентов» и круглые со значками --------------- */
@@ -11815,7 +11827,7 @@ html.apple-device {
   display: block;
   white-space: nowrap;
   padding: 0 !important;
-  margin: 0 0 calc(var(--cu) * 2) !important;
+  margin: 0 0 calc(var(--cs) * 2) !important;
 }
 
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > button {
@@ -11823,12 +11835,12 @@ html.apple-device {
   -webkit-flex: none;
   flex: none;
   box-sizing: border-box;
-  height: calc(var(--cu) * 2.9);
-  line-height: calc(var(--cu) * 2.9);
-  margin: 0 calc(var(--cu) * 0.8) 0 0 !important;
-  padding: 0 calc(var(--cu) * 1.5) !important;
-  border-radius: calc(var(--cu) * 1.45) !important;
-  font-size: calc(var(--cu) * 0.95) !important;
+  height: calc(var(--cs) * 2.9);
+  line-height: calc(var(--cs) * 2.9);
+  margin: 0 calc(var(--cs) * 0.8) 0 0 !important;
+  padding: 0 calc(var(--cs) * 1.5) !important;
+  border-radius: calc(var(--cs) * 1.45) !important;
+  font-size: calc(var(--cs) * 0.95) !important;
   text-align: center;
   /* Где-то выше кнопкам задан display: flex — тогда центрует он */
   -webkit-justify-content: center;
@@ -11840,7 +11852,7 @@ html.apple-device {
 }
 
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn {
-  padding: 0 calc(var(--cu) * 1.7) !important;
+  padding: 0 calc(var(--cs) * 1.7) !important;
 }
 
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn::before {
@@ -11850,7 +11862,7 @@ html.apple-device {
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn {
-  width: calc(var(--cu) * 2.9);
+  width: calc(var(--cs) * 2.9);
   padding: 0 !important;
   font-size: 0 !important;
   border-radius: 50% !important;
@@ -11868,20 +11880,20 @@ html.apple-device {
 
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn::before {
   margin: 0;
-  font-size: calc(var(--cu) * 1.15);
+  font-size: calc(var(--cs) * 1.15);
   vertical-align: middle;
 }
 
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn .favorite-btn-icon {
   margin: 0 !important;
-  font-size: calc(var(--cu) * 1.35) !important;
+  font-size: calc(var(--cs) * 1.35) !important;
   vertical-align: middle;
 }
 
 /* Треугольник визуально смещён влево — подвигаем на пару пикселей */
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn .trailer-btn-icon {
   margin: 0 0 0 0.15em !important;
-  font-size: calc(var(--cu) * 0.95) !important;
+  font-size: calc(var(--cs) * 0.95) !important;
   vertical-align: middle;
 }
 
@@ -11894,11 +11906,11 @@ html.apple-device {
   position: absolute;
   left: 50%;
   top: 100%;
-  margin-top: calc(var(--cu) * 0.5);
+  margin-top: calc(var(--cs) * 0.5);
   -webkit-transform: translateX(-50%);
   transform: translateX(-50%);
   white-space: nowrap;
-  font-size: calc(var(--cu) * 0.72);
+  font-size: calc(var(--cs) * 0.72);
   font-weight: 600;
   line-height: 1.2;
   color: #fff;
@@ -11915,11 +11927,11 @@ html.apple-device {
 
 /* --- ОПИСАНИЕ ------------------------------------------------------------ */
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-overview {
-  font-size: calc(var(--cu) * 0.92 * var(--detail-text-scale, 1)) !important;
+  font-size: calc(var(--cs) * 0.92 * var(--detail-text-scale, 1)) !important;
   line-height: 1.5 !important;
-  max-width: calc(var(--cu) * 42);
+  max-width: calc(var(--cs) * 42);
   margin: 0 !important;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 5;
   color: rgba(255, 255, 255, 0.82) !important;
 }
 
@@ -12125,6 +12137,7 @@ html.apple-device {
 @media screen and (max-width: 600px) and (orientation: portrait) {
   #detail-view.detail-cinema {
     --cu: 3.4vw;
+    --cs: var(--cu);
   }
 
   #detail-view.catalog-detail-mode.detail-cinema::before {
@@ -12183,6 +12196,7 @@ html.apple-device {
 @media screen and (orientation: landscape) and (max-height: 500px) {
   #detail-view.detail-cinema {
     --cu: 2.9vh;
+    --cs: var(--cu);
   }
 
   #detail-view.catalog-detail-mode.detail-cinema .catalog-detail-panel {

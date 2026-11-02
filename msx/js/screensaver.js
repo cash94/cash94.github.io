@@ -14,8 +14,8 @@
 // владелец: баннер тоже считается трейлером).
 //
 // В плеере — только на паузе, и раньше: через PLAYER_DIM_MS паузы без нажатий
-// картинка гаснет (#player-dim — чёрная пелена поверх кадра), через
-// PLAYER_IDLE_MS выходит заставка. Это одинаково работает с обычным <video> и
+// картинка гаснет (#player-dim — чёрная пелена поверх кадра; не гаснет, пока на
+// экране реплика субтитров), через PLAYER_IDLE_MS выходит заставка. Это одинаково работает с обычным <video> и
 // с AVPlay на Tizen: tizen-avplay.js подменяет paused у #video-player, а кадр
 // AVPlay рисуется слоем ПОД страницей, так что пелена его тоже затемняет.
 // Любое нажатие убирает и заставку, и пелену и показывает HUD плеера.
@@ -95,6 +95,28 @@
         var pb = document.getElementById('playback-overlay');
         if (pb && pb.classList.contains('active')) return false;
         return true;
+    }
+
+    /**
+     * На экране сейчас есть текст субтитров. Пауза часто ради него — дочитать
+     * реплику, — а пелена (0.85 чёрного) гасила её вместе с кадром: у встроенных
+     * реплик текст рисуется внутри <video>, у AVPlay — блоком под пеленой.
+     * Пока реплика видна, пелену не опускаем; заставка через PLAYER_IDLE_MS —
+     * как и раньше.
+     */
+    function subtitlesOnScreen() {
+        var box = document.getElementById('tizen-avplay-subs');
+        if (box && box.style.display !== 'none' && box.textContent) return true;
+        var v = document.getElementById('video-player');
+        var list = v && v.textTracks;
+        if (!list) return false;
+        for (var i = 0; i < list.length; i++) {
+            var t = list[i];
+            try {
+                if (t.mode === 'showing' && t.activeCues && t.activeCues.length) return true;
+            } catch (e) { }
+        }
+        return false;
     }
 
     function canStart() {
@@ -411,7 +433,8 @@
         // пелену снимаем; HUD при этом не показываем, нажатия не было
         if (playerPaused()) {
             if (!pausedSince) pausedSince = Date.now();
-            if (!dimmed && Date.now() - Math.max(lastActivity, pausedSince) >= PLAYER_DIM_MS) dim();
+            if (!dimmed && Date.now() - Math.max(lastActivity, pausedSince) >= PLAYER_DIM_MS &&
+                !subtitlesOnScreen()) dim();
         } else {
             pausedSince = 0;
             undim();

@@ -32,6 +32,8 @@ var TizenAVPlay = (function () {
     var holder = null;         // <object type="application/avplayer">
     var subsBox = null;        // #tizen-avplay-subs
     var subsTimer = null;
+    var subsEndsAt = 0;        // когда снять текст по duration (Date.now)
+    var subsLeftMs = 0;        // сколько ему оставалось, пока стоит пауза
     var styleObserver = null;
     var url = '';
     var prepared = false;
@@ -328,7 +330,32 @@ var TizenAVPlay = (function () {
         var clean = String(text || '').replace(/\{\\[^}]*\}/g, '').replace(/<[^>]+>/g, '').replace(/\\N/g, '\n');
         subsBox.textContent = clean;
         subsBox.style.display = clean ? 'block' : 'none';
-        if (clean && durationMs > 0) subsTimer = setTimeout(function () { showSubtitle('', 0); }, durationMs);
+        subsEndsAt = 0;
+        subsLeftMs = 0;
+        if (!clean || !(durationMs > 0)) return;
+        // Пришёл на паузе (перемотка на паузе) — ждёт play, как и остальное
+        if (video && video.paused) { subsLeftMs = durationMs; return; }
+        subsEndsAt = Date.now() + durationMs;
+        subsTimer = setTimeout(function () { showSubtitle('', 0); }, durationMs);
+    }
+
+    // Срок показа AVPlay даёт в миллисекундах от начала фразы, а не по времени
+    // фильма: таймер шёл и на паузе, и текст пропадал как раз тогда, когда его
+    // остановили прочитать. На паузе таймер стоит, с play — дотикивает остаток
+    function holdSubtitle() {
+        if (!subsEndsAt) return;
+        clearTimeout(subsTimer);
+        subsLeftMs = Math.max(1, subsEndsAt - Date.now());
+        subsEndsAt = 0;
+    }
+
+    function resumeSubtitle() {
+        if (!subsLeftMs || !subsBox || !subsBox.textContent) { subsLeftMs = 0; return; }
+        var left = subsLeftMs;
+        subsLeftMs = 0;
+        clearTimeout(subsTimer);
+        subsEndsAt = Date.now() + left;
+        subsTimer = setTimeout(function () { showSubtitle('', 0); }, left);
     }
 
     // ---------- прямоугольник кадра ----------
@@ -600,6 +627,7 @@ var TizenAVPlay = (function () {
                     if (ended) { ended = false; av().seekTo(0); }
                     av().play();
                 } catch (e) { }
+                resumeSubtitle();
                 fire('play');
                 fire('playing');
                 return Promise.resolve();
@@ -608,7 +636,7 @@ var TizenAVPlay = (function () {
         define('pause', {
             value: function () {
                 wantPlay = false;
-                if (prepared) { try { av().pause(); } catch (e) { } fire('pause'); }
+                if (prepared) { try { av().pause(); } catch (e) { } holdSubtitle(); fire('pause'); }
             }
         });
         define('currentTime', {
