@@ -923,6 +923,9 @@ var Animations = (function () {
         // Ряд в опыте с transform (isTxScroller в control.js): там
         // движение — CSS-переход, твина нет, срок перехода стоит на вьюпорте
         if (container && container._txTrack) return Date.now() < (container._txUntil || 0);
+        // Сетка категории (FLIP, flipApply в control.js): движение — переход
+        // transform у содержимого, scrollTop уже в покое
+        if (container && container._flipEl && Date.now() < (container._flipUntil || 0)) return true;
         var i = scrollTweenIndex(container);
         return i !== -1 && Date.now() < scrollTweens[i].endAt;
     }
@@ -940,6 +943,7 @@ var Animations = (function () {
 
             var p = (now - t.start) / t.dur;
             if (p > 1) p = 1;
+            if (t.ease === 'sine.inOut' && p < 1) p = (1 - Math.cos(Math.PI * p)) / 2;
 
             for (var j = 0; j < t.props.length; j++) {
                 var pr = t.props[j];
@@ -1005,6 +1009,10 @@ var Animations = (function () {
             props: props,
             start: 0,
             dur: duration * 1000,
+            // Кривая — только по запросу: вся навигация едет с постоянной
+            // скоростью (SCROLL_SMOOTH в control.js), а мягкий разгон и
+            // торможение нужны длинным переездам вроде сцены карточки
+            ease: options.ease === 'sine.inOut' ? 'sine.inOut' : null,
             // Запас на кадр-другой: признак «идёт» не должен гаснуть раньше,
             // чем твин успеет доехать
             endAt: Date.now() + Math.round(duration * 1000) + 50

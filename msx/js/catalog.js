@@ -24,6 +24,7 @@ var CATALOG_CONSTANTS = {
     TMDB_MAX_CACHE_SIZE: 10,
     TMDB_CLEANUP_INTERVAL_MS: 300000,   // 5 минут
     MAX_ACTORS: 12,
+    MAX_CREW: 3,                        // режиссёров или создателей сериала в ленте «Режиссёр»
     MAX_RECOMMENDATIONS: 12,
     MAX_TRAILERS: 6,
     LOAD_MORE_MARGIN_PX: 300,
@@ -72,6 +73,7 @@ var CATALOG_CONSTANTS = {
     // строк вперёд по направлению движения и назад. Идёт и посреди движения —
     // основного потока оно не касается
     GRID_PREFETCH_ROWS_AHEAD: 6,
+    GRID_PREFETCH_ROWS_AHEAD_HOLD: 12,
     GRID_PREFETCH_ROWS_BEHIND: 2,
     CATALOG_UPDATE_THRESHOLD_HOURS: 6,
     MAX_POSTER_DECODES: 8,
@@ -79,6 +81,19 @@ var CATALOG_CONSTANTS = {
     ROW_POSTER_CONCURRENCY: 10,
     ROW_POSTER_RETRY_MS: 120,           // как часто переспрашивать «навигация утихла?»
     POSTER_INSERT_GAP_MS: 16,
+    // Постеры сетки на ходу — когда её двигает композитор (gridPostersOnTheMove):
+    // стартов за кадр и пауза между показами. Реже, чем в паузе (3 за кадр):
+    // основной поток в движении всё равно тикает каждый кадр. Замер на
+    // эмуляторе ТВ, 20 строк вниз, холодный кэш: 1 за кадр — 38–41% видимых
+    // карточек с постером во время листания, 2 — 47–52%, а CPU основного
+    // потока за прогон — в пределах разброса
+    POSTER_MOVING_PER_FRAME: 2,
+    // Показ готовых постеров на ходу — без паузы: число показов и так
+    // ограничено числом стартов выше. С паузой 32 мс очередь показа отставала
+    // от движения (строка — 6 карточек, шаг — 160 мс): тёплый кэш давал
+    // 31–36% постеров во время листания, без паузы — 49–54%. 3 старта за кадр
+    // вместо 2 — 48–57%, то есть уже не прибавляет
+    POSTER_MOVING_GAP_MS: 0,
     // Сколько ждать картинку, прежде чем считать зеркало молчащим. Ни load, ни
     // error от него может не прийти вовсе, а на промисе загрузки висит слот
     // очереди — см. сторож в setRowPosterImg.
@@ -478,6 +493,8 @@ function initCatalogDetailButtons() {
             if (!target) return;
             var exp = target.classList.toggle('expanded');
             togBtn.textContent = exp ? 'Свернуть' : 'Подробнее';
+            // Подпись под круглой кнопкой сцены (detail-cinema в styles.css)
+            togBtn.setAttribute('data-label', togBtn.textContent);
         };
     }
 
@@ -531,7 +548,7 @@ function resetDetailButtons() {
     if (typeof syncFavoriteButton === 'function') syncFavoriteButton(AppState.currentDetailItem);
 
     var togBtn = getEl('catalog-toggle-overview-btn');
-    if (togBtn) togBtn.textContent = 'Подробнее';
+    if (togBtn) { togBtn.textContent = 'Подробнее'; togBtn.setAttribute('data-label', 'Подробнее'); }
 
     var ov = getEl('catalog-detail-overview');
     if (ov) ov.classList.remove('expanded');
@@ -3471,9 +3488,40 @@ function scheduleDeferredPosters() {
 
 function deferredPostersStep() {
     catalogState.posterDeferredRaf = 0;
-    // Пользователь ещё едет — ждём и этот шаг, и всю серию
-    if (isGridNavBusy()) { scheduleDeferredPosters(); return; }
+    if (isGridNavBusy()) {
+        // Сетку двигает композитор (FLIP, control.js) — ей не помешать: на
+        // ходу ставим по POSTER_MOVING_PER_FRAME за кадр, ближние к фокусу
+        // первыми, и пока листают, постеры уже видны. Файлы к этому моменту
+        // обычно в кэше (prefetchGridPosters), так что это не сеть, а вставка.
+        // Цена (эмулятор ТВ): при удержании кнопки фокус за 4 с проходит
+        // 18–19 строк вместо 20 — основной поток занят вставкой; ровность
+        // самого движения не страдает, его ведёт композитор. Ставить на ходу
+        // только видимые строки пробовали — скорости не прибавило, а постеров
+        // на ходу стало меньше
+        if (gridPostersOnTheMove()) { flushDeferredPosters(CATALOG_CONSTANTS.POSTER_MOVING_PER_FRAME); return; }
+        // Иначе пользователь ещё едет твином на основном потоке — ждём и этот
+        // шаг, и всю серию
+        scheduleDeferredPosters();
+        return;
+    }
     flushDeferredPosters();
+}
+
+/**
+ * Можно ли ставить постеры сетки посреди движения. Да — когда сетку двигает
+ * переход transform на композиторе (AppState.gridScrollTransform, flipApply в
+ * control.js): работа основного потока его не останавливает. Твин scrollTop
+ * (?gridtx=0) живёт на основном потоке — там по-прежнему ждём паузы.
+ */
+function gridPostersOnTheMove() {
+    if (!window.AppState || !AppState.gridScrollTransform) return false;
+    if (AppState.currentScreen === 'catalog') return !!catalogState.currentCatalog;
+    // Выдача поиска TMDB: её постеры проявляются через ту же очередь
+    // (updatePosterDOM → queuePosterReveal), а двигает её тот же FLIP
+    if (AppState.currentScreen === 'search') {
+        return typeof window.isFlipScroller === 'function' && window.isFlipScroller(getEl('search-results'));
+    }
+    return false;
 }
 
 /**
@@ -3490,7 +3538,7 @@ function deferredPostersStep() {
  * в 15 карточек уходит за пять кадров, и каждый следующий кадр заново
  * спрашивает isGridNavBusy: зритель нажал снова — остаток ждёт.
  */
-function flushDeferredPosters() {
+function flushDeferredPosters(perFrame) {
     var pending = catalogState.posterDeferred;
     if (!pending.length) return;
 
@@ -3504,7 +3552,7 @@ function flushDeferredPosters() {
     var center = focused ? parseInt(focused.dataset.catalogIndex, 10) : NaN;
     if (isNaN(center)) pending.sort(function (a, b) { return a - b; });
     else pending.sort(function (a, b) { return Math.abs(a - center) - Math.abs(b - center); });
-    var chunk = pending.splice(0, CATALOG_CONSTANTS.POSTER_DEFERRED_PER_FRAME);
+    var chunk = pending.splice(0, perFrame || CATALOG_CONSTANTS.POSTER_DEFERRED_PER_FRAME);
 
     var slow = [];
     for (var i = 0; i < chunk.length; i++) {
@@ -3642,7 +3690,10 @@ function prefetchGridPosters(card) {
     if (cols < 1) cols = 5;
 
     var up = window.lastNavDirection === 'up';
-    var ahead = CATALOG_CONSTANTS.GRID_PREFETCH_ROWS_AHEAD * cols;
+    // Кнопку держат — фокус уезжает быстрее, чем скачиваются постеры, и
+    // запаса в обычные строки к остановке не хватало
+    var ahead = (window.navHold ? CATALOG_CONSTANTS.GRID_PREFETCH_ROWS_AHEAD_HOLD
+        : CATALOG_CONSTANTS.GRID_PREFETCH_ROWS_AHEAD) * cols;
     var behind = CATALOG_CONSTANTS.GRID_PREFETCH_ROWS_BEHIND * cols;
     var rowStart = Math.floor(idx / cols) * cols;
     var from = Math.max(0, up ? rowStart - ahead : rowStart - behind);
@@ -4046,6 +4097,197 @@ function dropPosterPlaceholder(placeholder) {
 /**
  * Подготовка DOM для детального просмотра
  */
+// ==================== КАРТОЧКА-«СЦЕНА» ====================
+/*
+ * Каталожная карточка разложена как кинотеатральная афиша: кадр стоит
+ * неподвижно на весь экран, слева внизу логотип названия, строка «год ·
+ * длительность · ★», плашки жанров и стран, кнопки и описание. Ниже, по
+ * прокрутке пультом, — ленты «Режиссёр», «В главных ролях», «Похожие».
+ * Оформление — #detail-view.catalog-detail-mode.detail-cinema в styles.css
+ * (класс detail-cinema стоит в index.html постоянно, а в карточке торрента
+ * без catalog-detail-mode правила не срабатывают).
+ *
+ * Блоки создаются один раз и живут всю сессию, как ленты актёров и похожих.
+ * Ленты переезжают в общий нижний контейнер #detail-cinema-below — в какой
+ * бы режим карточку ни открыли первым (ensureDetailActorsWrap в torrents.js
+ * создаёт ленту актёров сразу за панелью).
+ */
+function ensureCinemaBlocks(panel) {
+    if (!panel || !panel.parentElement) return null;
+    if (!getEl('detail-cinema-head')) {
+        var head = document.createElement('div');
+        head.id = 'detail-cinema-head';
+        head.className = 'detail-cinema-head';
+        head.innerHTML =
+            '<div class="detail-cinema-title">' +
+            '<img id="detail-cinema-logo" class="detail-cinema-logo hidden" alt="">' +
+            '<div id="detail-cinema-name" class="detail-cinema-name"></div>' +
+            '</div>' +
+            '<div id="detail-cinema-meta" class="detail-cinema-meta"></div>' +
+            '<div id="detail-cinema-chips" class="detail-cinema-chips"></div>';
+        panel.insertBefore(head, panel.firstChild);
+    }
+    var below = getEl('detail-cinema-below');
+    if (!below) {
+        below = document.createElement('div');
+        below.id = 'detail-cinema-below';
+        below.className = 'detail-cinema-below';
+        below.innerHTML =
+            '<div id="catalog-detail-crew-wrap" class="catalog-detail-crew-wrap hidden">' +
+            '<div class="catalog-detail-section-title">Режиссёр</div>' +
+            '<div id="catalog-detail-crew" class="catalog-detail-crew-grid"></div>' +
+            '</div>';
+        panel.parentElement.insertBefore(below, panel.nextSibling);
+    }
+    return below;
+}
+
+/** «2 ч 25 мин» / «45 мин» */
+function formatCinemaRuntime(min) {
+    min = Math.round(Number(min) || 0);
+    if (min <= 0) return '';
+    var h = Math.floor(min / 60), m = min % 60;
+    if (!h) return m + ' мин';
+    return h + ' ч' + (m ? ' ' + m + ' мин' : '');
+}
+
+function pluralRu(n, one, few, many) {
+    var a = Math.abs(n) % 100, b = a % 10;
+    if (a > 10 && a < 20) return many;
+    if (b === 1) return one;
+    if (b >= 2 && b <= 4) return few;
+    return many;
+}
+
+/**
+ * Логотип названия вместо текста — как на баннере главной (тот же размер
+ * w500, значит, и тот же файл в HTTP-кэше). Пока он грузится, название не
+ * показываем: иначе текст мелькал бы и сменялся картинкой. Не пришёл за
+ * CINEMA_LOGO_WAIT_MS ни с одного зеркала — остаётся текст.
+ */
+var cinemaLogoGen = 0;
+var CINEMA_LOGO_WAIT_MS = 1500;
+
+function renderCinemaLogo(src) {
+    var img = getEl('detail-cinema-logo'), name = getEl('detail-cinema-name');
+    if (!img || !name) return;
+    var mine = ++cinemaLogoGen;
+    var path = src && src.logo && src.logo.file_path;
+    img.onload = img.onerror = null;
+    img.classList.add('hidden');
+    if (img.getAttribute('src')) img.removeAttribute('src');
+    name.classList.remove('hidden');
+    name.style.visibility = '';
+    if (!path) return;
+
+    var queue = _detailBackdropQueue(getTmdbImageUrl(path, 'w500'));
+    var at = 0;
+    name.style.visibility = 'hidden';
+    var timer = setTimeout(function () {
+        if (mine === cinemaLogoGen) name.style.visibility = '';
+    }, CINEMA_LOGO_WAIT_MS);
+
+    function next() {
+        if (mine !== cinemaLogoGen) return;
+        if (at >= queue.length) { clearTimeout(timer); name.style.visibility = ''; return; }
+        img.src = queue[at++];
+    }
+    img.onload = function () {
+        if (mine !== cinemaLogoGen) return;
+        if (!img.naturalWidth) { next(); return; }
+        clearTimeout(timer);
+        img.classList.remove('hidden');
+        name.classList.add('hidden');
+    };
+    img.onerror = next;
+    next();
+}
+
+/** Шапка сцены: логотип или название, строка меты, плашки жанров и стран */
+function renderCinemaHead(item, src) {
+    if (!getEl('detail-cinema-head')) return;
+    var name = getEl('detail-cinema-name');
+    if (name) name.textContent = getCatalogItemTitle(item);
+    renderCinemaLogo(src);
+
+    var parts = [];
+    var year = getCatalogItemYear(src) || getCatalogItemYear(item);
+    if (year) parts.push(escapeHtml(String(year)));
+    if ((item.media_type || 'movie') === 'tv') {
+        var ns = Number(src.number_of_seasons) || 0;
+        if (ns) parts.push(ns + ' ' + pluralRu(ns, 'сезон', 'сезона', 'сезонов'));
+    } else {
+        var rt = formatCinemaRuntime(src.runtime);
+        if (rt) parts.push(rt);
+    }
+    var rating = getSafeCatalogRating(src) || getSafeCatalogRating(item);
+    if (rating) parts.push('<span class="detail-cinema-star">★</span> ' + rating.toFixed(1));
+    var meta = getEl('detail-cinema-meta');
+    if (meta) meta.innerHTML = parts.join('<span class="detail-cinema-dot">·</span>');
+
+    var chips = [];
+    var genres = getNormalizedCatalogGenres(src);
+    for (var i = 0; i < genres.length && i < 3; i++) {
+        chips.push(genres[i].charAt(0).toUpperCase() + genres[i].slice(1));
+    }
+    var countries = getCatalogCountries(src, 2);
+    for (var j = 0; j < countries.length; j++) chips.push(countries[j]);
+    var box = getEl('detail-cinema-chips');
+    if (box) {
+        var html = '';
+        for (var k = 0; k < chips.length; k++) html += '<span class="detail-cinema-chip">' + escapeHtml(chips[k]) + '</span>';
+        box.innerHTML = html;
+    }
+}
+
+/**
+ * Режиссёр (у сериала — создатели) — широкими плитками той же разметки, что
+ * у актёров. Фильмографию по нему не открываем: /api/tmdb/person/credits
+ * отдаёт только актёрские роли, и у режиссёра сетка вышла бы пустой или
+ * чужой. Плитка фокусируется — по ленте ходят, как по остальным.
+ */
+function renderDetailCrew(item, src) {
+    var wrap = getEl('catalog-detail-crew-wrap'), grid = getEl('catalog-detail-crew');
+    if (!wrap || !grid) return;
+    var tv = (item.media_type || 'movie') === 'tv';
+    var people = [], seen = {};
+    var list = tv ? (src.created_by || []) : ((src.credits && src.credits.crew) || src.crew || []);
+    for (var i = 0; i < list.length && people.length < CATALOG_CONSTANTS.MAX_CREW; i++) {
+        var p = list[i];
+        if (!p || !p.name || (!tv && p.job !== 'Director')) continue;
+        if (seen[p.id || p.name]) continue;
+        seen[p.id || p.name] = 1;
+        people.push(p);
+    }
+    var title = wrap.firstChild;
+    if (title) title.textContent = tv
+        ? (people.length > 1 ? 'Создатели' : 'Создатель')
+        : (people.length > 1 ? 'Режиссёры' : 'Режиссёр');
+    var role = tv ? 'Создатель' : 'Режиссёр';
+
+    var pool = ensureDetailRowPool(grid, CATALOG_CONSTANTS.MAX_CREW, buildCrewCard);
+    for (var j = 0; j < pool.length; j++) {
+        var c = pool[j], pp = people[j];
+        if (!pp) { hideDetailCard(c); continue; }
+        c._name.textContent = pp.name;
+        c._character.textContent = role;
+        c._placeholder.textContent = 'Нет фото';
+        setDetailCardPoster(c, pp.profile_path
+            ? getTmdbImageUrl(pp.profile_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL)
+            : '');
+        c.classList.remove('hidden');
+    }
+    hideDetailRowMessage(grid);
+    resetDetailRowScroll(grid);
+    wrap.classList.toggle('hidden', !people.length);
+}
+
+function buildCrewCard() {
+    var card = buildActorCard();
+    card.className = 'catalog-actor-card catalog-crew-card';
+    return card;
+}
+
 function setupDetailLayout(item, index, posterUrl) {
     catalogState.lastSelectedIndex = index;
     catalogState.lastSelectedId = item.id;
@@ -4080,7 +4322,35 @@ function setupDetailLayout(item, index, posterUrl) {
         aw.insertAdjacentElement('afterend', c);
         rw = c;
     }
+    var below = ensureCinemaBlocks(getEl('catalog-detail-overview') && getEl('catalog-detail-overview').parentElement);
+    if (below) {
+        if (aw && aw.parentNode !== below) below.appendChild(aw);
+        if (rw && rw.parentNode !== below) below.appendChild(rw);
+    }
+    var crew = getEl('catalog-detail-crew-wrap');
+    if (crew) crew.classList.add('hidden');
+    enableDetailRowTransform(getEl('catalog-detail-crew'));
+    enableDetailRowTransform(getEl('catalog-detail-actors'));
+    enableDetailRowTransform(getEl('catalog-detail-recommendations'));
     return { dv: dv, mc: mc, aw: aw, rw: rw, savedScroll: savedScroll };
+}
+
+/**
+ * Ленты актёров и похожих — переходом transform на композиторе, как ряды
+ * Главной (isTxScroller в control.js), а не твином scrollLeft на основном
+ * потоке: лента едет ровно и тогда, когда тот занят постерами и фото актёров.
+ *
+ * Отдельного трека тут нет — карточки лежат прямо в ленте, поэтому трек —
+ * сама лента (_txTrack = она же), а обрезает обёртка с заголовком
+ * (row-tx-clip в styles.css). Пульт, колесо и палец ходят через
+ * getScrollX/setScrollX и так. Обёртки и ленты живут всю сессию — включаем
+ * один раз.
+ */
+function enableDetailRowTransform(grid) {
+    if (!grid || grid._txTrack || !(window.AppState && AppState.homeRowTransform)) return;
+    grid._txTrack = grid;
+    grid.classList.add('row-tx-self');
+    if (grid.parentNode && grid.parentNode.classList) grid.parentNode.classList.add('row-tx-clip');
 }
 
 /**
@@ -4153,6 +4423,7 @@ function renderDetailHeader(item, posterUrl, details) {
         se.classList.remove('hidden');
         se.style.display = 'block';
     }
+    renderCinemaHead(item, src);
 
     if (oe) {
         oe.textContent = src.overview || item.overview || 'Описание пока недоступно';
@@ -5269,6 +5540,7 @@ async function showCatalogDetail(item, index, posterUrl) {
 
     // Рекомендации — рендерим сразу из details
     var src = details || item || {};
+    renderDetailCrew(item, src);
     renderDetailRecommendations(src, rw, mt);
 
     // ==================== RUTUBE ТРЕЙЛЕР (параллельно) ====================
@@ -5910,6 +6182,7 @@ async function fetchAvailableCatalogs() {
  */
 function releaseCatalogGrid() {
     abortCatalogRequests();
+    if (typeof window.resetGridScrollTransform === 'function') window.resetGridScrollTransform();
     catalogState.currentCatalog = null;
     catalogState.items = [];
     catalogState.cardElements = {};
@@ -7050,7 +7323,10 @@ function pumpPosterReveals() {
     // «заморозит». С gsap.isTweening было иначе, и просроченную вставку
     // приходилось пропускать силой — а это давало залп постеров посреди
     // долгого удержания, ради устранения которого всё и заведено.
-    if (window.navHold || isRowScrollAnimating()) {
+    var moving = window.navHold || isRowScrollAnimating();
+    // Сетка на композиторе (gridPostersOnTheMove) показывает и на ходу, только
+    // реже — раз в POSTER_MOVING_GAP_MS
+    if (moving && !gridPostersOnTheMove()) {
         posterRevealTimer = setTimeout(pumpPosterReveals, CATALOG_CONSTANTS.ROW_POSTER_RETRY_MS);
         return;
     }
@@ -7059,7 +7335,8 @@ function pumpPosterReveals() {
     try { run(); } catch (e) { }
 
     if (posterReveals.length) {
-        posterRevealTimer = setTimeout(pumpPosterReveals, CATALOG_CONSTANTS.POSTER_INSERT_GAP_MS);
+        posterRevealTimer = setTimeout(pumpPosterReveals,
+            moving ? CATALOG_CONSTANTS.POSTER_MOVING_GAP_MS : CATALOG_CONSTANTS.POSTER_INSERT_GAP_MS);
     }
 }
 

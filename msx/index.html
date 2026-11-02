@@ -86,24 +86,24 @@
       "css/flex-gap-fallback.css": "8acd2bbb",
       "css/inter.css": "2caa5b93",
       "css/legacy.css": "100d5c5a",
-      "css/styles.css": "b2d4635c",
+      "css/styles.css": "0aa0ccb2",
       "css/uicons-regular-rounded.css": "feee56fb",
       "css/uicons-thin-chubby.css": "1d6159cb",
       "css/uicons-thin-rounded.css": "365fbd61",
       "js-legacy/legacy-polyfills.js": "e0e9de38",
       "js/account.js": "65c22e09",
-      "js/animations.js": "2daaba91",
-      "js/app.js": "1adc93f8",
+      "js/animations.js": "b307b3d2",
+      "js/app.js": "16a5ef1f",
       "js/catalog-idb-patch.js": "7cf849b3",
       "js/catalog-worker-bridge.js": "7f94619a",
       "js/catalog-worker-patch.js": "240192eb",
       "js/catalog-worker-posters-batch-patch.js": "0ba6a595",
       "js/catalog-worker-posters-patch.js": "d7d7dcc3",
       "js/catalog-worker.js": "3d08d8ba",
-      "js/catalog.js": "41e8b66b",
+      "js/catalog.js": "f81b4c87",
       "js/category-banners.js": "c5b8e743",
-      "js/config.js": "fb3aa7d8",
-      "js/control.js": "fb3345b8",
+      "js/config.js": "58b4aead",
+      "js/control.js": "d2ccb12f",
       "js/donate.js": "14adc57a",
       "js/favorites-db.js": "8772a3b7",
       "js/home.js": "556d5c30",
@@ -124,7 +124,7 @@
       "js/torrents-worker-bridge.js": "5f00d9d0",
       "js/torrents-worker-patch.js": "a83ccd4a",
       "js/torrents-worker.js": "8681c310",
-      "js/torrents.js": "68da456c",
+      "js/torrents.js": "33bb71d1",
       "js/torrserverstats.js": "93bbc0fa",
       "js/ui-customizer.js": "2ecfb3b3"
       // ASSET_V:end
@@ -220,7 +220,7 @@
       window.SEASONS = {
         // Ряд главной и категория каталога — модуль halloween-collection;
         // паутина на часах, паук на заголовке, ведьма на заглушке загрузчика
-        halloween: { from: [10, 24], to: [11, 2] }
+        halloween: { from: [10, 24], to: [11, 1] }
       };
       window.isSeasonActive = function (name) {
         var s = window.SEASONS[name];
@@ -1007,7 +1007,7 @@
       <div id="home-topbar">
         <!-- На телефоне в книжной ориентации название открывает боковое меню с
              кнопками разделов (home.js: MobileNav); иконка видна только там. -->
-        <div class="section-title-header"><i class="fi fi-rr-menu-burger home-menu-icon"></i>TorrStream</div>
+        <div class="section-title-header"><i class="fi fi-rr-menu-burger home-menu-icon"></i><span class="brand-torr">Torr</span><span class="brand-stream">Stream</span></div>
         <!-- Обёртка кнопок разделов. На ТВ и ПК у неё display: contents — кнопки
              ведут себя как прямые дети шапки; на телефоне она становится
              выезжающей слева панелью. Кнопки те же самые: их обработчики и
@@ -1171,7 +1171,7 @@
   </div>
 
   <!-- Детальный просмотр -->
-  <div id="detail-view" style="display: none;">
+  <div id="detail-view" class="detail-cinema" style="display: none;">
     <!-- Меню разделов в карточке — только на телефоне в книжной ориентации
          (home.js: MobileNav). Поднимает шапку разделов в карточку и выдвигает
          её панель; на ТВ и ПК скрыто, шапку там зовут стрелкой вверх. -->
@@ -1195,7 +1195,7 @@
         <div id="catalog-detail-actions" class="catalog-detail-actions">
           <button id="catalog-watch-btn" class="catalog-watch-btn">Торренты</button>
           <button id="detail-progress-btn" class="detail-progress-btn hidden">Играть</button>
-          <button id="catalog-toggle-overview-btn" class="catalog-toggle-overview-btn">Подробнее</button>
+          <button id="catalog-toggle-overview-btn" class="catalog-toggle-overview-btn" data-label="Подробнее">Подробнее</button>
           <!-- Только в режиме карточки торрента (torrent-detail-mode): уводит в
                карточку каталога по tmdbId раздачи. Класс тот же, что у «Подробнее» —
                от него и оформление, и попадание в список фокусируемых (control.js
@@ -1205,10 +1205,10 @@
           <!-- Звёздочка текстом, а не иконкой шрифта: подключён только
                uicons-regular-rounded, заполненного варианта звезды в нём нет,
                а ★/☆ рисуются везде, включая Chrome 66 на Vidaa. -->
-          <button id="catalog-favorite-btn" class="catalog-toggle-overview-btn catalog-favorite-btn hidden">
+          <button id="catalog-favorite-btn" class="catalog-toggle-overview-btn catalog-favorite-btn hidden" data-label="Избранное">
             <span class="favorite-btn-icon">☆</span> Избранное
           </button>
-          <button id="catalog-trailer-btn" class="catalog-trailer-btn hidden">
+          <button id="catalog-trailer-btn" class="catalog-trailer-btn hidden" data-label="Трейлер">
             <span class="trailer-btn-icon">▶</span> Трейлер
           </button>
         </div>

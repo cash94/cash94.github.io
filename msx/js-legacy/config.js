@@ -108,6 +108,7 @@ var AppState = {
   inSearch: 'torrents',
   restoringFocus: false,
   homeRowTransform: readHomeRowTransformFlag(),
+  gridScrollTransform: !/[?&]gridtx=0(?:&|$)/.test(location.search),
   syncCodeScreen: false,
   syncCode: null,
   syncCodeTimer: null,
@@ -454,7 +455,7 @@ if (typeof window.isSeasonActive !== 'function') {
   window.SEASONS = {
     halloween: {
       from: [10, 24],
-      to: [11, 2]
+      to: [11, 1]
     }
   };
   window.isSeasonActive = function (name) {

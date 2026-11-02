@@ -6886,7 +6886,11 @@ function renderSearchResults() {
         return;
     }
 
-    searchResultsDiv.innerHTML = '<div class="filter-stats">Показано: <span>' + filteredResults.length + '</span> из <span>' + searchResults.length + '</span></div>';
+    // Вся выдача — в одной обёртке: её, а не сам список, сдвигает прокрутка
+    // переходом transform (FLIP, flipContentFor в control.js). Строка «Показано»
+    // — внутри, иначе она стояла бы на месте, пока список едет под ней
+    searchResultsDiv.innerHTML = '<div class="search-results-body"><div class="filter-stats">Показано: <span>' + filteredResults.length + '</span> из <span>' + searchResults.length + '</span></div></div>';
+    var resultsBody = searchResultsDiv.firstChild;
     searchResultsDiv.onclick = function (event) {
         var playBtn = event.target.closest('.search-result-play');
         if (playBtn && !playBtn.disabled) {
@@ -6970,7 +6974,7 @@ function renderSearchResults() {
         var html = '';
         var end = Math.min(index + (index === 0 ? FIRST_CHUNK_SIZE : CHUNK_SIZE), filteredResults.length);
         for (; index < end; index++) html += buildSearchResultMarkup(filteredResults[index], index);
-        searchResultsDiv.insertAdjacentHTML('beforeend', html);
+        resultsBody.insertAdjacentHTML('beforeend', html);
         // Карточки приходят пачками, значит и наблюдателю их отдаём пачками
         observeSearchResultItems(searchResultsDiv);
         // Навигация держится на поколении DOM: и список фокусируемых, и выдача
@@ -7123,10 +7127,16 @@ function renderFilteredGlobalResults(results) {
     resetSearchVisibilityWindow();   // тут своя сетка карточек, списка больше нет
     searchResultsDiv.innerHTML = ''; // Очищаем безопасно
 
+    // Обёртка выдачи — её сдвигает прокрутка переходом transform (FLIP,
+    // flipContentFor в control.js); строка «Найдено» — внутри, вместе с сеткой
+    var resultsBody = document.createElement('div');
+    resultsBody.className = 'search-results-body';
+    searchResultsDiv.appendChild(resultsBody);
+
     var statsDiv = document.createElement('div');
     statsDiv.className = 'filter-stats';
     statsDiv.innerHTML = 'Найдено в TMDB: <span>' + results.length + '</span>' + (results.length > limit ? ' (показано ' + limit + ')' : '');
-    searchResultsDiv.appendChild(statsDiv);
+    resultsBody.appendChild(statsDiv);
 
     /* Сетка и карточки — те же, что у сетки каталога.
      *
@@ -7189,7 +7199,7 @@ function renderFilteredGlobalResults(results) {
     }
 
     grid.appendChild(fragment);
-    searchResultsDiv.appendChild(grid);
+    resultsBody.appendChild(grid);
 
     // Навигация пультом держится на поколении DOM: без этого свежая сетка
     // карточек не попала бы ни в список фокусируемых, ни в getSearchResults

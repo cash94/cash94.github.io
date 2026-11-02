@@ -5557,7 +5557,8 @@ function renderSearchResults() {
     searchResultsDiv.innerHTML = '<div class="filter-stats">Всего найдено: <span>' + searchResults.length + '</span></div><div class="search-result-empty">' + (currentSearchQuery ? 'Нет результатов по фильтрам для "' + escapeHtml(currentSearchQuery) + '"' : 'Введите запрос для поиска') + '</div>';
     return;
   }
-  searchResultsDiv.innerHTML = '<div class="filter-stats">Показано: <span>' + filteredResults.length + '</span> из <span>' + searchResults.length + '</span></div>';
+  searchResultsDiv.innerHTML = '<div class="search-results-body"><div class="filter-stats">Показано: <span>' + filteredResults.length + '</span> из <span>' + searchResults.length + '</span></div></div>';
+  var resultsBody = searchResultsDiv.firstChild;
   searchResultsDiv.onclick = function (event) {
     var playBtn = event.target.closest('.search-result-play');
     if (playBtn && !playBtn.disabled) {
@@ -5616,7 +5617,7 @@ function renderSearchResults() {
     var html = '';
     var end = Math.min(index + (index === 0 ? FIRST_CHUNK_SIZE : CHUNK_SIZE), filteredResults.length);
     for (; index < end; index++) html += buildSearchResultMarkup(filteredResults[index], index);
-    searchResultsDiv.insertAdjacentHTML('beforeend', html);
+    resultsBody.insertAdjacentHTML('beforeend', html);
     observeSearchResultItems(searchResultsDiv);
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
     if (index < filteredResults.length) scheduleNextChunk();
@@ -5789,10 +5790,13 @@ function renderFilteredGlobalResults(results) {
   var limit = Math.min(results.length, 40);
   resetSearchVisibilityWindow();
   searchResultsDiv.innerHTML = '';
+  var resultsBody = document.createElement('div');
+  resultsBody.className = 'search-results-body';
+  searchResultsDiv.appendChild(resultsBody);
   var statsDiv = document.createElement('div');
   statsDiv.className = 'filter-stats';
   statsDiv.innerHTML = 'Найдено в TMDB: <span>' + results.length + '</span>' + (results.length > limit ? ' (показано ' + limit + ')' : '');
-  searchResultsDiv.appendChild(statsDiv);
+  resultsBody.appendChild(statsDiv);
   var grid = document.createElement('div');
   grid.className = 'global-search-grid';
   var fragment = document.createDocumentFragment();
@@ -5828,7 +5832,7 @@ function renderFilteredGlobalResults(results) {
     fragment.appendChild(card);
   }
   grid.appendChild(fragment);
-  searchResultsDiv.appendChild(grid);
+  resultsBody.appendChild(grid);
   if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
   if (typeof invalidateColumnsCache === 'function') invalidateColumnsCache();
   var loadPoster = function (card) {

@@ -476,7 +476,10 @@ function getTorrentTabs() {
   if (!bar) return [];
   var b = bar.querySelectorAll('.home-nav-btn'),
     v = [];
-  for (var i = 0; i < b.length; i++) v.push(b[i]);
+  for (var i = 0; i < b.length; i++) {
+    if (b[i].id === 'tab-catalog') continue;
+    v.push(b[i]);
+  }
   return v;
 }
 function getSearchTop() {
@@ -575,6 +578,94 @@ function detailLaneStep(dir) {
   if (sib) focusEl(sib, {
     direction: dir
   });else if (lane !== 'file-item') focusEl(f, {
+    direction: dir
+  });
+  return true;
+}
+var CINEMA_LANE_IDS = ['catalog-detail-crew', 'catalog-detail-actors', 'catalog-detail-recommendations'];
+var CINEMA_LANE_TOP = 0.08;
+var CINEMA_SCROLL_S = 0.5;
+var CINEMA_SCROLL_EASE = 'sine.inOut';
+var cinemaNavMemo = {
+  item: null,
+  last: {}
+};
+function isCinemaDetail() {
+  var dv = getEl('detail-view');
+  return !!(dv && dv.classList.contains('detail-cinema') && dv.classList.contains('catalog-detail-mode'));
+}
+function isCinemaLaneWrap(el) {
+  return !!(el && el.id && /^catalog-detail-(crew|actors|recommendations)-wrap$/.test(el.id));
+}
+function getCinemaLanes() {
+  var out = [];
+  var acts = getDetailActionButtons();
+  if (acts.length) out.push({
+    key: 'actions',
+    items: acts
+  });
+  for (var i = 0; i < CINEMA_LANE_IDS.length; i++) {
+    var grid = getEl(CINEMA_LANE_IDS[i]);
+    var wrap = grid && grid.parentNode;
+    if (!grid || !wrap || wrap.classList.contains('hidden') || wrap.style.display === 'none') continue;
+    var items = [];
+    for (var c = grid.firstElementChild; c; c = c.nextElementSibling) {
+      if (c.classList.contains('hidden') || c.style.display === 'none') continue;
+      if (c.classList.contains('catalog-actor-card') || c.classList.contains('catalog-recommendation-card')) items.push(c);
+    }
+    if (items.length) out.push({
+      key: CINEMA_LANE_IDS[i],
+      items: items
+    });
+  }
+  return out;
+}
+function cinemaVerticalStep(f, dir) {
+  var lanes = getCinemaLanes();
+  var li = -1;
+  for (var i = 0; i < lanes.length; i++) if (lanes[i].items.indexOf(f) !== -1) {
+    li = i;
+    break;
+  }
+  if (li === -1) return false;
+  if (dir === 'up' && li === 0) return false;
+  var ti = dir === 'down' ? li + 1 : li - 1;
+  if (ti >= lanes.length) return true;
+  var cur = window.AppState && AppState.currentDetailItem;
+  if (cinemaNavMemo.item !== cur) cinemaNavMemo = {
+    item: cur,
+    last: {}
+  };
+  cinemaNavMemo.last[lanes[li].key] = f;
+  var lane = lanes[ti],
+    target = cinemaNavMemo.last[lane.key];
+  if (lane.items.indexOf(target) === -1) target = null;
+  if (!target && lane.key === 'actions') {
+    var wb = getEl('catalog-watch-btn');
+    target = lane.items.indexOf(wb) !== -1 ? wb : lane.items[0];
+  }
+  if (!target) {
+    var fr = f.getBoundingClientRect(),
+      fx = fr.left + fr.width / 2;
+    var grid = getEl(lane.key),
+      dx = grid ? pendingScrollDeltaX(grid) : 0,
+      best = Infinity;
+    for (var k = 0; k < lane.items.length; k++) {
+      var r = lane.items[k].getBoundingClientRect();
+      var d = Math.abs(r.left - dx + r.width / 2 - fx);
+      if (d < best) {
+        best = d;
+        target = lane.items[k];
+      }
+    }
+  }
+  if (lane.key === 'actions') {
+    var dv = getEl('detail-view');
+    if (dv && scrollRestTop(dv) > 1) applyScroll(dv, {
+      scrollTop: 0
+    }, true, CINEMA_SCROLL_S, CINEMA_SCROLL_EASE);
+  }
+  focusEl(target, {
     direction: dir
   });
   return true;
@@ -1244,6 +1335,7 @@ var ScreenStrategies = {
         }
         return true;
       }
+      if ((dir === 'up' || dir === 'down') && isCinemaDetail() && cinemaVerticalStep(f, dir)) return true;
       var idx = -1;
       for (var i = 0; i < items.length; i++) if (f === items[i]) {
         idx = i;
@@ -2711,7 +2803,7 @@ function isElementFullyVisible(el, container) {
   var r = el.getBoundingClientRect();
   var cr = container.getBoundingClientRect();
   var isRowVp = !!(container.classList && container.classList.contains('catalog-row-viewport'));
-  var isH = isRowVp || container.id === 'files-list' || container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers-wrap';
+  var isH = isRowVp || container.id === 'files-list' || container.id === 'catalog-detail-crew-wrap' || container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers-wrap';
   if (isH) {
     var hp = 45;
     var vp = 65;
@@ -2735,10 +2827,88 @@ function clearPendingScroll(el, key) {
   el[key + 'Until'] = 0;
 }
 function pendingScrollDelta(el) {
+  if (isFlipInFlight(el)) return flipCurrentY(el);
   if (!el || typeof el._navPendTop !== 'number') return 0;
   if (Date.now() > el._navPendTopUntil) return 0;
   return el._navPendTop - el.scrollTop;
 }
+function scrollRestTop(el) {
+  if (!el) return 0;
+  if (isFlipInFlight(el)) return el.scrollTop;
+  return el.scrollTop + pendingScrollDelta(el);
+}
+function flipContentFor(el) {
+  if (!el || !window.AppState || !AppState.gridScrollTransform) return null;
+  if (el.id === 'main-container') {
+    var s = AppState.currentScreen;
+    if (s === 'catalog') {
+      if (!window.catalogState || !catalogState.currentCatalog) return null;
+      var grid = getEl('catalog-grid');
+      return grid && grid.style.display !== 'none' ? getEl('content-catalog') : null;
+    }
+    if (s === 'torrents') {
+      var ct = getEl('content-torrents');
+      return ct && !ct.hidden ? ct : null;
+    }
+    return null;
+  }
+  if (el.id === 'search-results') {
+    var body = el.firstElementChild;
+    return body && body.classList.contains('search-results-body') && !body.nextElementSibling ? body : null;
+  }
+  return null;
+}
+function isFlipScroller(el) {
+  return !!flipContentFor(el);
+}
+function isFlipInFlight(el) {
+  return !!(el && el._flipEl && Date.now() < (el._flipUntil || 0));
+}
+function flipCurrentY(el) {
+  var t = window.getComputedStyle(el._flipEl).transform || '';
+  var m = /^matrix(3d)?\(([^)]+)\)/.exec(t);
+  if (!m) return 0;
+  var v = parseFloat(m[2].split(',')[m[1] ? 13 : 5]);
+  return isNaN(v) ? 0 : v;
+}
+function flipApply(el, top, duration) {
+  var content = flipContentFor(el);
+  if (!content) {
+    el.scrollTop = top;
+    return;
+  }
+  if (typeof Animations !== 'undefined' && Animations.stopScrollTween) Animations.stopScrollTween(el);
+  clearPendingScroll(el, '_navPendTop');
+  var visual = el.scrollTop - (isFlipInFlight(el) ? flipCurrentY(el) : 0);
+  if (el._flipEl && el._flipEl !== content) {
+    el._flipEl.style.transition = 'none';
+    el._flipEl.style.transform = '';
+  }
+  el._flipEl = content;
+  if (!content.classList.contains('grid-tx')) content.classList.add('grid-tx');
+  content.style.transition = 'none';
+  el.scrollTop = top;
+  var rest = el.scrollTop;
+  var offset = Math.round(rest - visual);
+  if (!(duration > 0) || Math.abs(offset) < 1) {
+    content.style.transform = '';
+    el._flipUntil = 0;
+    return;
+  }
+  content.style.transform = 'translate3d(0,' + offset + 'px,0)';
+  window.getComputedStyle(content).transform;
+  content.style.transition = 'transform ' + duration + 's linear';
+  content.style.transform = 'translate3d(0,0,0)';
+  el._flipUntil = Date.now() + Math.round(duration * 1000) + 50;
+}
+function resetGridScrollTransform(el) {
+  var sc = el && el.nodeType === 1 ? el : getEl('main-container');
+  if (!sc || !sc._flipEl) return;
+  sc._flipEl.style.transition = 'none';
+  sc._flipEl.style.transform = '';
+  sc._flipUntil = 0;
+}
+window.resetGridScrollTransform = resetGridScrollTransform;
 function pendingScrollDeltaX(container) {
   if (!container || typeof container._navPendX !== 'number') return 0;
   if (Date.now() > container._navPendXUntil) return 0;
@@ -2828,6 +2998,7 @@ function getScrollX(container) {
 function getMaxScrollX(container) {
   if (!container) return 0;
   if (isTxScroller(container)) {
+    if (container._txTrack === container) return Math.max(0, container.scrollWidth - container.clientWidth);
     return Math.max(0, container._txTrack.offsetWidth - container.clientWidth);
   }
   return Math.max(0, container.scrollWidth - container.clientWidth);
@@ -2893,10 +3064,10 @@ function setScrollX(container, left, smooth, duration) {
 function applyScroll(container, vars, smooth, duration, ease) {
   if (!container || !vars) return;
   if (typeof duration !== 'number' && typeof vars.scrollTop === 'number') {
-    duration = navStepScrollDuration(speedDuration(vars.scrollTop - (container.scrollTop + pendingScrollDelta(container)), SCROLL_SMOOTH.speedY), NAV_STEP_BASE_MS / 1000);
+    duration = navStepScrollDuration(speedDuration(vars.scrollTop - scrollRestTop(container), SCROLL_SMOOTH.speedY), NAV_STEP_BASE_MS / 1000);
   }
   var animated = smooth && !_instantScrollDepth && typeof duration === 'number' && duration > 0;
-  if (animated && typeof vars.scrollTop === 'number' && vars.scrollLeft === undefined && Math.abs(container.scrollTop + pendingScrollDelta(container) - vars.scrollTop) < 2) {
+  if (animated && typeof vars.scrollTop === 'number' && vars.scrollLeft === undefined && Math.abs(scrollRestTop(container) - vars.scrollTop) < 2) {
     return;
   }
   if (typeof vars.scrollTop === 'number') {
@@ -2907,6 +3078,11 @@ function applyScroll(container, vars, smooth, duration, ease) {
       clearPendingScroll(container, '_navPendTop');
     }
   }
+  if (typeof vars.scrollTop === 'number' && vars.scrollLeft === undefined && isFlipScroller(container)) {
+    flipApply(container, vars.scrollTop, animated ? duration : 0);
+    return;
+  }
+  if (container._flipEl && typeof vars.scrollTop === 'number') resetGridScrollTransform(container);
   if (typeof Animations !== 'undefined' && typeof Animations.tweenScroll === 'function') {
     Animations.tweenScroll(container, vars, {
       duration: animated ? duration : 0,
@@ -2960,7 +3136,7 @@ function isFirstRowGridCard(target) {
 var CATALOG_GRID_BOTTOM_PAD = 10;
 function catalogGridPinTarget(el, scrollContainer) {
   var dy = pendingScrollDelta(scrollContainer);
-  var restTop = scrollContainer.scrollTop + dy;
+  var restTop = scrollRestTop(scrollContainer);
   var viewTop = scrollContainer.getBoundingClientRect().top;
   var viewBottom = viewTop + scrollContainer.clientHeight;
   var restBottom = el.getBoundingClientRect().bottom - dy;
@@ -3049,12 +3225,12 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
   var isWindow = container === window || container === document.body;
   var scrollContainer = isWindow ? window.scrollingElement || document.documentElement : container;
   var isRowViewport = !!(container.classList && container.classList.contains('catalog-row-viewport'));
-  var isH = isRowViewport || container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers-wrap' || container.id === 'files-list';
+  var isH = isRowViewport || container.id === 'catalog-detail-crew-wrap' || container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers-wrap' || container.id === 'files-list';
   if (isH) {
     var r = el.getBoundingClientRect();
     var cr = container.getBoundingClientRect();
     var con = "";
-    if (container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers-wrap') {
+    if (container.id === 'catalog-detail-crew-wrap' || container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers-wrap') {
       con = container.id.replace('-wrap', '');
       con = getEl(con);
     } else {
@@ -3084,7 +3260,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
     var vertEl = isRowViewport ? getEl('main-container') : getEl('detail-view');
     var dy = pendingScrollDelta(vertEl);
     if (vertEl && isRowViewport && isFirstRowViewport(container)) {
-      if (vertEl.scrollTop + dy > 1) {
+      if (scrollRestTop(vertEl) > 1) {
         applyScroll(vertEl, {
           scrollTop: 0
         }, smooth);
@@ -3095,12 +3271,21 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
       scrollCatalogRowIntoView(container, vertEl, dy, smooth);
       return;
     }
+    if (vertEl && !isRowViewport && isCinemaLaneWrap(container) && isCinemaDetail()) {
+      var cvTop = container.getBoundingClientRect().top - vertEl.getBoundingClientRect().top + vertEl.scrollTop;
+      var cvTarget = Math.round(cvTop - window.innerHeight * CINEMA_LANE_TOP);
+      cvTarget = Math.max(0, Math.min(cvTarget, vertEl.scrollHeight - vertEl.clientHeight));
+      if (Math.abs(scrollRestTop(vertEl) - cvTarget) > 4) applyScroll(vertEl, {
+        scrollTop: cvTarget
+      }, smooth, CINEMA_SCROLL_S, CINEMA_SCROLL_EASE);
+      return;
+    }
     if (vertEl) {
       var containerRect = container.getBoundingClientRect();
       var vertRect = vertEl.getBoundingClientRect();
       var containerTopRelative = containerRect.top - vertRect.top + vertEl.scrollTop;
       var containerBottomRelative = containerTopRelative + containerRect.height;
-      var vertViewportTop = vertEl.scrollTop + dy;
+      var vertViewportTop = scrollRestTop(vertEl);
       var vertViewportBottom = vertViewportTop + vertRect.height;
       var needsVertScroll = false;
       var targetScrollTop = vertViewportTop;
@@ -3141,16 +3326,21 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
   }
   if (!scrollContainer) return;
   var dyTail = pendingScrollDelta(scrollContainer);
-  if (dyTail) {
+  if (dyTail || isFlipScroller(scrollContainer)) {
     var er = el.getBoundingClientRect();
     var viewTop = isWindow ? 0 : scrollContainer.getBoundingClientRect().top;
     var viewBot = isWindow ? window.innerHeight : viewTop + scrollContainer.clientHeight;
+    if (scrollContainer.id === 'main-container') {
+      var bar = getEl('home-topbar');
+      var barRect = bar && bar.offsetParent !== null ? bar.getBoundingClientRect() : null;
+      if (barRect && barRect.bottom > viewTop) viewTop = barRect.bottom;
+    }
     var over = 0;
     if (er.top - dyTail < viewTop + 10) over = er.top - dyTail - (viewTop + 10);else if (er.bottom - dyTail > viewBot - 10) over = er.bottom - dyTail - (viewBot - 10);
     if (over) {
       var maxTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
       applyScroll(scrollContainer, {
-        scrollTop: Math.max(0, Math.min(maxTop, scrollContainer.scrollTop + dyTail + over))
+        scrollTop: Math.max(0, Math.min(maxTop, scrollRestTop(scrollContainer) + over))
       }, smooth);
     }
     return;
@@ -3250,6 +3440,8 @@ function focusEl(el, opts) {
     if (isFI) {
       container = getEl('files-list');
       if (container) container._lastFocusedTile = el;
+    } else if (isAC && el.classList.contains('catalog-crew-card')) {
+      container = getEl('catalog-detail-crew-wrap');
     } else if (isAC) {
       container = getEl('catalog-detail-actors-wrap');
       if (!container && el.closest) container = el.closest('.catalog-detail-actors-wrap');

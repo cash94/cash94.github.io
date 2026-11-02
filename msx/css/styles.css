@@ -4769,6 +4769,29 @@ html.tizen-avplay #video-player {
   overflow: hidden;
 }
 
+/* Ленты актёров и похожих в карточке фильма: двигает transform самой ленты
+   (enableDetailRowTransform в catalog.js), поэтому лента не прокручивается и
+   не обрезает себя сама — обрезает обёртка с заголовком. !important и id в
+   селекторе — перебить overflow-x: auto ленты и overflow: visible !important
+   обёрток ниже по файлу */
+#detail-view .catalog-detail-actors-wrap.row-tx-clip,
+#detail-view .catalog-detail-recommendations-wrap.row-tx-clip {
+  overflow: hidden !important;
+}
+
+#detail-view .row-tx-self {
+  overflow: visible !important;
+  will-change: transform;
+}
+
+/* Сетка категории, «Мои торренты», выдача поиска: содержимое двигает переход
+   transform (FLIP, flipApply и flipContentFor в control.js). Слой постоянный —
+   ставится при первом шаге и остаётся: снятие и появление слоя на каждом шаге
+   растеризовало бы сетку заново */
+.grid-tx {
+  will-change: transform;
+}
+
 .catalog-row-viewport.row-tx > .catalog-row-track {
   will-change: transform;
   transform: translate3d(0, 0, 0);
@@ -6716,6 +6739,17 @@ html.legacy-browser #home-hero.home-hero-playing #home-hero-backdrop {
   margin: 0 32px 0 0;
   font-size: calc(28px * var(--topbar-scale, 1));
   line-height: 1;
+  color: #ff8c00;
+}
+
+/* Название — в цветах интерфейса: «Torr» белым, «Stream» оранжевым, как
+   кнопки и фокус. Оранжевый постоянный, не --focus-color: цвет фокуса меняют
+   во «Внешнем виде», а логотип от этого перекрашиваться не должен */
+#home-topbar .section-title-header .brand-torr {
+  color: #fff;
+}
+
+#home-topbar .section-title-header .brand-stream {
   color: #ff8c00;
 }
 
@@ -11609,4 +11643,581 @@ html.apple-device {
   font-size: 72px;
   font-weight: 300;
   line-height: 1;
+}
+
+
+/* ============================================================================
+   КАРТОЧКА КАТАЛОГА — «СЦЕНА» (класс detail-cinema)
+   ----------------------------------------------------------------------------
+   Кадр стоит неподвижно на весь экран (.catalog-detail-backdrop — fixed),
+   затемнён слева и снизу (#detail-view::before). Слева внизу колонка: логотип
+   или название, «год · длительность · ★», плашки жанров и стран, белая
+   «Поиск торрентов» и круглые «Подробнее» / «Избранное» / «Трейлер»,
+   описание в три строки. Ниже, по прокрутке, на тёмной подложке едут поверх
+   кадра ленты «Режиссёр», «В главных ролях» (широкие плитки), «Похожие».
+
+   Класс detail-cinema стоит на #detail-view в index.html постоянно, а все
+   правила ниже требуют ещё и .catalog-detail-mode — карточку торрента они не
+   задевают. Специфичность (два id + два класса) перебивает блок
+   catalog-detail-mode выше вместе с его !important.
+
+   Размеры — в --cu (≈20px на 1080, 13,3 на 720, 10 на 540): одна единица от
+   высоты экрана вместо отдельного медиазапроса на каждое разрешение ТВ.
+   min()/clamp() не используем — их нет в Chrome 66 (Vidaa).
+   ============================================================================ */
+#detail-view.detail-cinema {
+  --cu: 1.852vh;
+}
+
+.detail-cinema-head,
+.detail-cinema-below .catalog-detail-crew-wrap {
+  display: none;
+}
+
+/* Шапку с текстом заменяет #detail-cinema-head внутри панели */
+#detail-view.catalog-detail-mode.detail-cinema > .detail-header {
+  display: none !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-detail-backdrop {
+  opacity: 1 !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema::before {
+  background:
+    linear-gradient(to right,
+      rgba(0, 0, 0, 0.92) 0%,
+      rgba(0, 0, 0, 0.72) 26%,
+      rgba(0, 0, 0, 0.3) 50%,
+      rgba(0, 0, 0, 0) 72%),
+    linear-gradient(to top,
+      #000 0%,
+      rgba(0, 0, 0, 0.78) 18%,
+      rgba(0, 0, 0, 0.22) 46%,
+      rgba(0, 0, 0, 0) 66%);
+}
+
+/* --- СЦЕНА: колонка прижата к низу экрана -------------------------------- */
+#detail-view.catalog-detail-mode.detail-cinema .catalog-detail-panel {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-direction: column;
+  flex-direction: column;
+  -webkit-justify-content: flex-end;
+  justify-content: flex-end;
+  min-height: 100vh;
+  box-sizing: border-box;
+  max-width: calc(var(--cu) * 52) !important;
+  padding: calc(var(--cu) * 5) calc(var(--cu) * 3.2) calc(var(--cu) * 4.6) !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head {
+  display: block;
+  -webkit-order: 1;
+  order: 1;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions {
+  -webkit-order: 2;
+  order: 2;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-overview {
+  -webkit-order: 3;
+  order: 3;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-trailers-wrap,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-screenshots-wrap {
+  -webkit-order: 4;
+  order: 4;
+}
+
+/* Логотип названия — те же пропорции, что у баннера главной */
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-logo {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: calc(var(--cu) * 24);
+  max-height: calc(var(--cu) * 7.5);
+  margin: 0 0 calc(var(--cu) * 1.1);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-logo.hidden {
+  display: none;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-name {
+  font-size: calc(var(--cu) * 2.9);
+  font-weight: 700;
+  line-height: 1.1;
+  color: #fff;
+  margin: 0 0 calc(var(--cu) * 0.8);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-meta {
+  font-size: calc(var(--cu) * 1.05);
+  font-weight: 600;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0 0 calc(var(--cu) * 0.85);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-meta:empty {
+  display: none;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-dot {
+  margin: 0 0.55em;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-star {
+  color: #f5c518;
+}
+
+/* Плашки: flex-wrap и отступы margin'ом — flex-gap в Chrome 66 нет */
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-chips {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-wrap: wrap;
+  flex-wrap: wrap;
+  margin: 0 0 calc(var(--cu) * 1.1);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-chips:empty {
+  display: none;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-chip {
+  font-size: calc(var(--cu) * 0.8);
+  line-height: 1.3;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: calc(var(--cu) * 1);
+  padding: calc(var(--cu) * 0.3) calc(var(--cu) * 0.85);
+  margin: 0 calc(var(--cu) * 0.5) calc(var(--cu) * 0.5) 0;
+}
+
+/* --- КНОПКИ: белая «Поиск торрентов» и круглые со значками --------------- */
+/* Высоту и центровку значков держит line-height, а не display: flex — кнопки
+   прячут инлайновым display (трейлер, торрентный режим), и свой display
+   здесь пришлось бы ставить с !important, ломая это скрытие */
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions {
+  display: block;
+  white-space: nowrap;
+  padding: 0 !important;
+  margin: 0 0 calc(var(--cu) * 2) !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > button {
+  position: relative;
+  -webkit-flex: none;
+  flex: none;
+  box-sizing: border-box;
+  height: calc(var(--cu) * 2.9);
+  line-height: calc(var(--cu) * 2.9);
+  margin: 0 calc(var(--cu) * 0.8) 0 0 !important;
+  padding: 0 calc(var(--cu) * 1.5) !important;
+  border-radius: calc(var(--cu) * 1.45) !important;
+  font-size: calc(var(--cu) * 0.95) !important;
+  text-align: center;
+  /* Где-то выше кнопкам задан display: flex — тогда центрует он */
+  -webkit-justify-content: center;
+  justify-content: center;
+  -webkit-align-items: center;
+  align-items: center;
+  vertical-align: middle;
+  overflow: visible;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn {
+  padding: 0 calc(var(--cu) * 1.7) !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn::before {
+  vertical-align: -0.12em;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn {
+  width: calc(var(--cu) * 2.9);
+  padding: 0 !important;
+  font-size: 0 !important;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.16) !important;
+}
+
+/* Фокус — белый круг, как у остальных кнопок карточки (общее правило фокуса
+   проигрывает фону круглой кнопки по специфичности) */
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn.focused,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn.focused,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn.focused {
+  background: #fff !important;
+  color: #000 !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn::before {
+  margin: 0;
+  font-size: calc(var(--cu) * 1.15);
+  vertical-align: middle;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn .favorite-btn-icon {
+  margin: 0 !important;
+  font-size: calc(var(--cu) * 1.35) !important;
+  vertical-align: middle;
+}
+
+/* Треугольник визуально смещён влево — подвигаем на пару пикселей */
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn .trailer-btn-icon {
+  margin: 0 0 0 0.15em !important;
+  font-size: calc(var(--cu) * 0.95) !important;
+  vertical-align: middle;
+}
+
+/* Подпись под круглой кнопкой в фокусе: текст кнопки скрыт (font-size: 0),
+   а значок без слов на ТВ не всегда понятен */
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn::after,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn::after,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn::after {
+  content: attr(data-label);
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  margin-top: calc(var(--cu) * 0.5);
+  -webkit-transform: translateX(-50%);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: calc(var(--cu) * 0.72);
+  font-weight: 600;
+  line-height: 1.2;
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+  opacity: 0;
+  pointer-events: none;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn.focused::after,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn.focused::after,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn.focused::after {
+  opacity: 1;
+}
+
+/* --- ОПИСАНИЕ ------------------------------------------------------------ */
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-overview {
+  font-size: calc(var(--cu) * 0.92 * var(--detail-text-scale, 1)) !important;
+  line-height: 1.5 !important;
+  max-width: calc(var(--cu) * 42);
+  margin: 0 !important;
+  -webkit-line-clamp: 3;
+  color: rgba(255, 255, 255, 0.82) !important;
+}
+
+/* --- НИЖНИЕ БЛОКИ: тёмная подложка поверх неподвижного кадра ------------ */
+.detail-cinema-below {
+  position: relative;
+  z-index: 2;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-below {
+  padding: 0 0 calc(var(--cu) * 3);
+  background: linear-gradient(to bottom,
+      rgba(0, 0, 0, 0) 0,
+      rgba(0, 0, 0, 0.88) calc(var(--cu) * 6),
+      rgba(0, 0, 0, 0.94) 100%);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-detail-crew-wrap {
+  display: block;
+  padding: 0;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-detail-crew-wrap.hidden {
+  display: none;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew-wrap,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actors-wrap,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-recommendations-wrap {
+  margin: 0 !important;
+  padding: calc(var(--cu) * 1.4) 0 0 !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-detail-section-title {
+  font-size: calc(var(--cu) * 1.15) !important;
+  padding-left: calc(var(--cu) * 3.2) !important;
+  margin: 0 0 calc(var(--cu) * 0.6) 0 !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actors,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-recommendations {
+  display: -webkit-box !important;
+  display: -webkit-flex !important;
+  display: flex !important;
+  gap: 0 !important;
+  padding: calc(var(--cu) * 0.4) calc(var(--cu) * 3.2) calc(var(--cu) * 0.9) !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew::-webkit-scrollbar {
+  display: none;
+}
+
+#detail-view .catalog-detail-crew-wrap.row-tx-clip {
+  overflow: hidden !important;
+}
+
+/* Широкая плитка человека: фото слева, имя и роль справа. Режиссёр — та же
+   разметка (buildCrewCard в catalog.js) */
+#detail-view.catalog-detail-mode.detail-cinema .catalog-actor-card {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-flex: none;
+  flex: none;
+  width: calc(var(--cu) * 15.5) !important;
+  height: calc(var(--cu) * 5.4);
+  margin: 0 calc(var(--cu) * 0.9) 0 0 !important;
+  background: rgba(255, 255, 255, 0.09) !important;
+  border-radius: calc(var(--cu) * 0.6) !important;
+  overflow: hidden !important;
+  text-align: left;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-actor-card:hover {
+  -webkit-transform: none;
+  transform: none;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-actor-photo {
+  -webkit-flex: none;
+  flex: none;
+  width: calc(var(--cu) * 4.1) !important;
+  height: 100% !important;
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-actor-photo img {
+  object-position: center 20%;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-actor-no-photo {
+  border-radius: 0 !important;
+  background: transparent;
+  font-size: calc(var(--cu) * 0.6) !important;
+  padding: 0 calc(var(--cu) * 0.3);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-actor-info {
+  -webkit-flex: 1;
+  flex: 1;
+  min-width: 0;
+  padding: 0 calc(var(--cu) * 0.9) !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-actor-name {
+  font-size: calc(var(--cu) * 0.92) !important;
+  font-weight: 700 !important;
+  line-height: 1.25;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-actor-character {
+  font-size: calc(var(--cu) * 0.76) !important;
+  line-height: 1.3;
+  margin-top: calc(var(--cu) * 0.2);
+  color: rgba(255, 255, 255, 0.55) !important;
+}
+
+/* Фокус — плитка белеет, как кнопки сцены. Кольцо и рамку фото от круглых
+   аватаров гасим */
+#detail-view.catalog-detail-mode.detail-cinema .catalog-actor-card.focused {
+  background: #fff !important;
+  box-shadow: 0 0 0 3px var(--focus-color, #ff8c00) !important;
+  border-radius: calc(var(--cu) * 0.6) !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-actor-card.focused .catalog-actor-photo {
+  border: none !important;
+  box-shadow: none !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-actor-card.focused .catalog-actor-name {
+  color: #000 !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-actor-card.focused .catalog-actor-character {
+  color: rgba(0, 0, 0, 0.6) !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-actor-card.focused .catalog-actor-no-photo {
+  color: rgba(0, 0, 0, 0.45);
+}
+
+/* --- «ПОХОЖИЕ»: крупнее и в той же единице, что вся сцена --------------
+   В пикселях под каждое разрешение (блок catalog-detail-mode выше) постер
+   выходил 9 % ширины экрана на 1080, 12 % на 720 и 13 % на 540 — то есть
+   на самых больших ТВ мельче всего. Здесь — одинаковая доля на любом экране
+   (~14 %), вместе с постером растут год, оценка и подпись. */
+#detail-view.catalog-detail-mode.detail-cinema .catalog-recommendation-card {
+  width: calc(var(--cu) * 14) !important;
+  margin: 0 calc(var(--cu) * 1.2) 0 0 !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-recommendation-poster {
+  width: calc(var(--cu) * 14) !important;
+  height: calc(var(--cu) * 21) !important;
+  border-radius: calc(var(--cu) * 0.7);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-recommendation-title {
+  font-size: calc(var(--cu) * 1.02) !important;
+  margin-top: calc(var(--cu) * 0.5);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-recommendation-card .poster-bar {
+  height: calc(var(--cu) * 2);
+  padding: 0 calc(var(--cu) * 0.55);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-recommendation-card .rating-badge {
+  font-size: calc(var(--cu) * 1.05);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-recommendation-card .torrent-badge {
+  font-size: calc(var(--cu) * 0.9);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-recommendation-card .poster-year {
+  top: calc(var(--cu) * 0.5);
+  right: calc(var(--cu) * 0.5);
+  font-size: calc(var(--cu) * 0.9);
+  padding: calc(var(--cu) * 0.22) calc(var(--cu) * 0.5);
+  border-radius: calc(var(--cu) * 0.5);
+}
+
+/* --- ТЕЛЕФОН: книжная ---------------------------------------------------- */
+/* Кадр здесь — полоса во всю ширину сверху (правила телефона выше по файлу),
+   колонка идёт под ней, а не прижимается к низу экрана */
+@media screen and (max-width: 600px) and (orientation: portrait) {
+  #detail-view.detail-cinema {
+    --cu: 3.4vw;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema::before {
+    background: none;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-detail-panel {
+    min-height: 0;
+    max-width: none !important;
+    padding: calc(60vw - var(--cu) * 5) 16px calc(var(--cu) * 1.5) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-logo {
+    max-width: 70%;
+    max-height: calc(var(--cu) * 6);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions {
+    white-space: normal;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-overview {
+    max-width: none;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-below {
+    background: none;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-recommendation-card {
+    width: calc(var(--cu) * 9.5) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-recommendation-poster {
+    width: calc(var(--cu) * 9.5) !important;
+    height: calc(var(--cu) * 14.25) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-detail-section-title,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actors,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-recommendations {
+    padding-left: 16px !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actors,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-recommendations {
+    padding-right: 16px !important;
+  }
+}
+
+/* --- ТЕЛЕФОН: альбомная — от высоты единица выходит слишком мелкой ------- */
+@media screen and (orientation: landscape) and (max-height: 500px) {
+  #detail-view.detail-cinema {
+    --cu: 2.9vh;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-detail-panel {
+    max-width: 70vw !important;
+    padding-left: 24px !important;
+    padding-right: 24px !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-detail-section-title,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actors,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-recommendations {
+    padding-left: 24px !important;
+  }
+}
+
+/* --- ТЕЛЕФОН: все кнопки сцены — круглые значки, без надписей ----------- */
+/* «Поиск торрентов» — магнитом, как и раньше на телефоне. Текст остаётся в
+   разметке (font-size: 0) — его читает озвучка */
+@media screen and (max-width: 600px) and (orientation: portrait),
+  screen and (orientation: landscape) and (max-height: 500px) {
+  /* «Избранное» — против flex: 0 0 48px из правил телефона выше по файлу */
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn {
+    -webkit-flex: none;
+    flex: none;
+    width: calc(var(--cu) * 2.9);
+    padding: 0 !important;
+    font-size: 0 !important;
+    border-radius: 50% !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn::before {
+    content: "\ec79" !important;
+    margin: 0;
+    font-family: "uicons-regular-rounded";
+    font-size: calc(var(--cu) * 1.2);
+    font-weight: normal;
+    line-height: 1;
+    vertical-align: middle;
+  }
+
+  /* Подпись под кнопкой — для мыши и пульта; на касание фокуса нет */
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions {
+    margin-bottom: calc(var(--cu) * 1.4) !important;
+  }
 }

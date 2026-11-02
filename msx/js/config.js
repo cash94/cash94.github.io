@@ -158,6 +158,10 @@ var AppState = {
   // scrollLeft (isTxScroller в control.js). По умолчанию включён
   // (readHomeRowTransformFlag)
   homeRowTransform: readHomeRowTransformFlag(),
+  // Сетка категории прокручивается переходом transform на композиторе
+  // (FLIP, flipApply в control.js), а не твином scrollTop. ?gridtx=0 —
+  // выключить на заход, для сравнения
+  gridScrollTransform: !/[?&]gridtx=0(?:&|$)/.test(location.search),
 
   //Синхронизация
   syncCodeScreen: false,
@@ -693,7 +697,7 @@ console.log('📱 Платформа: ' + AppState.platform + (AppState.applePla
 // всплыло бы и перетёрло функцию из index.html.
 if (typeof window.isSeasonActive !== 'function') {
   window.SEASONS = {
-    halloween: { from: [10, 24], to: [11, 2] }
+    halloween: { from: [10, 24], to: [11, 1] }
   };
   window.isSeasonActive = function (name) {
     var s = window.SEASONS[name];

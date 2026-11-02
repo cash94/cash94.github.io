@@ -924,6 +924,9 @@ function setupSearch() {
         if (typeof AppState !== 'undefined') AppState.inSearch = 'torrents';
         hideSearchResults();
         if (window.Nav) Nav.reset('torrents');
+        if (typeof catalogState !== 'undefined' && catalogState.currentCatalog && typeof window.releaseCatalogGrid === 'function') {
+          window.releaseCatalogGrid();
+        }
         tabTorrents.classList.add('active');
         if (tabSearch) tabSearch.classList.remove('active');
         if (tabCatalog) tabCatalog.classList.remove('active');

@@ -500,6 +500,7 @@ var Animations = function () {
   }
   function isScrollTweening(container) {
     if (container && container._txTrack) return Date.now() < (container._txUntil || 0);
+    if (container && container._flipEl && Date.now() < (container._flipUntil || 0)) return true;
     var i = scrollTweenIndex(container);
     return i !== -1 && Date.now() < scrollTweens[i].endAt;
   }
@@ -513,6 +514,7 @@ var Animations = function () {
       }
       var p = (now - t.start) / t.dur;
       if (p > 1) p = 1;
+      if (t.ease === 'sine.inOut' && p < 1) p = (1 - Math.cos(Math.PI * p)) / 2;
       for (var j = 0; j < t.props.length; j++) {
         var pr = t.props[j];
         t.el[pr.name] = p === 1 ? pr.to : pr.from + (pr.to - pr.from) * p;
@@ -558,6 +560,7 @@ var Animations = function () {
       props: props,
       start: 0,
       dur: duration * 1000,
+      ease: options.ease === 'sine.inOut' ? 'sine.inOut' : null,
       endAt: Date.now() + Math.round(duration * 1000) + 50
     });
     if (!scrollTweenRaf) scrollTweenRaf = requestAnimationFrame(scrollTweenStep);

@@ -821,7 +821,15 @@ function getTorrentTabs() {
     var bar = getEl('home-topbar');
     if (!bar) return [];
     var b = bar.querySelectorAll('.home-nav-btn'), v = [];
-    for (var i = 0; i < b.length; i++) v.push(b[i]);
+    for (var i = 0; i < b.length; i++) {
+        // Исключение одно: «Каталог» спрятан стилем (#tab-catalog в
+        // styles.css) — его категории теперь ряд главной, а кнопка осталась в
+        // разметке ради ссылок из app.js и catalog.js. Без этого фокус из
+        // сетки уходил вверх на невидимую кнопку между «Главной» и «Моими
+        // торрентами»
+        if (b[i].id === 'tab-catalog') continue;
+        v.push(b[i]);
+    }
     return v;
 }
 
@@ -994,6 +1002,90 @@ function detailLaneStep(dir) {
         !sib.hidden && !sib.classList.contains('hidden') && sib.style.display !== 'none'));
     if (sib) focusEl(sib, { direction: dir });
     else if (lane !== 'file-item') focusEl(f, { direction: dir });
+    return true;
+}
+
+/**
+ * Карточка каталога в раскладке «сцена» (detail-cinema, catalog.js):
+ * строка кнопок, а под ней ленты «Режиссёр», «В главных ролях», «Похожие».
+ * Вверх-вниз ходим по ним как по строкам в порядке разметки — пустые и
+ * скрытые пропускаем. В ленту возвращаемся на ту плитку, с которой из неё
+ * ушли; в первый раз — на ближайшую по горизонтали к той, откуда пришли.
+ * В строку кнопок — на кнопку, с которой уходили, иначе на «Поиск торрентов».
+ */
+var CINEMA_LANE_IDS = ['catalog-detail-crew', 'catalog-detail-actors', 'catalog-detail-recommendations'];
+var CINEMA_LANE_TOP = 0.08;          // лента встаёт под верхний край экрана с этим отступом (доля высоты)
+// Переезд между сценой и лентами — почти экран. Обычная прокрутка едет с
+// постоянной скоростью и всё длиннее SCROLL_SMOOTH.maxDuration ставит сразу, без
+// анимации, — здесь это выглядело рывком. Поэтому своя длительность и кривая.
+var CINEMA_SCROLL_S = 0.5;
+var CINEMA_SCROLL_EASE = 'sine.inOut';
+var cinemaNavMemo = { item: null, last: {} };
+
+function isCinemaDetail() {
+    var dv = getEl('detail-view');
+    return !!(dv && dv.classList.contains('detail-cinema') && dv.classList.contains('catalog-detail-mode'));
+}
+
+function isCinemaLaneWrap(el) {
+    return !!(el && el.id && /^catalog-detail-(crew|actors|recommendations)-wrap$/.test(el.id));
+}
+
+function getCinemaLanes() {
+    var out = [];
+    var acts = getDetailActionButtons();
+    if (acts.length) out.push({ key: 'actions', items: acts });
+    for (var i = 0; i < CINEMA_LANE_IDS.length; i++) {
+        var grid = getEl(CINEMA_LANE_IDS[i]);
+        var wrap = grid && grid.parentNode;
+        if (!grid || !wrap || wrap.classList.contains('hidden') || wrap.style.display === 'none') continue;
+        var items = [];
+        for (var c = grid.firstElementChild; c; c = c.nextElementSibling) {
+            if (c.classList.contains('hidden') || c.style.display === 'none') continue;
+            if (c.classList.contains('catalog-actor-card') || c.classList.contains('catalog-recommendation-card')) items.push(c);
+        }
+        if (items.length) out.push({ key: CINEMA_LANE_IDS[i], items: items });
+    }
+    return out;
+}
+
+function cinemaVerticalStep(f, dir) {
+    var lanes = getCinemaLanes();
+    var li = -1;
+    for (var i = 0; i < lanes.length; i++) if (lanes[i].items.indexOf(f) !== -1) { li = i; break; }
+    if (li === -1) return false;
+    if (dir === 'up' && li === 0) return false;           // выше кнопок — шапка разделов, общий путь
+    var ti = dir === 'down' ? li + 1 : li - 1;
+    if (ti >= lanes.length) return true;                  // ниже «Похожих» ничего нет
+
+    var cur = window.AppState && AppState.currentDetailItem;
+    if (cinemaNavMemo.item !== cur) cinemaNavMemo = { item: cur, last: {} };
+    cinemaNavMemo.last[lanes[li].key] = f;
+
+    var lane = lanes[ti], target = cinemaNavMemo.last[lane.key];
+    if (lane.items.indexOf(target) === -1) target = null;
+    if (!target && lane.key === 'actions') {
+        var wb = getEl('catalog-watch-btn');
+        target = lane.items.indexOf(wb) !== -1 ? wb : lane.items[0];
+    }
+    if (!target) {
+        // Ближайшая по горизонтали — по положению покоя ленты, а не текущему
+        var fr = f.getBoundingClientRect(), fx = fr.left + fr.width / 2;
+        var grid = getEl(lane.key), dx = grid ? pendingScrollDeltaX(grid) : 0, best = Infinity;
+        for (var k = 0; k < lane.items.length; k++) {
+            var r = lane.items[k].getBoundingClientRect();
+            var d = Math.abs(r.left - dx + r.width / 2 - fx);
+            if (d < best) { best = d; target = lane.items[k]; }
+        }
+    }
+    // К кнопкам — всегда в самый верх: сцена показывается целиком. Прокрутку
+    // заводим ДО фокуса: иначе focusEl успевал поставить свой короткий твин
+    // к нулю, а этот, увидев ту же цель, уже не запускался
+    if (lane.key === 'actions') {
+        var dv = getEl('detail-view');
+        if (dv && scrollRestTop(dv) > 1) applyScroll(dv, { scrollTop: 0 }, true, CINEMA_SCROLL_S, CINEMA_SCROLL_EASE);
+    }
+    focusEl(target, { direction: dir });
     return true;
 }
 
@@ -1627,6 +1719,7 @@ var ScreenStrategies = {
                 if (dir === 'down') { hideDetailTopbar(true); return true; }
                 return true;   // «вверх» из шапки идти некуда
             }
+            if ((dir === 'up' || dir === 'down') && isCinemaDetail() && cinemaVerticalStep(f, dir)) return true;
             var idx = -1; for (var i = 0; i < items.length; i++) if (f === items[i]) { idx = i; break; }
             if (idx === -1) return this.ensureFocus(true);
             var tl = [], ac = [], rc = [], fi = [];
@@ -2786,6 +2879,7 @@ function isElementFullyVisible(el, container) {
     var isRowVp = !!(container.classList && container.classList.contains('catalog-row-viewport'));
     var isH = isRowVp ||
         container.id === 'files-list' ||
+        container.id === 'catalog-detail-crew-wrap' ||
         container.id === 'catalog-detail-actors-wrap' ||
         container.id === 'catalog-detail-recommendations-wrap' ||
         container.id === 'catalog-detail-trailers-wrap';
@@ -2836,12 +2930,151 @@ function clearPendingScroll(el, key) {
     el[key + 'Until'] = 0;
 }
 
-/** Сколько ещё дотянет вертикальный твин (px, + вниз) */
+/**
+ * На сколько картинка сейчас отстаёт от позиции покоя (px, + вниз): видимое
+ * положение = покой − это число. Для твина — сколько он ещё дотянет; для
+ * FLIP-прокрутки сетки — текущий сдвиг содержимого (flipCurrentY).
+ * Прямоугольник «в покое» везде считается как живой rect минус это число.
+ */
 function pendingScrollDelta(el) {
+    if (isFlipInFlight(el)) return flipCurrentY(el);
     if (!el || typeof el._navPendTop !== 'number') return 0;
     if (Date.now() > el._navPendTopUntil) return 0;
     return el._navPendTop - el.scrollTop;
 }
+
+/**
+ * Куда встанет вертикальная прокрутка. У твина scrollTop — середина пути, и
+ * покой — это scrollTop плюс остаток. У FLIP scrollTop уже стоит в покое, а
+ * едет только картинка.
+ */
+function scrollRestTop(el) {
+    if (!el) return 0;
+    if (isFlipInFlight(el)) return el.scrollTop;
+    return el.scrollTop + pendingScrollDelta(el);
+}
+
+/* ============ FLIP-ПРОКРУТКА СЕТКИ КАТЕГОРИИ ============
+ *
+ * Сетку по вертикали двигает не твин scrollTop на requestAnimationFrame, а
+ * CSS-переход transform — его ведёт композитор, и сетка едет ровно, даже когда
+ * основной поток занят (вставка постеров, смена фокуса, разворот чанка). Тот же
+ * выигрыш, что у рядов Главной (isTxScroller ниже).
+ *
+ * Приём FLIP: scrollTop сразу ставится в конечную позицию, а содержимое
+ * (#content-catalog) в тот же миг сдвигается transform'ом обратно — туда, где
+ * было видно, — и переходом возвращается к нулю. Поэтому scrollTop всё время
+ * равен позиции ПОКОЯ: чанковая виртуализация, наблюдатели постеров и
+ * подгрузка страниц видят место назначения сразу, а нативная прокрутка (колесо,
+ * палец) работает как раньше. Посреди перехода живые прямоугольники сдвинуты на
+ * текущий transform — его отдаёт pendingScrollDelta, и все расчёты «в покое»
+ * сходятся без отдельных веток.
+ *
+ * Где работает (flipContentFor), только с AppState.gridScrollTransform (по
+ * умолчанию включён, ?gridtx=0 — выключить на заход):
+ *   • сетка категории — #main-container, сдвигается #content-catalog;
+ *   • «Мои торренты» — #main-container, сдвигается #content-torrents;
+ *   • выдача поиска — #search-results, сдвигается её обёртка
+ *     .search-results-body (renderSearchResults / displayGlobalSearchResults
+ *     в torrents.js кладут всю выдачу в неё).
+ * Состояние на контейнере прокрутки: _flipEl — сдвигаемый элемент,
+ * _flipUntil — срок перехода по стенным часам.
+ */
+function flipContentFor(el) {
+    if (!el || !window.AppState || !AppState.gridScrollTransform) return null;
+    if (el.id === 'main-container') {
+        var s = AppState.currentScreen;
+        if (s === 'catalog') {
+            if (!window.catalogState || !catalogState.currentCatalog) return null;
+            var grid = getEl('catalog-grid');
+            return (grid && grid.style.display !== 'none') ? getEl('content-catalog') : null;
+        }
+        if (s === 'torrents') {
+            var ct = getEl('content-torrents');
+            return (ct && !ct.hidden) ? ct : null;
+        }
+        return null;
+    }
+    if (el.id === 'search-results') {
+        // Обёртка — единственный ребёнок: служебные сообщения выдачи («Ищем…»,
+        // «Ничего не найдено») пишутся прямо в контейнер, их двигать незачем
+        var body = el.firstElementChild;
+        return (body && body.classList.contains('search-results-body') && !body.nextElementSibling) ? body : null;
+    }
+    return null;
+}
+
+function isFlipScroller(el) {
+    return !!flipContentFor(el);
+}
+
+function isFlipInFlight(el) {
+    return !!(el && el._flipEl && Date.now() < (el._flipUntil || 0));
+}
+
+/** Текущий сдвиг содержимого посреди перехода (px) */
+function flipCurrentY(el) {
+    var t = window.getComputedStyle(el._flipEl).transform || '';
+    var m = /^matrix(3d)?\(([^)]+)\)/.exec(t);
+    if (!m) return 0;
+    var v = parseFloat(m[2].split(',')[m[1] ? 13 : 5]);
+    return isNaN(v) ? 0 : v;
+}
+
+/**
+ * Прокрутить el до top. duration в секундах; 0 — сразу. Новый шаг посреди
+ * перехода продолжает с того места, которое сейчас ВИДНО, а не с начала.
+ */
+function flipApply(el, top, duration) {
+    var content = flipContentFor(el);
+    if (!content) { el.scrollTop = top; return; }
+    // Твин с прежнего экрана здесь не нужен — ехать будет переход
+    if (typeof Animations !== 'undefined' && Animations.stopScrollTween) Animations.stopScrollTween(el);
+    clearPendingScroll(el, '_navPendTop');
+
+    var visual = el.scrollTop - (isFlipInFlight(el) ? flipCurrentY(el) : 0);
+    // Контейнер тот же, а сдвигаемое содержимое другое (сменился экран в
+    // #main-container) — прежнее отпускаем, иначе его сдвиг так и остался бы
+    if (el._flipEl && el._flipEl !== content) {
+        el._flipEl.style.transition = 'none';
+        el._flipEl.style.transform = '';
+    }
+    el._flipEl = content;
+    // Слой у содержимого постоянный, а не на время движения: появление и
+    // снятие слоя на каждом шаге — растеризация всей сетки заново
+    if (!content.classList.contains('grid-tx')) content.classList.add('grid-tx');
+
+    content.style.transition = 'none';
+    el.scrollTop = top;
+    var rest = el.scrollTop;                     // у краёв браузер обрежет сам
+    var offset = Math.round(rest - visual);
+    if (!(duration > 0) || Math.abs(offset) < 1) {
+        content.style.transform = '';
+        el._flipUntil = 0;
+        return;
+    }
+    content.style.transform = 'translate3d(0,' + offset + 'px,0)';
+    // Начальный сдвиг должен примениться до перехода, иначе браузер склеит
+    // обе записи стиля и поедет из нуля в ноль. Читаем стиль, не геометрию —
+    // это пересчёт стилей одного элемента, без раскладки
+    window.getComputedStyle(content).transform;
+    content.style.transition = 'transform ' + duration + 's linear';
+    content.style.transform = 'translate3d(0,0,0)';
+    el._flipUntil = Date.now() + Math.round(duration * 1000) + 50;
+}
+
+/**
+ * Сетку закрыли или прокрутку поставили мимо FLIP — сдвиг содержимого снимаем.
+ * el — контейнер прокрутки; по умолчанию #main-container.
+ */
+function resetGridScrollTransform(el) {
+    var sc = (el && el.nodeType === 1) ? el : getEl('main-container');
+    if (!sc || !sc._flipEl) return;
+    sc._flipEl.style.transition = 'none';
+    sc._flipEl.style.transform = '';
+    sc._flipUntil = 0;
+}
+window.resetGridScrollTransform = resetGridScrollTransform;
 
 /** То же по горизонтали, в координатах scrollLeft */
 function pendingScrollDeltaX(container) {
@@ -3049,6 +3282,10 @@ function getMaxScrollX(container) {
     // прокручиваемую область не входит), поэтому меряем сам трек: у него
     // width: max-content, и transform на offsetWidth не влияет
     if (isTxScroller(container)) {
+        // Трек — сама лента (актёры и похожие в карточке, enableDetailRowTransform):
+        // у неё overflow: visible, и scrollWidth — ширина содержимого, transform
+        // на него тоже не влияет
+        if (container._txTrack === container) return Math.max(0, container.scrollWidth - container.clientWidth);
         return Math.max(0, container._txTrack.offsetWidth - container.clientWidth);
     }
     return Math.max(0, container.scrollWidth - container.clientWidth);
@@ -3205,7 +3442,7 @@ function applyScroll(container, vars, smooth, duration, ease) {
     if (typeof duration !== 'number' && typeof vars.scrollTop === 'number') {
         duration = navStepScrollDuration(
             speedDuration(
-                vars.scrollTop - (container.scrollTop + pendingScrollDelta(container)),
+                vars.scrollTop - scrollRestTop(container),
                 SCROLL_SMOOTH.speedY),
             NAV_STEP_BASE_MS / 1000);
     }
@@ -3228,7 +3465,7 @@ function applyScroll(container, vars, smooth, duration, ease) {
     // же способом и с тем же порогом, что scrollCatalogGridCardIntoView.
     // scrollLeft не трогаем: у него своя ветка и свои координаты.
     if (animated && typeof vars.scrollTop === 'number' && vars.scrollLeft === undefined &&
-        Math.abs(container.scrollTop + pendingScrollDelta(container) - vars.scrollTop) < 2) {
+        Math.abs(scrollRestTop(container) - vars.scrollTop) < 2) {
         return;
     }
 
@@ -3240,6 +3477,15 @@ function applyScroll(container, vars, smooth, duration, ease) {
             clearPendingScroll(container, '_navPendTop');
         }
     }
+
+    // Сетка категории — переходом на композиторе (FLIP, см. flipApply)
+    if (typeof vars.scrollTop === 'number' && vars.scrollLeft === undefined && isFlipScroller(container)) {
+        flipApply(container, vars.scrollTop, animated ? duration : 0);
+        return;
+    }
+    // Прокрутка мимо FLIP, а содержимое ещё сдвинуто — иначе сдвиг остался бы
+    // поверх новой позиции до конца перехода
+    if (container._flipEl && typeof vars.scrollTop === 'number') resetGridScrollTransform(container);
 
     if (typeof Animations !== 'undefined' && typeof Animations.tweenScroll === 'function') {
         Animations.tweenScroll(container, vars, {
@@ -3355,7 +3601,7 @@ var CATALOG_GRID_BOTTOM_PAD = 10;
  *  окажется сама по себе (позиция покоя). Порог сравнения — CATALOG_GRID_PIN_EPS. */
 function catalogGridPinTarget(el, scrollContainer) {
     var dy = pendingScrollDelta(scrollContainer);
-    var restTop = scrollContainer.scrollTop + dy;          // куда встанет прокрутка
+    var restTop = scrollRestTop(scrollContainer);          // куда встанет прокрутка
     var viewTop = scrollContainer.getBoundingClientRect().top;
     var viewBottom = viewTop + scrollContainer.clientHeight;
     var restBottom = el.getBoundingClientRect().bottom - dy;
@@ -3542,6 +3788,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
     var isRowViewport = !!(container.classList && container.classList.contains('catalog-row-viewport'));
 
     var isH = isRowViewport ||
+        container.id === 'catalog-detail-crew-wrap' ||
         container.id === 'catalog-detail-actors-wrap' ||
         container.id === 'catalog-detail-recommendations-wrap' ||
         container.id === 'catalog-detail-trailers-wrap' ||
@@ -3551,7 +3798,8 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         var r = el.getBoundingClientRect();
         var cr = container.getBoundingClientRect();
         var con = "";
-        if (container.id === 'catalog-detail-actors-wrap' ||
+        if (container.id === 'catalog-detail-crew-wrap' ||
+            container.id === 'catalog-detail-actors-wrap' ||
             container.id === 'catalog-detail-recommendations-wrap' ||
             container.id === 'catalog-detail-trailers-wrap') {
             con = container.id.replace('-wrap', '');
@@ -3604,7 +3852,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         if (vertEl && isRowViewport && isFirstRowViewport(container)) {
             // Проверяем цель, а не текущую позицию: твин к нулю уже может идти,
             // и повторный такой же твин только сбивал бы разгон
-            if (vertEl.scrollTop + dy > 1) {
+            if (scrollRestTop(vertEl) > 1) {
                 applyScroll(vertEl, { scrollTop: 0 }, smooth);
             }
             return;
@@ -3618,12 +3866,21 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             scrollCatalogRowIntoView(container, vertEl, dy, smooth);
             return;
         }
+        // Сцена: лента всегда встаёт у верхнего края, на обоих направлениях
+        // одинаково, — ленты разной высоты не гуляют по экрану от шага к шагу
+        if (vertEl && !isRowViewport && isCinemaLaneWrap(container) && isCinemaDetail()) {
+            var cvTop = container.getBoundingClientRect().top - vertEl.getBoundingClientRect().top + vertEl.scrollTop;
+            var cvTarget = Math.round(cvTop - window.innerHeight * CINEMA_LANE_TOP);
+            cvTarget = Math.max(0, Math.min(cvTarget, vertEl.scrollHeight - vertEl.clientHeight));
+            if (Math.abs(scrollRestTop(vertEl) - cvTarget) > 4) applyScroll(vertEl, { scrollTop: cvTarget }, smooth, CINEMA_SCROLL_S, CINEMA_SCROLL_EASE);
+            return;
+        }
         if (vertEl) {
             var containerRect = container.getBoundingClientRect();
             var vertRect = vertEl.getBoundingClientRect();
             var containerTopRelative = containerRect.top - vertRect.top + vertEl.scrollTop;
             var containerBottomRelative = containerTopRelative + containerRect.height;
-            var vertViewportTop = vertEl.scrollTop + dy;    // куда встанет прокрутка
+            var vertViewportTop = scrollRestTop(vertEl);    // куда встанет прокрутка
             var vertViewportBottom = vertViewportTop + vertRect.height;
             var needsVertScroll = false;
             var targetScrollTop = vertViewportTop;
@@ -3687,20 +3944,31 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
     }
     if (!scrollContainer) return;
     var dyTail = pendingScrollDelta(scrollContainer);
-    if (dyTail) {
+    // FLIP-контейнер («Мои торренты», выдача поиска) — всегда этой веткой:
+    // Animations.scrollToIfNotVisible ниже крутит твином напрямую, мимо
+    // applyScroll, и переход transform там не включился бы
+    if (dyTail || isFlipScroller(scrollContainer)) {
         // Тот же расчёт, что в Animations.scrollToIfNotVisible, но от позиции
         // покоя: живой rect посреди твина ответил бы «элемент уже виден», шаг
         // проходил бы без прокрутки, и серия быстрых нажатий получалась рваной.
         var er = el.getBoundingClientRect();
         var viewTop = isWindow ? 0 : scrollContainer.getBoundingClientRect().top;
         var viewBot = isWindow ? window.innerHeight : viewTop + scrollContainer.clientHeight;
+        // В #main-container сверху липкая шапка (#home-topbar), и верх видимой
+        // области — её низ, а не верх контейнера: иначе карточка, к которой
+        // поднялись, вставала бы под шапку
+        if (scrollContainer.id === 'main-container') {
+            var bar = getEl('home-topbar');
+            var barRect = (bar && bar.offsetParent !== null) ? bar.getBoundingClientRect() : null;
+            if (barRect && barRect.bottom > viewTop) viewTop = barRect.bottom;
+        }
         var over = 0;
         if (er.top - dyTail < viewTop + 10) over = (er.top - dyTail) - (viewTop + 10);
         else if (er.bottom - dyTail > viewBot - 10) over = (er.bottom - dyTail) - (viewBot - 10);
         if (over) {
             var maxTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
             applyScroll(scrollContainer,
-                { scrollTop: Math.max(0, Math.min(maxTop, scrollContainer.scrollTop + dyTail + over)) },
+                { scrollTop: Math.max(0, Math.min(maxTop, scrollRestTop(scrollContainer) + over)) },
                 smooth);
         }
         return;
@@ -3874,6 +4142,8 @@ function focusEl(el, opts) {
             container = getEl('files-list');
             // Вернуться в ряд серий на эту же плитку (getDetailFileEntry)
             if (container) container._lastFocusedTile = el;
+        } else if (isAC && el.classList.contains('catalog-crew-card')) {
+            container = getEl('catalog-detail-crew-wrap');
         } else if (isAC) {
             container = getEl('catalog-detail-actors-wrap');
             if (!container && el.closest) container = el.closest('.catalog-detail-actors-wrap');

@@ -1233,6 +1233,13 @@ function setupSearch() {
         if (typeof AppState !== 'undefined') AppState.inSearch = 'torrents';
         hideSearchResults();
         if (window.Nav) Nav.reset('torrents');
+        // Ушли из сетки категории в «Мои торренты»: стек сброшен, вернуться в
+        // неё можно только плиткой с главной — как и при уходе кнопкой
+        // «Главная» (home.js), карточки в скрытом DOM не держим
+        if (typeof catalogState !== 'undefined' && catalogState.currentCatalog &&
+          typeof window.releaseCatalogGrid === 'function') {
+          window.releaseCatalogGrid();
+        }
         tabTorrents.classList.add('active');
         if (tabSearch) tabSearch.classList.remove('active');
         if (tabCatalog) tabCatalog.classList.remove('active');
