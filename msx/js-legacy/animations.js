@@ -488,6 +488,7 @@ var Animations = function () {
   }
   var scrollTweens = [];
   var scrollTweenRaf = 0;
+  var scrollTweenFrameAt = 0;
   function scrollTweenIndex(container) {
     for (var i = 0; i < scrollTweens.length; i++) {
       if (scrollTweens[i].el === container) return i;
@@ -504,8 +505,27 @@ var Animations = function () {
     var i = scrollTweenIndex(container);
     return i !== -1 && Date.now() < scrollTweens[i].endAt;
   }
+  function easeScroll(t, p) {
+    if (t.ease === 'sine.inOut') return (1 - Math.cos(Math.PI * p)) / 2;
+    if (t.ease === 'hermite') return (p * p * p - 2 * p * p + p) * t.m0 + (3 * p * p - 2 * p * p * p);
+    return p;
+  }
+  function easeSlope(t, p) {
+    if (t.ease === 'sine.inOut') return Math.PI / 2 * Math.sin(Math.PI * p);
+    if (t.ease === 'hermite') return (3 * p * p - 4 * p + 1) * t.m0 + (6 * p - 6 * p * p);
+    return 1;
+  }
+  function scrollTweenVelocity(t, name) {
+    if (!t || !t.start || !(t.p < 1)) return 0;
+    for (var j = 0; j < t.props.length; j++) {
+      var pr = t.props[j];
+      if (pr.name === name) return (pr.to - pr.from) * easeSlope(t, t.p || 0) / t.dur;
+    }
+    return 0;
+  }
   function scrollTweenStep(now) {
     scrollTweenRaf = 0;
+    scrollTweenFrameAt = now;
     for (var i = scrollTweens.length - 1; i >= 0; i--) {
       var t = scrollTweens[i];
       if (!t.start) {
@@ -514,7 +534,8 @@ var Animations = function () {
       }
       var p = (now - t.start) / t.dur;
       if (p > 1) p = 1;
-      if (t.ease === 'sine.inOut' && p < 1) p = (1 - Math.cos(Math.PI * p)) / 2;
+      t.p = p;
+      if (p < 1) p = easeScroll(t, p);
       for (var j = 0; j < t.props.length; j++) {
         var pr = t.props[j];
         t.el[pr.name] = p === 1 ? pr.to : pr.from + (pr.to - pr.from) * p;
@@ -530,6 +551,9 @@ var Animations = function () {
     var hasTop = typeof vars.scrollTop === 'number';
     var hasLeft = typeof vars.scrollLeft === 'number';
     if (!hasTop && !hasLeft) return;
+    var oldIdx = scrollTweenIndex(container);
+    var wasMoving = oldIdx !== -1 && scrollTweenFrameAt > 0 && window.performance && performance.now() - scrollTweenFrameAt < 100;
+    var oldTween = wasMoving ? scrollTweens[oldIdx] : null;
     stopScrollTween(container);
     if (duration <= 0 || typeof requestAnimationFrame !== 'function') {
       if (hasTop) {
@@ -539,10 +563,6 @@ var Animations = function () {
       }
       if (hasLeft) container.scrollLeft = vars.scrollLeft;
       return;
-    }
-    if (hasTop) {
-      container._navPendTop = vars.scrollTop;
-      container._navPendTopUntil = Date.now() + Math.round(duration * 1000) + 50;
     }
     var props = [];
     if (hasTop) props.push({
@@ -555,12 +575,31 @@ var Animations = function () {
       from: container.scrollLeft,
       to: vars.scrollLeft
     });
+    var ease = options.ease === 'sine.inOut' ? 'sine.inOut' : null;
+    var m0 = 0;
+    if (ease && oldTween) {
+      var dist = props[0].to - props[0].from;
+      var v0 = scrollTweenVelocity(oldTween, props[0].name);
+      if (dist && v0 * dist > 0) {
+        ease = 'hermite';
+        m0 = v0 * duration * 1000 / dist;
+        if (m0 > 3) {
+          duration = duration * 3 / m0;
+          m0 = 3;
+        }
+      }
+    }
+    if (hasTop) {
+      container._navPendTop = vars.scrollTop;
+      container._navPendTopUntil = Date.now() + Math.round(duration * 1000) + 50;
+    }
     scrollTweens.push({
       el: container,
       props: props,
-      start: 0,
+      start: wasMoving && scrollTweenFrameAt ? scrollTweenFrameAt : 0,
       dur: duration * 1000,
-      ease: options.ease === 'sine.inOut' ? 'sine.inOut' : null,
+      ease: ease,
+      m0: m0,
       endAt: Date.now() + Math.round(duration * 1000) + 50
     });
     if (!scrollTweenRaf) scrollTweenRaf = requestAnimationFrame(scrollTweenStep);

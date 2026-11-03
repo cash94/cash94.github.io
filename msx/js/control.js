@@ -3022,6 +3022,72 @@ function flipCurrentY(el) {
     return isNaN(v) ? 0 : v;
 }
 
+/* ============ ПЕРЕХВАТ ПЕРЕХОДА НА ХОДУ — БЕЗ ОТКАТА НАЗАД ============
+ *
+ * Сетку (FLIP) и ленты (transform трека) двигает CSS-переход на композиторе.
+ * Новый шаг посреди движения перезапускает переход с позиции, которую основной
+ * поток видит в момент нажатия. Но стартует новый переход только после
+ * коммита кадра — когда основной поток разберёт нажатие (фокус, стили,
+ * раскладка, отрисовка): на слабом ТВ это десятки миллисекунд. Всё это время
+ * композитор вёл прежний переход дальше, а потом картинка возвращалась к
+ * позиции «на момент нажатия» и ехала снова. При частых нажатиях — откат на
+ * каждом шаге: рябь «старт-отмена-старт».
+ *
+ * Лечится отрицательной задержкой перехода: он начинается сразу с той
+ * доли пути, которую проехал бы за время разбора нажатия, — и продолжает
+ * движение с того места, где его застал коммит. Само это время (lag) меряется
+ * на ходу, по каждому перехвату: из текущего значения transform видно, когда
+ * на самом деле стартовал прежний переход, а момент его заказа известен.
+ * Хранится на контейнере — у сетки и у ленты цена шага разная. Сглаживание —
+ * пополам со старым значением, предел — TX_LAG_MAX_MS.
+ *
+ * Время — по часам анимаций документа (document.timeline): по ним же
+ * getComputedStyle отдаёт промежуточный transform, и обе метки сходятся.
+ */
+var TX_LAG_MAX_MS = 150;
+// Та же задержка, общая на все ленты, — для темпа шагов (markNavStep). Не
+// меньше кадра: твин на requestAnimationFrame (вертикаль карточки, ряды
+// каталога) тоже трогается не раньше следующего кадра, а его не меряем
+var NAV_SCROLL_LAG_MIN_MS = 17;
+var navScrollLagMs = NAV_SCROLL_LAG_MIN_MS;
+
+function animClockNow() {
+    var tl = document.timeline;
+    if (tl && typeof tl.currentTime === 'number') return tl.currentTime;
+    return (window.performance && performance.now) ? performance.now() : Date.now();
+}
+
+/**
+ * Обновить оценку lag по перехваченному переходу. prog — доля пройденного пути
+ * по текущему transform (0..1). Края не берём: там переход ещё не стартовал или
+ * уже доехал, и времени старта из них не узнать.
+ */
+function noteTxLag(el, prog) {
+    var r = el._txRun;
+    if (!r || !(prog > 0.02 && prog < 0.98)) return;
+    // Прогресс = (t − старт − задержка) / длительность
+    var started = animClockNow() - prog * r.dur - r.delay;
+    var lag = started - r.at;
+    if (!(lag >= 0)) lag = 0;
+    if (lag > TX_LAG_MAX_MS) lag = TX_LAG_MAX_MS;
+    el._txLag = (typeof el._txLag === 'number') ? (el._txLag + lag) / 2 : lag;
+    navScrollLagMs = Math.max(NAV_SCROLL_LAG_MIN_MS, (navScrollLagMs + lag) / 2);
+}
+
+/**
+ * Строка transition для перехода длительностью duration (с): при перехвате на
+ * ходу (moving) — с отрицательной задержкой на оценку lag, но не больше
+ * половины пути, чтобы короткая доводка не схлопнулась в скачок. С места —
+ * без задержки: лента стояла, и забег вперёд на старте читался бы прыжком.
+ * Заодно запоминает, когда и как переход заказан.
+ */
+function txTransition(el, duration, moving) {
+    var dur = duration * 1000;
+    var lead = moving ? Math.min(el._txLag || 0, dur / 2) : 0;
+    el._txRun = { at: animClockNow(), dur: dur, delay: -lead };
+    return 'transform ' + duration + 's linear' + (lead >= 1 ? ' ' + (-Math.round(lead)) + 'ms' : '');
+}
+
 /**
  * Прокрутить el до top. duration в секундах; 0 — сразу. Новый шаг посреди
  * перехода продолжает с того места, которое сейчас ВИДНО, а не с начала.
@@ -3033,7 +3099,11 @@ function flipApply(el, top, duration) {
     if (typeof Animations !== 'undefined' && Animations.stopScrollTween) Animations.stopScrollTween(el);
     clearPendingScroll(el, '_navPendTop');
 
-    var visual = el.scrollTop - (isFlipInFlight(el) ? flipCurrentY(el) : 0);
+    var curY = isFlipInFlight(el) ? flipCurrentY(el) : 0;
+    var visual = el.scrollTop - curY;
+    // Перехват на ходу — заодно меряем, насколько старт прежнего перехода
+    // отстал от его заказа (см. noteTxLag)
+    if (curY && el._flipOffset) noteTxLag(el, 1 - curY / el._flipOffset);
     // Контейнер тот же, а сдвигаемое содержимое другое (сменился экран в
     // #main-container) — прежнее отпускаем, иначе его сдвиг так и остался бы
     if (el._flipEl && el._flipEl !== content) {
@@ -3052,6 +3122,7 @@ function flipApply(el, top, duration) {
     if (!(duration > 0) || Math.abs(offset) < 1) {
         content.style.transform = '';
         el._flipUntil = 0;
+        el._flipOffset = 0;
         return;
     }
     content.style.transform = 'translate3d(0,' + offset + 'px,0)';
@@ -3059,7 +3130,8 @@ function flipApply(el, top, duration) {
     // обе записи стиля и поедет из нуля в ноль. Читаем стиль, не геометрию —
     // это пересчёт стилей одного элемента, без раскладки
     window.getComputedStyle(content).transform;
-    content.style.transition = 'transform ' + duration + 's linear';
+    el._flipOffset = offset;
+    content.style.transition = txTransition(el, duration, curY !== 0);
     content.style.transform = 'translate3d(0,0,0)';
     el._flipUntil = Date.now() + Math.round(duration * 1000) + 50;
 }
@@ -3091,13 +3163,34 @@ function pendingScrollDeltaX(container) {
  * Дальше maxDuration это перестаёт быть движением и становится ожиданием —
  * такие переезды делаем мгновенно (см. maxDuration).
  *
+ * Скорость в SCROLL_SMOOTH подобрана под экран высотой 720 CSS px. На 1080 и
+ * выше карточки и строки во столько же раз крупнее, и без поправки тот же шаг
+ * ехал в полтора раза дольше, а всё, что вылезало за maxDuration (широкие
+ * плитки, строка сетки), ставилось сразу — «резкий переход». Поэтому скорость
+ * растёт с высотой экрана (scrollSpeedScale): шаг занимает то же время, что и
+ * на 720. Ниже 720 поправки нет — там движение и так было плавным.
+ *
  * @param {number} distance сколько px предстоит проехать (знак не важен)
- * @param {number} speed    px/с; 0 — «мгновенно», режим none из ui-customizer
+ * @param {number} speed    px/с при высоте 720; 0 — «мгновенно», режим none из ui-customizer
  * @returns {number} секунды; 0 — поставить позицию сразу, без анимации
  */
+var SCROLL_SPEED_BASE_H = 720;
+var _scrollSpeedScale = 0;
+
+function scrollSpeedScale() {
+    if (!_scrollSpeedScale) {
+        var h = window.innerHeight || document.documentElement.clientHeight || SCROLL_SPEED_BASE_H;
+        _scrollSpeedScale = Math.max(1, h / SCROLL_SPEED_BASE_H);
+    }
+    return _scrollSpeedScale;
+}
+// Пересчёт — лениво, на следующем шаге: размер окна меняют редко (поворот
+// телефона, окно на ПК), а читать его на каждом шаге незачем
+window.addEventListener('resize', function () { _scrollSpeedScale = 0; });
+
 function speedDuration(distance, speed) {
     if (!(speed > 0)) return 0;
-    var d = Math.abs(distance || 0) / speed;
+    var d = Math.abs(distance || 0) / (speed * scrollSpeedScale());
     if (d > SCROLL_SMOOTH.maxDuration) return 0;    // не поездка, а смена места
     return Math.max(SCROLL_SMOOTH.minDuration, d);
 }
@@ -3114,10 +3207,18 @@ function speedDuration(distance, speed) {
 function markNavStep(duration) {
     if (!navStepArmed || !(duration > 0)) return;
     navStepArmed = false;
-    // Только ОТОДВИГАЕМ: пол уже поставлен acceptNavStep, и прокрутка короче
-    // пола (доводка на несколько px) не должна разрешать следующий шаг раньше.
-    var until = Date.now() + Math.min(NAV_STEP_MAX_WAIT_MS, Math.round(duration * 1000));
-    if (until > navStepUntil) navStepUntil = until;
+    // Прокрутка короче пола (доводка на несколько px) не должна разрешать
+    // следующий шаг раньше пола, поставленного acceptNavStep.
+    //
+    // Но и сам срок — без lead: прокрутка стартует не в момент заказа, а после
+    // разбора нажатия (navScrollLagMs), и доезжает настолько же позже. Шаг,
+    // принятый ровно в конец срока, стартовал бы, когда прежняя прокрутка уже
+    // стоит, — на каждом стыке лента замирала на кадр-два: рябь при частых
+    // нажатиях. Принятый на lead раньше, он перехватывает её на ходу, а
+    // перехват продолжает движение без отката (txTransition, tweenScroll).
+    var ms = Math.min(NAV_STEP_MAX_WAIT_MS, Math.round(duration * 1000));
+    var lead = Math.min(navScrollLagMs, ms / 2);
+    navStepUntil = Math.max(navStepAt + NAV_STEP_BASE_MS, Date.now() + ms) - lead;
 }
 
 /**
@@ -3334,14 +3435,32 @@ function txCurrentX(container) {
 
 /**
  * Сдвинуть трек на left. duration в секундах; 0 — сразу. Новый сдвиг посреди
- * перехода браузер продолжает с текущей промежуточной позиции, а не с начала.
+ * перехода браузер продолжает с текущей промежуточной позиции, а не с начала
+ * (и с поправкой на задержку старта — см. txTransition).
  */
 function txApply(container, left, duration) {
     var track = container._txTrack;
     // Дробный сдвиг слоя размывает текст и рамки карточек
     left = Math.round(left);
     if (duration > 0) {
-        track.style.transition = 'transform ' + duration + 's linear';
+        var inFlight = Date.now() < (container._txUntil || 0);
+        var from = inFlight ? txCurrentX(container) : (container._txX || 0);
+        var span = (container._txX || 0) - (container._txFrom || 0);
+        if (inFlight && span) noteTxLag(container, (from - container._txFrom) / span);
+        // Срок с запасом в 50 мс: переход мог уже доехать — тогда это старт
+        // с места, а не перехват
+        var moving = inFlight && Math.abs(from - (container._txX || 0)) >= 1;
+        container._txFrom = from;
+        if (moving) {
+            // Точку старта ставим сами, как flipApply. Если отдать её браузеру,
+            // он берёт значение прежнего перехода на момент СЛЕДУЮЩЕГО пересчёта
+            // стилей, а не этого чтения, — и поправка txTransition ложится
+            // поверх уже сдвинутой точки: лента прыгала вперёд
+            track.style.transition = 'none';
+            track.style.transform = 'translate3d(' + (-from) + 'px,0,0)';
+            window.getComputedStyle(track).transform;
+        }
+        track.style.transition = txTransition(container, duration, moving);
         container._txUntil = Date.now() + Math.round(duration * 1000) + 50;
     } else {
         track.style.transition = 'none';

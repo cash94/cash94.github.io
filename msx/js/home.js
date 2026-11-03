@@ -1141,6 +1141,20 @@
         return info;
     }
 
+    /**
+     * Адрес логотипа, который главная уже знает, — для карточки фильма
+     * (renderCinemaLogo в catalog.js): в ответе /api/tmdb/details логотипа нет,
+     * а спрашивать его отдельно — лишний запрос. Если картинка уже грузилась,
+     * адрес — с того зеркала, что её отдало (preloadLogo), и карточка берёт
+     * файл из HTTP-кэша. Сети здесь нет: не знаем — null.
+     */
+    function knownLogoUrl(item) {
+        var k = heroKey(item);
+        if (!k) return null;
+        var info = knownLogo(item, k);
+        return (info && info.url) ? info.url : null;
+    }
+
     /** Ответ /api/tmdb/logo — для элементов без поля logo */
     function fetchHeroLogo(item, k) {
         var known = knownLogo(item, k);
@@ -4166,6 +4180,7 @@
         uncover: uncoverHome,
         rearmTrailer: rearmHeroTrailer,
         removeHistoryItem: removeHistoryItem,
+        logoUrl: knownLogoUrl,
         state: homeState
     };
 

@@ -897,6 +897,8 @@ var Animations = (function () {
      */
     var scrollTweens = [];
     var scrollTweenRaf = 0;
+    // Метка последнего кадра движка (время requestAnimationFrame)
+    var scrollTweenFrameAt = 0;
 
     /** Индекс активного твина этого контейнера, -1 если его нет */
     function scrollTweenIndex(container) {
@@ -930,8 +932,42 @@ var Animations = (function () {
         return i !== -1 && Date.now() < scrollTweens[i].endAt;
     }
 
+    /*
+     * Кривые твина. sine.inOut — длинные переезды сцены карточки: мягкий
+     * разгон и торможение. Но перехват такого переезда на ходу (частые «вниз»
+     * по лентам) начинал новую кривую с нулевой скорости: лента тормозила
+     * посреди пути и разгонялась заново — рябь. Поэтому перехват идёт по
+     * кубической кривой Эрмита (hermite): стартует с той скоростью, с которой
+     * ехал прежний твин (m0 — она же в долях пути за длительность), и так же
+     * мягко останавливается. При m0 = 0 это обычная «плавная ступенька», почти
+     * неотличимая от sine.inOut; m0 не больше 3 — иначе кривая перелетает цель.
+     */
+    function easeScroll(t, p) {
+        if (t.ease === 'sine.inOut') return (1 - Math.cos(Math.PI * p)) / 2;
+        if (t.ease === 'hermite') return (p * p * p - 2 * p * p + p) * t.m0 + (3 * p * p - 2 * p * p * p);
+        return p;
+    }
+
+    /** Производная кривой по p — для скорости прерванного твина */
+    function easeSlope(t, p) {
+        if (t.ease === 'sine.inOut') return Math.PI / 2 * Math.sin(Math.PI * p);
+        if (t.ease === 'hermite') return (3 * p * p - 4 * p + 1) * t.m0 + (6 * p - 6 * p * p);
+        return 1;
+    }
+
+    /** Скорость твина по свойству name на последнем кадре, px/мс (0 — не едет) */
+    function scrollTweenVelocity(t, name) {
+        if (!t || !t.start || !(t.p < 1)) return 0;
+        for (var j = 0; j < t.props.length; j++) {
+            var pr = t.props[j];
+            if (pr.name === name) return (pr.to - pr.from) * easeSlope(t, t.p || 0) / t.dur;
+        }
+        return 0;
+    }
+
     function scrollTweenStep(now) {
         scrollTweenRaf = 0;
+        scrollTweenFrameAt = now;
 
         for (var i = scrollTweens.length - 1; i >= 0; i--) {
             var t = scrollTweens[i];
@@ -939,11 +975,13 @@ var Animations = (function () {
             // Первый кадр только засекает старт: между созданием твина и этим
             // кадром проходит неизвестное время (на слабом ТВ — десятки мс), и
             // отсчёт от момента создания съедал бы начало движения.
+            // Кроме перехвата на ходу — там старт уже стоит (см. tweenScroll)
             if (!t.start) { t.start = now; continue; }
 
             var p = (now - t.start) / t.dur;
             if (p > 1) p = 1;
-            if (t.ease === 'sine.inOut' && p < 1) p = (1 - Math.cos(Math.PI * p)) / 2;
+            t.p = p;
+            if (p < 1) p = easeScroll(t, p);
 
             for (var j = 0; j < t.props.length; j++) {
                 var pr = t.props[j];
@@ -965,8 +1003,11 @@ var Animations = (function () {
      * @param {Element} container контейнер с прокруткой
      * @param {Object}  vars      scrollTop и/или scrollLeft — цель в пикселях
      * @param {Object}  [options] duration в секундах (0 — мгновенно). Кривая
-     *                            всегда линейная: скорость движения в приложении
+     *                            линейная: скорость движения в приложении
      *                            единая, и любое торможение у цели её ломает.
+     *                            ease: 'sine.inOut' — только длинным переездам
+     *                            (сцена карточки); перехват такого на ходу
+     *                            может доехать быстрее duration (см. easeScroll).
      */
     function tweenScroll(container, vars, options) {
         if (!container || !vars) return;
@@ -979,6 +1020,13 @@ var Animations = (function () {
 
         // Новая цель отменяет прежнюю: движение продолжается с текущего места,
         // а не с начала прежнего пути
+        // Сам твин, а не isScrollTweening: у сетки и рядов на transform тот
+        // отвечает за переход, и старт от давно прошедшего кадра проскочил бы
+        // весь путь разом. По той же причине кадр должен быть свежим
+        var oldIdx = scrollTweenIndex(container);
+        var wasMoving = oldIdx !== -1 && scrollTweenFrameAt > 0 &&
+            window.performance && performance.now() - scrollTweenFrameAt < 100;
+        var oldTween = wasMoving ? scrollTweens[oldIdx] : null;
         stopScrollTween(container);
 
         if (duration <= 0 || typeof requestAnimationFrame !== 'function') {
@@ -991,6 +1039,30 @@ var Animations = (function () {
             return;
         }
 
+        var props = [];
+        if (hasTop) props.push({ name: 'scrollTop', from: container.scrollTop, to: vars.scrollTop });
+        if (hasLeft) props.push({ name: 'scrollLeft', from: container.scrollLeft, to: vars.scrollLeft });
+
+        // Кривая — только по запросу: вся навигация едет с постоянной
+        // скоростью (SCROLL_SMOOTH в control.js), а мягкий разгон и
+        // торможение нужны длинным переездам вроде сцены карточки.
+        // Перехват такого переезда — с текущей скоростью (см. easeScroll)
+        var ease = options.ease === 'sine.inOut' ? 'sine.inOut' : null;
+        var m0 = 0;
+        if (ease && oldTween) {
+            var dist = props[0].to - props[0].from;
+            var v0 = scrollTweenVelocity(oldTween, props[0].name);
+            // Прежний ехал в ту же сторону — подхватываем; навстречу —
+            // разворот, тут честнее с нуля
+            if (dist && v0 * dist > 0) {
+                ease = 'hermite';
+                m0 = v0 * duration * 1000 / dist;
+                // Путь короткий для такой скорости: не сбрасываем её, а
+                // доезжаем быстрее — торможение с хода, как по инерции
+                if (m0 > 3) { duration = duration * 3 / m0; m0 = 3; }
+            }
+        }
+
         // Помечаем цель твина: пока он в полёте, getBoundingClientRect отдаёт
         // позицию «на полпути», и проверки видимости в control.js врут —
         // быстрые короткие нажатия то запускали прокрутку, то нет. Читается
@@ -1000,19 +1072,19 @@ var Animations = (function () {
             container._navPendTopUntil = Date.now() + Math.round(duration * 1000) + 50;
         }
 
-        var props = [];
-        if (hasTop) props.push({ name: 'scrollTop', from: container.scrollTop, to: vars.scrollTop });
-        if (hasLeft) props.push({ name: 'scrollLeft', from: container.scrollLeft, to: vars.scrollLeft });
-
         scrollTweens.push({
             el: container,
             props: props,
-            start: 0,
+            // Перехват на ходу (частые нажатия): отсчёт — от прошлого кадра, а
+            // не от следующего. Иначе на каждом нажатии лента стояла кадр на
+            // месте и трогалась заново — та самая рябь «старт-стоп» при
+            // быстром «тук-тук». Время между кадрами, пока основной поток
+            // разбирал нажатие, первый же кадр отыгрывает: прежний твин за это
+            // время тоже уехал бы дальше
+            start: (wasMoving && scrollTweenFrameAt) ? scrollTweenFrameAt : 0,
             dur: duration * 1000,
-            // Кривая — только по запросу: вся навигация едет с постоянной
-            // скоростью (SCROLL_SMOOTH в control.js), а мягкий разгон и
-            // торможение нужны длинным переездам вроде сцены карточки
-            ease: options.ease === 'sine.inOut' ? 'sine.inOut' : null,
+            ease: ease,
+            m0: m0,
             // Запас на кадр-другой: признак «идёт» не должен гаснуть раньше,
             // чем твин успеет доехать
             endAt: Date.now() + Math.round(duration * 1000) + 50

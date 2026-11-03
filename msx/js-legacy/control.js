@@ -2871,6 +2871,34 @@ function flipCurrentY(el) {
   var v = parseFloat(m[2].split(',')[m[1] ? 13 : 5]);
   return isNaN(v) ? 0 : v;
 }
+var TX_LAG_MAX_MS = 150;
+var NAV_SCROLL_LAG_MIN_MS = 17;
+var navScrollLagMs = NAV_SCROLL_LAG_MIN_MS;
+function animClockNow() {
+  var tl = document.timeline;
+  if (tl && typeof tl.currentTime === 'number') return tl.currentTime;
+  return window.performance && performance.now ? performance.now() : Date.now();
+}
+function noteTxLag(el, prog) {
+  var r = el._txRun;
+  if (!r || !(prog > 0.02 && prog < 0.98)) return;
+  var started = animClockNow() - prog * r.dur - r.delay;
+  var lag = started - r.at;
+  if (!(lag >= 0)) lag = 0;
+  if (lag > TX_LAG_MAX_MS) lag = TX_LAG_MAX_MS;
+  el._txLag = typeof el._txLag === 'number' ? (el._txLag + lag) / 2 : lag;
+  navScrollLagMs = Math.max(NAV_SCROLL_LAG_MIN_MS, (navScrollLagMs + lag) / 2);
+}
+function txTransition(el, duration, moving) {
+  var dur = duration * 1000;
+  var lead = moving ? Math.min(el._txLag || 0, dur / 2) : 0;
+  el._txRun = {
+    at: animClockNow(),
+    dur: dur,
+    delay: -lead
+  };
+  return 'transform ' + duration + 's linear' + (lead >= 1 ? ' ' + -Math.round(lead) + 'ms' : '');
+}
 function flipApply(el, top, duration) {
   var content = flipContentFor(el);
   if (!content) {
@@ -2879,7 +2907,9 @@ function flipApply(el, top, duration) {
   }
   if (typeof Animations !== 'undefined' && Animations.stopScrollTween) Animations.stopScrollTween(el);
   clearPendingScroll(el, '_navPendTop');
-  var visual = el.scrollTop - (isFlipInFlight(el) ? flipCurrentY(el) : 0);
+  var curY = isFlipInFlight(el) ? flipCurrentY(el) : 0;
+  var visual = el.scrollTop - curY;
+  if (curY && el._flipOffset) noteTxLag(el, 1 - curY / el._flipOffset);
   if (el._flipEl && el._flipEl !== content) {
     el._flipEl.style.transition = 'none';
     el._flipEl.style.transform = '';
@@ -2893,11 +2923,13 @@ function flipApply(el, top, duration) {
   if (!(duration > 0) || Math.abs(offset) < 1) {
     content.style.transform = '';
     el._flipUntil = 0;
+    el._flipOffset = 0;
     return;
   }
   content.style.transform = 'translate3d(0,' + offset + 'px,0)';
   window.getComputedStyle(content).transform;
-  content.style.transition = 'transform ' + duration + 's linear';
+  el._flipOffset = offset;
+  content.style.transition = txTransition(el, duration, curY !== 0);
   content.style.transform = 'translate3d(0,0,0)';
   el._flipUntil = Date.now() + Math.round(duration * 1000) + 50;
 }
@@ -2914,17 +2946,30 @@ function pendingScrollDeltaX(container) {
   if (Date.now() > container._navPendXUntil) return 0;
   return container._navPendX - getScrollX(container);
 }
+var SCROLL_SPEED_BASE_H = 720;
+var _scrollSpeedScale = 0;
+function scrollSpeedScale() {
+  if (!_scrollSpeedScale) {
+    var h = window.innerHeight || document.documentElement.clientHeight || SCROLL_SPEED_BASE_H;
+    _scrollSpeedScale = Math.max(1, h / SCROLL_SPEED_BASE_H);
+  }
+  return _scrollSpeedScale;
+}
+window.addEventListener('resize', function () {
+  _scrollSpeedScale = 0;
+});
 function speedDuration(distance, speed) {
   if (!(speed > 0)) return 0;
-  var d = Math.abs(distance || 0) / speed;
+  var d = Math.abs(distance || 0) / (speed * scrollSpeedScale());
   if (d > SCROLL_SMOOTH.maxDuration) return 0;
   return Math.max(SCROLL_SMOOTH.minDuration, d);
 }
 function markNavStep(duration) {
   if (!navStepArmed || !(duration > 0)) return;
   navStepArmed = false;
-  var until = Date.now() + Math.min(NAV_STEP_MAX_WAIT_MS, Math.round(duration * 1000));
-  if (until > navStepUntil) navStepUntil = until;
+  var ms = Math.min(NAV_STEP_MAX_WAIT_MS, Math.round(duration * 1000));
+  var lead = Math.min(navScrollLagMs, ms / 2);
+  navStepUntil = Math.max(navStepAt + NAV_STEP_BASE_MS, Date.now() + ms) - lead;
 }
 function acceptNavStep(direction, run) {
   if (NAV_PACED_SCREENS.indexOf(currentScreen()) === -1) return true;
@@ -3019,7 +3064,18 @@ function txApply(container, left, duration) {
   var track = container._txTrack;
   left = Math.round(left);
   if (duration > 0) {
-    track.style.transition = 'transform ' + duration + 's linear';
+    var inFlight = Date.now() < (container._txUntil || 0);
+    var from = inFlight ? txCurrentX(container) : container._txX || 0;
+    var span = (container._txX || 0) - (container._txFrom || 0);
+    if (inFlight && span) noteTxLag(container, (from - container._txFrom) / span);
+    var moving = inFlight && Math.abs(from - (container._txX || 0)) >= 1;
+    container._txFrom = from;
+    if (moving) {
+      track.style.transition = 'none';
+      track.style.transform = 'translate3d(' + -from + 'px,0,0)';
+      window.getComputedStyle(track).transform;
+    }
+    track.style.transition = txTransition(container, duration, moving);
     container._txUntil = Date.now() + Math.round(duration * 1000) + 50;
   } else {
     track.style.transition = 'none';

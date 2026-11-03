@@ -47,6 +47,13 @@ var CATALOG_CONSTANTS = {
     // причине, что и у рядов каталога: это горизонтальные скроллеры, и брать
     // «весь ряд плюс экран» значит собрать десяток декодов в один момент.
     DETAIL_POSTER_MARGIN_PX: 300,
+    // Постеры лент карточки заранее, в паузах (warmDetailPosters): через
+    // сколько после заполнения последней ленты начинать и сколько картинок
+    // ставить за одну паузу. Порция маленькая: старт загрузки картинки —
+    // 5–7 мс основного потока на ТВ, и нажатие «вниз» посреди порции не
+    // должно ждать дольше кадра-двух
+    DETAIL_POSTER_WARM_DELAY_MS: 600,
+    DETAIL_POSTER_WARM_BATCH: 3,
     // Сколько рядов НИЖЕ сфокусированного набираем в очередь заранее. Ряд под
     // фокусом ставится целиком (queueFocusedRowPosters), но при спуске фокус
     // приходит в следующий ряд раньше, чем наблюдатель с его 1200px успевает
@@ -4184,23 +4191,40 @@ function pluralRu(n, one, few, many) {
  * w500, значит, и тот же файл в HTTP-кэше). Пока он грузится, название не
  * показываем: иначе текст мелькал бы и сменялся картинкой. Не пришёл за
  * CINEMA_LOGO_WAIT_MS ни с одного зеркала — остаётся текст.
+ *
+ * Откуда логотип: в ответе /api/tmdb/details его нет — он приходит в
+ * элементах подборок главной (item.logo) или отдельным /api/tmdb/logo,
+ * который спрашивает только главная. Поэтому первым делом спрашиваем главную
+ * (HomeScreen.logoUrl): она знает логотипы всего, что показывала в баннере, и
+ * отдаёт адрес с того зеркала, где картинка уже скачана, — файл придёт из
+ * HTTP-кэша. Своих запросов за логотипом карточка не делает.
  */
 var cinemaLogoGen = 0;
 var CINEMA_LOGO_WAIT_MS = 1500;
 
-function renderCinemaLogo(src) {
+function cinemaLogoUrl(item, src) {
+    var url = null;
+    if (window.HomeScreen && typeof window.HomeScreen.logoUrl === 'function') {
+        try { url = window.HomeScreen.logoUrl(item); } catch (e) { url = null; }
+    }
+    if (url) return url;
+    var path = (src && src.logo && src.logo.file_path) || (item && item.logo && item.logo.file_path);
+    return path ? getTmdbImageUrl(path, 'w500') : null;
+}
+
+function renderCinemaLogo(item, src) {
     var img = getEl('detail-cinema-logo'), name = getEl('detail-cinema-name');
     if (!img || !name) return;
     var mine = ++cinemaLogoGen;
-    var path = src && src.logo && src.logo.file_path;
+    var url = cinemaLogoUrl(item, src);
     img.onload = img.onerror = null;
     img.classList.add('hidden');
     if (img.getAttribute('src')) img.removeAttribute('src');
     name.classList.remove('hidden');
     name.style.visibility = '';
-    if (!path) return;
+    if (!url) return;
 
-    var queue = _detailBackdropQueue(getTmdbImageUrl(path, 'w500'));
+    var queue = _detailBackdropQueue(url);
     var at = 0;
     name.style.visibility = 'hidden';
     var timer = setTimeout(function () {
@@ -4228,7 +4252,7 @@ function renderCinemaHead(item, src) {
     if (!getEl('detail-cinema-head')) return;
     var name = getEl('detail-cinema-name');
     if (name) name.textContent = getCatalogItemTitle(item);
-    renderCinemaLogo(src);
+    renderCinemaLogo(item, src);
 
     var parts = [];
     var year = getCatalogItemYear(src) || getCatalogItemYear(item);
@@ -5016,8 +5040,90 @@ function setDetailCardPoster(card, url) {
     card._placeholder.classList.add('hidden');
 
     if (!url) { card._placeholder.classList.remove('hidden'); return; }
-    if (obs) obs.observe(card);
+    if (obs) { obs.observe(card); queueDetailPosterWarm(card); }
     else applyDetailCardPoster(card);       // наблюдателя нет — грузим сразу
+}
+
+/**
+ * Постеры лент карточки — заранее и фоном, как у сетки каталога.
+ *
+ * Одного наблюдателя мало: он ставит src, когда лента подъезжает к экрану, то
+ * есть ровно посреди прокрутки вниз к актёрам. Старт загрузки и показ картинок
+ * ложились на твин, а сами файлы шли по сети — сотни миллисекунд на каждый.
+ * Теперь так:
+ *  1. адреса сразу уходят в фоновый поток (PosterPrefetch, poster-prefetch.js):
+ *     основной поток это не трогает, файлы ложатся в HTTP-кэш;
+ *  2. пока человек смотрит на сцену и ничего не жмёт, src проставляется
+ *     порциями по DETAIL_POSTER_WARM_BATCH — начала лент первыми. Картинка
+ *     приходит из кэша, и к нажатию «вниз» ленты уже с постерами.
+ * Наблюдатель остаётся запасным путём: до чего не дошла очередь, поставит он.
+ */
+var DETAIL_LANE_GRID_IDS = ['catalog-detail-crew', 'catalog-detail-actors', 'catalog-detail-collection', 'catalog-detail-recommendations'];
+var detailPosterWarm = { cards: [], timer: null, prefetchTimer: null };
+
+function queueDetailPosterWarm(card) {
+    if (detailPosterWarm.cards.indexOf(card) === -1) detailPosterWarm.cards.push(card);
+    // Ленты заполняются пачкой в одной задаче — в фоновый поток уходим одним
+    // сообщением, когда пачка собрана
+    if (!detailPosterWarm.prefetchTimer) detailPosterWarm.prefetchTimer = setTimeout(prefetchDetailPosters, 0);
+    // Отсчёт — от последней пришедшей ленты: пока они приходят, карточка ещё строится
+    if (detailPosterWarm.timer) clearTimeout(detailPosterWarm.timer);
+    detailPosterWarm.timer = setTimeout(warmDetailPosters, CATALOG_CONSTANTS.DETAIL_POSTER_WARM_DELAY_MS);
+}
+
+/** Недоставленные карточки — начала лент первыми (номер в пуле = столбец) */
+function pendingDetailPosterCards() {
+    var out = [], list = detailPosterWarm.cards;
+    for (var i = 0; i < list.length; i++) {
+        var c = list[i];
+        if (c._posterUrl && c._img && !c._img.getAttribute('src') && c.isConnected) out.push(c);
+    }
+    out.sort(function (a, b) { return (a._poolIdx || 0) - (b._poolIdx || 0); });
+    detailPosterWarm.cards = out;
+    return out;
+}
+
+function prefetchDetailPosters() {
+    detailPosterWarm.prefetchTimer = null;
+    if (!window.PosterPrefetch) return;
+    var cards = pendingDetailPosterCards(), urls = [];
+    for (var i = 0; i < cards.length; i++) urls.push(cards[i]._posterUrl);
+    window.PosterPrefetch.want(urls);
+}
+
+/** Карточка в движении: держат кнопку, едет сцена или одна из лент */
+function isDetailNavBusy(dv) {
+    if (window.navHold) return true;
+    if (typeof Animations === 'undefined' || typeof Animations.isScrollTweening !== 'function') return false;
+    if (Animations.isScrollTweening(dv)) return true;
+    for (var i = 0; i < DETAIL_LANE_GRID_IDS.length; i++) {
+        var g = getEl(DETAIL_LANE_GRID_IDS[i]);
+        if (g && Animations.isScrollTweening(g)) return true;
+    }
+    return false;
+}
+
+function warmDetailPosters() {
+    detailPosterWarm.timer = null;
+    var dv = getEl('detail-view');
+    // Карточку закрыли — недоставленное больше не нужно: откроют снова,
+    // setDetailCardPoster наберёт очередь заново
+    if (!dv || dv.style.display === 'none' || dv.dataset.hiding === '1' || AppState.currentScreen !== 'detail') {
+        detailPosterWarm.cards = [];
+        return;
+    }
+    if (isDetailNavBusy(dv)) {
+        detailPosterWarm.timer = setTimeout(warmDetailPosters, CATALOG_CONSTANTS.ROW_POSTER_RETRY_MS);
+        return;
+    }
+    var cards = pendingDetailPosterCards();
+    var n = Math.min(cards.length, CATALOG_CONSTANTS.DETAIL_POSTER_WARM_BATCH);
+    for (var i = 0; i < n; i++) {
+        if (detailPosterObserver) { try { detailPosterObserver.unobserve(cards[i]); } catch (e) { } }
+        applyDetailCardPoster(cards[i]);
+    }
+    cards.splice(0, n);
+    if (cards.length) detailPosterWarm.timer = setTimeout(warmDetailPosters, CATALOG_CONSTANTS.ROW_POSTER_RETRY_MS);
 }
 
 /** Карточка уходит из ряда: гасим и снимаем с наблюдателя, чтобы не грузить впустую */
@@ -5052,6 +5158,7 @@ function ensureDetailRowPool(grid, max, build) {
     var pool = [];
     for (var i = 0; i < max; i++) {
         var card = build();
+        card._poolIdx = i;                  // столбец ленты — порядок фоновой загрузки постеров
         card.classList.add('hidden');
         grid.appendChild(card);
         pool.push(card);

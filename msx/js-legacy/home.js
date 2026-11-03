@@ -824,6 +824,12 @@
     if (info !== undefined) homeState.logos[k] = info;
     return info;
   }
+  function knownLogoUrl(item) {
+    var k = heroKey(item);
+    if (!k) return null;
+    var info = knownLogo(item, k);
+    return info && info.url ? info.url : null;
+  }
   function fetchHeroLogo(item, k) {
     var known = knownLogo(item, k);
     if (known !== undefined) return Promise.resolve(known);
@@ -3195,6 +3201,7 @@
     uncover: uncoverHome,
     rearmTrailer: rearmHeroTrailer,
     removeHistoryItem: removeHistoryItem,
+    logoUrl: knownLogoUrl,
     state: homeState
   };
   if (document.readyState === 'loading') {
