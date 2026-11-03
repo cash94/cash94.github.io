@@ -419,7 +419,17 @@ function initCatalogDetailButtons() {
   var trailerBtn = getEl('catalog-trailer-btn');
   if (trailerBtn && !trailerBtn._initialized) {
     trailerBtn._initialized = true;
+    var pointerDownAt = 0;
+    var markPointer = function () { pointerDownAt = Date.now(); };
+    trailerBtn.addEventListener('pointerdown', markPointer, true);
+    trailerBtn.addEventListener('mousedown', markPointer, true);
+    trailerBtn.addEventListener('touchstart', markPointer, true);
     trailerBtn.onclick = function () {
+      if (pointerDownAt && Date.now() - pointerDownAt < 1500) {
+        pointerDownAt = 0;
+        if (typeof window.focusEl === 'function') window.focusEl(trailerBtn);
+        return;
+      }
       if (rutubeTrailerState.currentUrl) {
         openRutubeTrailerInPlayer(rutubeTrailerState.currentUrl, rutubeTrailerState.currentTitle || 'Трейлер');
       }
