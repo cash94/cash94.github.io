@@ -2504,12 +2504,12 @@ function isBackKey(kc) {
 function focusActivePanelItem(panelType) {
   setTimeout(function () {
     var sel;
-    if (panelType === 'episodes') sel = '.episode-item.active';else if (panelType === 'subtitles') sel = '.subtitle-item.active';else if (panelType === 'tracks') sel = '#tracks-panel .player-menu-item';else if (panelType === 'settings') sel = '#player-settings-panel .player-menu-item';else sel = '.audio-item.active';
+    if (panelType === 'episodes') sel = '.episode-item.active';else if (panelType === 'subtitles') sel = '#subtitles-list .subtitle-item.active';else if (panelType === 'onlinesubs') sel = '#online-subs-list .subtitle-item.active';else if (panelType === 'tracks') sel = '#tracks-panel .player-menu-item';else if (panelType === 'settings') sel = '#player-settings-panel .player-menu-item';else sel = '.audio-item.active';
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
     updateFocusableElements();
     var active = document.querySelector(sel);
     if (!active) {
-      var fallbackSel = panelType === 'episodes' ? '.episode-item' : panelType === 'subtitles' ? '.subtitle-item' : '.audio-item';
+      var fallbackSel = panelType === 'episodes' ? '.episode-item' : panelType === 'subtitles' ? '#subtitles-list .subtitle-item' : panelType === 'onlinesubs' ? '#online-subs-list .subtitle-item' : '.audio-item';
       active = document.querySelector(fallbackSel);
     }
     if (!active) {
@@ -3417,7 +3417,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
   } else if (isCatalogGridCard(el)) {
     scrollCatalogGridCardIntoView(el, scrollContainer, smooth);
     return;
-  } else if (container.id == 'episodes-panel' || container.id == 'audio-panel' || container.id == 'subtitles-panel' || container.id == 'tracks-panel' || container.id == 'player-settings-panel') {
+  } else if (container.id == 'episodes-panel' || container.id == 'audio-panel' || container.id == 'subtitles-panel' || container.id == 'online-subs-panel' || container.id == 'tracks-panel' || container.id == 'player-settings-panel') {
     if (typeof Animations !== 'undefined') Animations.scrollToIfNotVisible(el, container);
   }
   if (!scrollContainer) return;

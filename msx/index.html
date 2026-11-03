@@ -116,7 +116,7 @@
       "css/flex-gap-fallback.css": "8acd2bbb",
       "css/inter.css": "2caa5b93",
       "css/legacy.css": "100d5c5a",
-      "css/styles.css": "6b174499",
+      "css/styles.css": "d67e5415",
       "css/uicons-regular-rounded.css": "feee56fb",
       "css/uicons-thin-chubby.css": "1d6159cb",
       "css/uicons-thin-rounded.css": "365fbd61",
@@ -133,7 +133,7 @@
       "js/catalog.js": "164020f0",
       "js/category-banners.js": "c5b8e743",
       "js/config.js": "45e94d6b",
-      "js/control.js": "c71f25a4",
+      "js/control.js": "7c63c22b",
       "js/donate.js": "14adc57a",
       "js/favorites-db.js": "8772a3b7",
       "js/home.js": "08f11c26",
@@ -141,7 +141,7 @@
       "js/osk.js": "acd5c812",
       "js/perf-probe.js": "7143cc61",
       "js/player-memory-fix.js": "2fbf8c05",
-      "js/player.js": "af8dfef6",
+      "js/player.js": "94e8f09d",
       "js/poster-db.js": "5133286b",
       "js/poster-prefetch.js": "31fec0a9",
       "js/screensaver.js": "4f7a0dd9",
@@ -1273,6 +1273,10 @@
   <!-- Плеер -->
   <div id="player-screen" style="display: none;">
     <video id="video-player" autoplay playsinline crossorigin="anonymous" preload="auto"></video>
+    <!-- Онлайн-субтитры: текст рисует player.js (OnlineSubs) по времени
+         видео. Сразу за <video> — его класс cues-raised поднимает блок над
+         панелью управления -->
+    <div id="online-subs-box" class="hidden"></div>
     <!-- Индикатор скорости перемотки -->
     <div id="seek-speed-indicator" class="seek-speed-indicator hidden"></div>
     <!-- Название текущего воспроизводимого файла -->
@@ -1367,7 +1371,17 @@
       <div id="subtitles-list" class="subtitles-list"></div>
     </div>
 
-    <!-- «Аудио и субтитры»: меню из двух разделов. Пункт открывает прежнюю
+    <!-- Онлайн-субтитры (TheSubtitleDB, OpenSubtitles): список, сдвиг
+         раньше/позже. Строки — .subtitle-item, как у обычных субтитров -->
+    <div id="online-subs-panel" class="subtitles-panel hidden">
+      <div class="subtitles-panel-header">
+        <h3>Онлайн субтитры</h3>
+        <button id="close-online-subs" class="close-panel-btn">X</button>
+      </div>
+      <div id="online-subs-list" class="subtitles-list"></div>
+    </div>
+
+    <!-- «Аудио и субтитры»: меню из трёх разделов. Пункт открывает прежнюю
          панель аудиодорожек или субтитров, «Назад» из неё возвращает сюда
          (player.js: openTracksSection, playerPanelBack) -->
     <div id="tracks-panel" class="player-menu-panel hidden">
@@ -1389,6 +1403,14 @@
           <div class="player-menu-info">
             <div class="player-menu-title">Субтитры</div>
             <div class="player-menu-value" id="tracks-subtitles-value"></div>
+          </div>
+          <div class="player-menu-chevron"><svg class="hud-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></div>
+        </div>
+        <div class="player-menu-item" id="tracks-online-item" data-section="onlinesubs">
+          <div class="player-menu-icon"><svg class="hud-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></div>
+          <div class="player-menu-info">
+            <div class="player-menu-title">Онлайн субтитры</div>
+            <div class="player-menu-value" id="tracks-online-value"></div>
           </div>
           <div class="player-menu-chevron"><svg class="hud-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></div>
         </div>

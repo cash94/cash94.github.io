@@ -1743,6 +1743,10 @@ var PLAYER_PANELS = {
     panel: 'subtitles-panel',
     btn: 'tracks-btn'
   },
+  onlinesubs: {
+    panel: 'online-subs-panel',
+    btn: 'tracks-btn'
+  },
   settings: {
     panel: 'player-settings-panel',
     btn: 'player-settings-btn'
@@ -1790,7 +1794,7 @@ function togglePlayerPanel(name) {
     if (name === 'episodes') {
       var hash = AppState.currentDetailItem && AppState.currentDetailItem.hash;
       if (hash && currentEpisodeFiles.length && currentTorrentHash === hash) renderEpisodesList();else if (hash) loadEpisodesInfo(hash);
-    } else if (name === 'audio') renderAudioTracks();else if (name === 'subtitles') renderSubtitleTracks();else if (name === 'tracks') updateTracksMenu();else if (name === 'settings') updatePlayerSettingsMenu();
+    } else if (name === 'audio') renderAudioTracks();else if (name === 'subtitles') renderSubtitleTracks();else if (name === 'onlinesubs') OnlineSubs.open();else if (name === 'tracks') updateTracksMenu();else if (name === 'settings') updatePlayerSettingsMenu();
   }
   tracksMenuOrigin = null;
   setPlayerPanel(name, willOpen);
@@ -1809,6 +1813,8 @@ function updateTracksMenu() {
     var s = currentSubTracks && currentSubTracks[currentSubtitleTrack];
     subsValue.textContent = !currentSubTracks || !currentSubTracks.length ? 'Нет субтитров' : s ? (s.title || 'Субтитры ' + (currentSubtitleTrack + 1)) + (s.language && s.language !== 'und' ? ' · ' + s.language.toUpperCase() : '') : 'Выключены';
   }
+  var onlineValue = getEl('tracks-online-value');
+  if (onlineValue) onlineValue.textContent = OnlineSubs.summary();
 }
 function openTracksSection(section) {
   togglePlayerPanel(section);
@@ -1819,7 +1825,7 @@ function playerPanelBack() {
   var section = tracksMenuOrigin;
   if (!section || !isPlayerPanelOpen(section)) return false;
   togglePlayerPanel('tracks');
-  var row = getEl(section === 'audio' ? 'tracks-audio-item' : 'tracks-subtitles-item');
+  var row = getEl(section === 'audio' ? 'tracks-audio-item' : section === 'onlinesubs' ? 'tracks-online-item' : 'tracks-subtitles-item');
   if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
   if (row && typeof focusEl === 'function') setTimeout(function () {
     focusEl(row);
@@ -1833,7 +1839,7 @@ function setupTracksButton() {
   if (!tracksBtn || !panel) return;
   tracksBtn.addEventListener('click', function (e) {
     e.stopPropagation();
-    if (isPlayerPanelOpen('audio') || isPlayerPanelOpen('subtitles')) closePlayerPanels();else togglePlayerPanel('tracks');
+    if (isPlayerPanelOpen('audio') || isPlayerPanelOpen('subtitles') || isPlayerPanelOpen('onlinesubs')) closePlayerPanels();else togglePlayerPanel('tracks');
     resetMouseIdleTimer();
   });
   panel.addEventListener('click', function (e) {
@@ -1892,7 +1898,7 @@ function applySubtitleSize() {
     style.id = 'subtitle-size-style';
     document.head.appendChild(style);
   }
-  style.textContent = scale === 1 ? '' : '#video-player::cue{font-size:' + Math.round(scale * 100) + '%;}' + '#tizen-avplay-subs{font-size:' + (AVPLAY_SUBS_VH * scale).toFixed(2) + 'vh;}';
+  style.textContent = scale === 1 ? '' : '#video-player::cue{font-size:' + Math.round(scale * 100) + '%;}' + '#tizen-avplay-subs,#online-subs-box{font-size:' + (AVPLAY_SUBS_VH * scale).toFixed(2) + 'vh;}';
   if (webosSubs.enabled && webosSubs.mediaId) webosSubtitleFontSize(webosSubs.mediaId);
 }
 function setSubtitleSize(level) {
@@ -2181,7 +2187,8 @@ function buildEpisodesPlaylist(fromIndex, startSeekTime) {
         percent: itemDuration > 0 ? Math.round(itemTime / itemDuration * 100) : 0
       },
       episode: i + 1,
-      season: AppState.currentSeason || null
+      season: AppState.currentSeason || null,
+      online_subs: onlineSubsPayload(currentTorrentHash, file.id)
     });
   }
   return playlist.length > 1 ? playlist : null;
@@ -2263,7 +2270,8 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       },
       poster: getCurrentItemPoster(),
       id: item && (item.tmdbId || item.id) || null,
-      type: item && item.media_type || (AppState.isCatalogSerials ? 'tv' : 'movie')
+      type: item && item.media_type || (AppState.isCatalogSerials ? 'tv' : 'movie'),
+      online_subs: onlineSubsPayload(torrentHash, fileId)
     };
     if (AppState.autoSwitchEpisodes) {
       var playlist = buildEpisodesPlaylist(currentEpisodeIndex, seekTime);
@@ -3260,6 +3268,7 @@ function _startHLSPlayback() {
       return false;
     }
     var startRef = parseStreamRef(originalUrl);
+    if (startRef) OnlineSubs.onFileStart(startRef.hash, startRef.fileId);
     var startEpisodeTitle = startRef ? getEpisodePlayerTitle(startRef.hash, startRef.fileId) : null;
     if (startEpisodeTitle) updatePlayerTitle(startEpisodeTitle);else if (fileName) updatePlayerTitle(fileName);else if (AppState.currentDetailItem && AppState.currentDetailItem.title) updatePlayerTitle(AppState.currentDetailItem.title);
     if (AppState.currentDetailItem && AppState.currentDetailItem.hash) {
@@ -4782,6 +4791,7 @@ function _switchSubtitleTrack() {
       toggleSubtitlesPanel();
       return;
     }
+    if (trackIndex >= 0) OnlineSubs.off(false);
     if (AppState.transcodingFullOnOff) {
       switchNativeSubtitleTrack(trackIndex);
       return;
@@ -4832,11 +4842,593 @@ function _switchSubtitleTrack() {
 function toggleSubtitlesPanel() {
   return togglePlayerPanel('subtitles');
 }
+var ONLINE_SUBS_LANGS = [{
+  code: 'ru',
+  os: 'rus',
+  label: 'Русские'
+}, {
+  code: 'uk',
+  os: 'ukr',
+  label: 'Украинские'
+}, {
+  code: 'en',
+  os: 'eng',
+  label: 'Английские'
+}];
+var ONLINE_SUBS_PER_LANG = 15;
+var ONLINE_SUBS_STEP_SEC = 0.5;
+var ONLINE_SUBS_TICK_MS = 200;
+var ONLINE_SUBS_RESTORE_DELAY_MS = 4000;
+var ONLINE_SUBS_STORE_KEY = 'onlineSubs';
+var ONLINE_SUBS_STORE_MAX = 300;
+var ONLINE_SUBS_FETCH_MS = 12000;
+var TSDB_API = 'https://api.thesubtitledb.org/v1/';
+var OS_STREMIO_API = 'https://opensubtitles-v3.strem.io/subtitles/';
+var ONLINE_SUBS_FORMATS = {
+  srt: 1,
+  vtt: 1,
+  webvtt: 1,
+  ass: 1,
+  ssa: 1
+};
+function onlineSubsLang(code) {
+  code = String(code || '').toLowerCase();
+  for (var i = 0; i < ONLINE_SUBS_LANGS.length; i++) {
+    var l = ONLINE_SUBS_LANGS[i];
+    if (code === l.code || code === l.os) return l;
+  }
+  return null;
+}
+function getOnlineSubsTarget(hash, fileId) {
+  if (!hash) return null;
+  var h = String(hash).toLowerCase();
+  var item = AppState.currentDetailItem;
+  var torrent = findLoadedTorrent(h) || (item && item.hash && String(item.hash).toLowerCase() === h ? item : null) || {
+    hash: h
+  };
+  var known = typeof knownTorrentMeta !== 'undefined' && knownTorrentMeta ? knownTorrentMeta.get(h) : null;
+  var type = torrent.media_type || known && known.mediaType || null;
+  if (type !== 'movie') {
+    var ep = resolveSkipTarget(torrent, fileId);
+    if (ep) return {
+      tmdbId: ep.tmdbId,
+      type: 'tv',
+      season: ep.season,
+      episode: ep.episode
+    };
+    if (type === 'tv') return null;
+  }
+  var tmdbId = parseInt(getTorrentTmdbId(torrent) || AppState.currentTMDB || '', 10);
+  return tmdbId > 0 ? {
+    tmdbId: tmdbId,
+    type: 'movie',
+    season: null,
+    episode: null
+  } : null;
+}
+window.getOnlineSubsTarget = getOnlineSubsTarget;
+function onlineSubsPayload(hash, fileId) {
+  var t = getOnlineSubsTarget(hash, fileId);
+  return t ? {
+    tmdb_id: t.tmdbId,
+    type: t.type,
+    season: t.season,
+    episode: t.episode
+  } : null;
+}
+function onlineSubsFetchJson(url) {
+  return fetchWithTimeout(url, {}, ONLINE_SUBS_FETCH_MS).then(function (r) {
+    return r.ok ? r.json() : null;
+  })['catch'](function () {
+    return null;
+  });
+}
+function tsdbItems(data, lang) {
+  var items = data && data.subtitles && data.subtitles.items || [];
+  var out = [];
+  for (var i = 0; i < items.length; i++) {
+    var s = items[i];
+    var fmt = String(s.format || 'srt').toLowerCase();
+    if (!s.download_url || !ONLINE_SUBS_FORMATS[fmt]) continue;
+    out.push({
+      lang: lang,
+      url: s.download_url,
+      format: fmt,
+      encoding: s.encoding || '',
+      name: String(s.release_name || '').trim(),
+      hi: !!s.hearing_impaired,
+      source: 'TheSubtitleDB'
+    });
+  }
+  return out;
+}
+function searchOnlineSubs(t) {
+  var base = TSDB_API + 'by-tmdb/' + t.type + '/' + t.tmdbId;
+  var head = t.type === 'tv' ? onlineSubsFetchJson(base + '?limit=1') : Promise.resolve(null);
+  return head.then(function (info) {
+    var tsdbPath = null;
+    var imdb = info && info.title && info.title.imdb;
+    if (t.type === 'tv') {
+      var seasons = info && info.seasons || [];
+      for (var i = 0; i < seasons.length && !tsdbPath; i++) {
+        var eps = seasons[i].episodes || [];
+        for (var j = 0; j < eps.length; j++) {
+          if (eps[j].season === t.season && eps[j].episode === t.episode && eps[j].imdb) {
+            tsdbPath = TSDB_API + 'by-imdb/' + eps[j].imdb;
+            break;
+          }
+        }
+      }
+    } else tsdbPath = base;
+    var perLang = ONLINE_SUBS_LANGS.map(function (l) {
+      if (!tsdbPath) return Promise.resolve({
+        lang: l.code,
+        data: null
+      });
+      return onlineSubsFetchJson(tsdbPath + '?lang=' + l.code + '&limit=' + ONLINE_SUBS_PER_LANG).then(function (data) {
+        return {
+          lang: l.code,
+          data: data
+        };
+      });
+    });
+    return Promise.all(perLang).then(function (res) {
+      for (var k = 0; k < res.length && !imdb; k++) imdb = res[k].data && res[k].data.title && res[k].data.title.imdb;
+      var os = !imdb ? Promise.resolve(null) : onlineSubsFetchJson(OS_STREMIO_API + (t.type === 'tv' ? 'series/' + imdb + ':' + t.season + ':' + t.episode : 'movie/' + imdb) + '.json');
+      return os.then(function (osData) {
+        var list = [],
+          seen = {};
+        var add = function (s) {
+          if (seen[s.url]) return;
+          seen[s.url] = 1;
+          list.push(s);
+        };
+        for (var a = 0; a < ONLINE_SUBS_LANGS.length; a++) {
+          var lang = ONLINE_SUBS_LANGS[a],
+            count = 0;
+          var own = tsdbItems(res[a].data, lang.code);
+          for (var b = 0; b < own.length && count < ONLINE_SUBS_PER_LANG; b++, count++) add(own[b]);
+          var subs = osData && osData.subtitles || [];
+          for (var c = 0; c < subs.length && count < ONLINE_SUBS_PER_LANG; c++) {
+            var s = subs[c];
+            if (!s.url || onlineSubsLang(s.lang) !== lang) continue;
+            add({
+              lang: lang.code,
+              url: s.url,
+              format: 'srt',
+              encoding: 'utf-8',
+              name: String(s.subtitleFileName || s.movieReleaseName || '').trim(),
+              hi: false,
+              source: 'OpenSubtitles'
+            });
+            count++;
+          }
+        }
+        return list;
+      });
+    });
+  });
+}
+function decodeSubtitleBytes(buf, declared) {
+  try {
+    return new TextDecoder('utf-8', {
+      fatal: true
+    }).decode(buf);
+  } catch (e) {}
+  var enc = String(declared || '').toLowerCase().replace(/[_\s]/g, '-');
+  var cp = enc.match(/^(?:cp|windows-?)(\d{3,4})$/);
+  try {
+    return new TextDecoder(cp ? 'windows-' + cp[1] : 'windows-1251').decode(buf);
+  } catch (e) {}
+  return new TextDecoder('utf-8').decode(buf);
+}
+function cleanSubtitleText(s) {
+  return s.replace(/\{[^}]*\}/g, '').replace(/<[^>]*>/g, '').replace(/\\N/gi, '\n').replace(/\\h/g, ' ').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/[ \t]+\n/g, '\n').trim();
+}
+function parseSubtitleCues(text) {
+  text = String(text || '').replace(/^﻿/, '').replace(/\r\n?/g, '\n');
+  var cues = [],
+    i,
+    lines;
+  var time = function (v) {
+    return ServerSubs.parseTime(String(v).replace(',', '.'));
+  };
+  if (/^\s*\[Script Info\]/i.test(text) || /\n\[Events\]/i.test(text)) {
+    lines = text.split('\n');
+    var fmt = null;
+    for (i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (/^Format:/i.test(line)) fmt = line.slice(7).split(',').map(function (f) {
+        return f.trim().toLowerCase();
+      });else if (fmt && /^Dialogue:/i.test(line)) {
+        var parts = line.slice(9).split(',');
+        var tail = parts.splice(fmt.length - 1).join(',');
+        parts.push(tail);
+        var body = cleanSubtitleText(parts[fmt.indexOf('text')] || '');
+        if (body) cues.push({
+          s: time(parts[fmt.indexOf('start')]),
+          e: time(parts[fmt.indexOf('end')]),
+          t: body
+        });
+      }
+    }
+  } else {
+    var blocks = text.split(/\n[ \t]*\n/);
+    for (i = 0; i < blocks.length; i++) {
+      lines = blocks[i].split('\n');
+      for (var j = 0; j < lines.length; j++) {
+        var m = lines[j].match(/([\d:]+[,.]\d+)\s*-->\s*([\d:]+[,.]\d+)/);
+        if (!m) continue;
+        var txt = cleanSubtitleText(lines.slice(j + 1).join('\n'));
+        if (txt) cues.push({
+          s: time(m[1]),
+          e: time(m[2]),
+          t: txt
+        });
+        break;
+      }
+    }
+  }
+  cues.sort(function (a, b) {
+    return a.s - b.s;
+  });
+  return cues;
+}
+function disableRegularSubtitles() {
+  if (currentSubtitleTrack === undefined || currentSubtitleTrack === null || currentSubtitleTrack < 0) return;
+  var save = function () {
+    if (currentTimecodeData.hash && currentTimecodeData.fileId) saveSubtitlePreference(currentTimecodeData.hash, currentTimecodeData.fileId, -1);
+  };
+  if (AppState.transcodingFullOnOff) {
+    if (nativeSubState.mode === 'webos') webosSetSubtitle(-1);else applyNativeSubtitle(-1);
+    currentSubtitleTrack = -1;
+    save();
+  } else if (AppState.serverTracks) {
+    ServerSubs.stop();
+    currentSubtitleTrack = -1;
+    save();
+  } else {
+    switchSubtitleTrack(-1);
+  }
+}
+var OnlineSubs = {
+  fileKey: null,
+  hash: null,
+  fileId: null,
+  target: null,
+  list: null,
+  searching: false,
+  searchGen: 0,
+  active: null,
+  loadingUrl: null,
+  failedUrl: null,
+  offset: 0,
+  timer: null,
+  restoreTimer: null,
+  lastText: null,
+  readStore: function () {
+    var st = null;
+    try {
+      st = JSON.parse(localStorage.getItem(ONLINE_SUBS_STORE_KEY) || 'null');
+    } catch (e) {}
+    if (!st || typeof st !== 'object') st = {};
+    if (!st.f || typeof st.f !== 'object') st.f = {};
+    if (!st.t || typeof st.t !== 'object') st.t = {};
+    return st;
+  },
+  writeStore: function (st) {
+    ['f', 't'].forEach(function (k) {
+      var keys = Object.keys(st[k]);
+      if (keys.length <= ONLINE_SUBS_STORE_MAX) return;
+      keys.sort(function (a, b) {
+        return (st[k][a].ts || 0) - (st[k][b].ts || 0);
+      });
+      for (var i = 0; i < keys.length - ONLINE_SUBS_STORE_MAX; i++) delete st[k][keys[i]];
+    });
+    try {
+      localStorage.setItem(ONLINE_SUBS_STORE_KEY, JSON.stringify(st));
+    } catch (e) {}
+  },
+  remember: function () {
+    if (!this.fileKey) return;
+    var st = this.readStore();
+    if (this.active) {
+      var it = this.active.item;
+      st.f[this.fileKey] = {
+        item: it,
+        offset: this.offset,
+        ts: Date.now()
+      };
+      st.t[this.hash] = {
+        lang: it.lang,
+        ts: Date.now()
+      };
+    } else {
+      delete st.f[this.fileKey];
+      delete st.t[this.hash];
+    }
+    this.writeStore(st);
+  },
+  onFileStart: function (hash, fileId) {
+    if (!hash || fileId === undefined || fileId === null) return;
+    var key = String(hash).toLowerCase() + '_' + fileId;
+    if (key === this.fileKey) {
+      if (this.active) this.startTicker();
+      return;
+    }
+    this.reset();
+    this.fileKey = key;
+    this.hash = String(hash).toLowerCase();
+    this.fileId = fileId;
+    var st = this.readStore();
+    var saved = st.f[key];
+    if (saved && saved.item && saved.item.url) {
+      this.offset = Number(saved.offset) || 0;
+      this.load(saved.item, true);
+      return;
+    }
+    var torrentPick = st.t[this.hash];
+    if (!torrentPick || !torrentPick.lang) return;
+    var self = this,
+      gen = this.searchGen;
+    this.restoreTimer = setTimeout(function () {
+      self.restoreTimer = null;
+      self.ensureList().then(function () {
+        if (gen !== self.searchGen || self.active || self.loadingUrl || currentSubtitleTrack >= 0) return;
+        var list = self.list || [];
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].lang === torrentPick.lang) {
+            self.load(list[i], true);
+            return;
+          }
+        }
+      });
+    }, ONLINE_SUBS_RESTORE_DELAY_MS);
+  },
+  reset: function () {
+    this.stopTicker();
+    if (this.restoreTimer) {
+      clearTimeout(this.restoreTimer);
+      this.restoreTimer = null;
+    }
+    this.searchGen++;
+    this.fileKey = null;
+    this.hash = null;
+    this.fileId = null;
+    this.target = null;
+    this.list = null;
+    this.searching = false;
+    this.active = null;
+    this.loadingUrl = null;
+    this.failedUrl = null;
+    this.offset = 0;
+  },
+  ensureList: function () {
+    var self = this,
+      gen = this.searchGen;
+    if (this.list) return Promise.resolve(this.list);
+    if (!this.target) this.target = getOnlineSubsTarget(this.hash, this.fileId);
+    if (!this.target) {
+      this.list = [];
+      return Promise.resolve(this.list);
+    }
+    this.searching = true;
+    return searchOnlineSubs(this.target).then(function (list) {
+      if (gen !== self.searchGen) return [];
+      self.list = list;
+      self.searching = false;
+      self.refreshPanel();
+      return list;
+    }, function () {
+      if (gen === self.searchGen) {
+        self.list = [];
+        self.searching = false;
+        self.refreshPanel();
+      }
+      return [];
+    });
+  },
+  load: function (item, quiet) {
+    var self = this,
+      gen = this.searchGen;
+    this.loadingUrl = item.url;
+    this.failedUrl = null;
+    this.refreshPanel();
+    return fetchWithTimeout(item.url, {}, ONLINE_SUBS_FETCH_MS * 2).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return typeof TextDecoder === 'function' ? r.arrayBuffer().then(function (buf) {
+        return decodeSubtitleBytes(buf, item.encoding);
+      }) : r.text();
+    }).then(function (text) {
+      if (gen !== self.searchGen || self.loadingUrl !== item.url) return;
+      var cues = parseSubtitleCues(text);
+      if (!cues.length) throw new Error('пустой файл');
+      self.loadingUrl = null;
+      disableRegularSubtitles();
+      self.active = {
+        item: item,
+        cues: cues
+      };
+      self.lastText = null;
+      self.remember();
+      self.startTicker();
+      self.refreshPanel();
+      updateTracksMenu();
+      if (!quiet && isPlayerPanelOpen('onlinesubs')) togglePlayerPanel('onlinesubs');
+    })['catch'](function (err) {
+      if (gen !== self.searchGen || self.loadingUrl !== item.url) return;
+      console.warn('[онлайн-субтитры] не загрузились:', item.url, err && err.message);
+      self.loadingUrl = null;
+      self.failedUrl = item.url;
+      self.refreshPanel();
+      if (!quiet && typeof showToast === 'function') showToast('Не удалось загрузить субтитры');
+    });
+  },
+  off: function (byUser) {
+    if (!this.active && !this.loadingUrl) return;
+    this.active = null;
+    this.loadingUrl = null;
+    this.stopTicker();
+    if (byUser) this.remember();else if (this.fileKey) {
+      var st = this.readStore();
+      delete st.f[this.fileKey];
+      delete st.t[this.hash];
+      this.writeStore(st);
+    }
+    this.refreshPanel();
+    updateTracksMenu();
+  },
+  shift: function (delta) {
+    this.offset = Math.round((this.offset + delta) * 10) / 10;
+    this.lastText = null;
+    this.remember();
+    this.refreshPanel();
+    updateTracksMenu();
+  },
+  getBox: function () {
+    var box = getEl('online-subs-box');
+    if (box && typeof watchCuesRaise === 'function') watchCuesRaise(getEl('video-player'));
+    return box;
+  },
+  startTicker: function () {
+    var self = this;
+    if (this.timer) return;
+    this.timer = setInterval(function () {
+      self.tick();
+    }, ONLINE_SUBS_TICK_MS);
+    this.tick();
+  },
+  stopTicker: function () {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+    this.show('');
+  },
+  show: function (text) {
+    if (text === this.lastText) return;
+    this.lastText = text;
+    var box = this.getBox();
+    if (!box) return;
+    box.textContent = text;
+    box.classList.toggle('hidden', !text);
+  },
+  tick: function () {
+    var v = getEl('video-player');
+    if (!this.active || !v || AppState.currentScreen !== 'player' || AppState.isSeeking) {
+      this.show('');
+      return;
+    }
+    var t = (v.currentTime || 0) + (AppState.seekOffset || 0) - this.offset;
+    var cues = this.active.cues;
+    var lo = 0,
+      hi = cues.length;
+    while (lo < hi) {
+      var mid = lo + hi >> 1;
+      if (cues[mid].s <= t) lo = mid + 1;else hi = mid;
+    }
+    var parts = [];
+    for (var i = lo - 1; i >= 0 && i >= lo - 8; i--) if (cues[i].e > t) parts.unshift(cues[i].t);
+    this.show(parts.join('\n'));
+  },
+  summary: function () {
+    if (!this.active) return this.loadingUrl ? 'Загрузка…' : 'Выключены';
+    var it = this.active.item,
+      lang = onlineSubsLang(it.lang);
+    return (lang ? lang.label : it.lang.toUpperCase()) + (it.name ? ' · ' + it.name : '') + (this.offset ? ' · ' + this.offsetLabel() : '');
+  },
+  offsetLabel: function () {
+    var o = this.offset;
+    return (o > 0 ? '+' : o < 0 ? '−' : '') + Math.abs(o).toFixed(1).replace('.', ',') + ' с';
+  },
+  open: function () {
+    if (!this.fileKey && currentTimecodeData.hash) this.onFileStart(currentTimecodeData.hash, currentTimecodeData.fileId);
+    this.render();
+    if (!this.list && !this.searching) this.ensureList();
+  },
+  refreshPanel: function () {
+    if (!isPlayerPanelOpen('onlinesubs')) return;
+    var list = getEl('online-subs-list');
+    var focused = list && document.activeElement && list.contains(document.activeElement);
+    var focusedKey = null;
+    var f = list ? list.querySelector('.subtitle-item.focused') : null;
+    if (f) focusedKey = f.getAttribute('data-online');
+    this.render();
+    if (list && (focused || focusedKey !== null) && typeof focusActivePanelItem === 'function') {
+      var same = focusedKey !== null ? list.querySelector('[data-online="' + focusedKey + '"]') : null;
+      if (same && typeof focusEl === 'function') {
+        if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+        focusEl(same);
+      } else focusActivePanelItem('onlinesubs');
+    }
+  },
+  render: function () {
+    var el = getEl('online-subs-list');
+    if (!el) return;
+    var html = '';
+    var row = function (key, icon, title, details, active) {
+      return '<div class="subtitle-item' + (active ? ' active' : '') + '" data-online="' + key + '"><div class="subtitle-icon">' + icon + '</div>' + '<div class="subtitle-info"><div class="subtitle-title">' + title + '</div>' + (details ? '<div class="subtitle-details">' + details + '</div>' : '') + '</div><div class="subtitle-check">✓</div></div>';
+    };
+    html += row('off', '🚫', 'Выключить онлайн субтитры', '', !this.active && !this.loadingUrl);
+    if (this.active) {
+      html += row('earlier', '⏪', 'Показывать раньше', '<span class="subtitle-format">Сдвиг ' + escapeHtml(this.offsetLabel()) + '</span>', false);
+      html += row('later', '⏩', 'Показывать позже', '<span class="subtitle-format">шаг ' + String(ONLINE_SUBS_STEP_SEC).replace('.', ',') + ' с</span>', false);
+    }
+    if (this.searching || !this.list && this.fileKey) html += '<div class="search-result-empty">Поиск субтитров…</div>';else if (!this.target && this.list) html += '<div class="search-result-empty">Не удалось определить фильм или серию</div>';else if (this.list && !this.list.length) html += '<div class="search-result-empty">Субтитры не найдены</div>';
+    var list = this.list || [];
+    for (var i = 0; i < list.length; i++) {
+      var s = list[i],
+        lang = onlineSubsLang(s.lang);
+      var isActive = !!(this.active && this.active.item.url === s.url);
+      var state = this.loadingUrl === s.url ? 'Загрузка…' : this.failedUrl === s.url ? 'Не загрузились' : '';
+      var details = '<span class="subtitle-language">' + escapeHtml(s.lang.toUpperCase()) + '</span>' + '<span class="subtitle-format">' + escapeHtml(s.source) + '</span>' + (s.hi ? '<span class="subtitle-format">для слабослышащих</span>' : '') + (state ? '<span class="subtitle-format">' + state + '</span>' : '');
+      html += row(String(i), '💬', escapeHtml((lang ? lang.label : s.lang) + (s.name ? ' · ' + s.name : '')), details, isActive);
+    }
+    el.innerHTML = html;
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+  },
+  onItem: function (key) {
+    if (key === 'off') {
+      this.off(true);
+      if (isPlayerPanelOpen('onlinesubs')) togglePlayerPanel('onlinesubs');
+    } else if (key === 'earlier') this.shift(-ONLINE_SUBS_STEP_SEC);else if (key === 'later') this.shift(ONLINE_SUBS_STEP_SEC);else {
+      var s = this.list && this.list[parseInt(key, 10)];
+      if (!s) return;
+      if (this.active && this.active.item.url === s.url) {
+        togglePlayerPanel('onlinesubs');
+        return;
+      }
+      this.offset = 0;
+      this.load(s, false);
+    }
+  }
+};
+window.OnlineSubs = OnlineSubs;
+function setupOnlineSubsPanel() {
+  var list = getEl('online-subs-list');
+  if (list && !list._delegated) {
+    list._delegated = true;
+    list.addEventListener('click', function (e) {
+      var item = e.target && e.target.closest ? e.target.closest('.subtitle-item') : null;
+      if (item) OnlineSubs.onItem(item.getAttribute('data-online'));
+      resetMouseIdleTimer();
+    });
+  }
+  var closeBtn = getEl('close-online-subs');
+  if (closeBtn && !closeBtn._bound) {
+    closeBtn._bound = true;
+    closeBtn.addEventListener('click', function () {
+      setPlayerPanel('onlinesubs', false);
+      resetMouseIdleTimer();
+    });
+  }
+}
 function setupSubtitlesButton() {
   var closeSubtitlesBtn = getEl('close-subtitles');
   var subtitlesPanel = getEl('subtitles-panel');
   if (!closeSubtitlesBtn || !subtitlesPanel) return;
   setupSubtitlesListDelegation();
+  setupOnlineSubsPanel();
   closeSubtitlesBtn.addEventListener('click', function () {
     setPlayerPanel('subtitles', false);
     resetMouseIdleTimer();
