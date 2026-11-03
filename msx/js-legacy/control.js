@@ -4606,7 +4606,7 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
   window.initSmoothHorizontalScroll = function () {};
 })();
 (function () {
-  var EDGE_SELECTOR = '#catalog-rows .catalog-row-viewport, ' + '#detail-view .files-list, ' + '#detail-view .catalog-detail-actors-grid, ' + '#detail-view .catalog-detail-recommendations-grid';
+  var EDGE_SELECTOR = '#catalog-rows .catalog-row-viewport, ' + '#detail-view .files-list, ' + '#detail-view .catalog-detail-actors-grid, ' + '#detail-view .catalog-detail-crew-grid, ' + '#detail-view .catalog-detail-recommendations-grid';
   var STEP_MS = 320;
   var STEP_SEC = 0.3;
   var hover = {
@@ -4643,7 +4643,13 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     if (metrics.el !== el || now - metrics.at > 500) {
       metrics.el = el;
       metrics.at = now;
-      metrics.box = el.getBoundingClientRect();
+      var r = el.getBoundingClientRect();
+      var shift = el._txTrack === el ? getScrollX(el) : 0;
+      metrics.box = {
+        left: r.left + shift,
+        right: r.right + shift,
+        width: r.width
+      };
       metrics.step = cardStep(el);
     }
     return metrics;

@@ -5430,6 +5430,7 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     var EDGE_SELECTOR = '#catalog-rows .catalog-row-viewport, ' +
         '#detail-view .files-list, ' +
         '#detail-view .catalog-detail-actors-grid, ' +
+        '#detail-view .catalog-detail-crew-grid, ' +
         '#detail-view .catalog-detail-recommendations-grid';
     var STEP_MS = 320;       // как HOME.HOVER_SCROLL_MS
     var STEP_SEC = 0.3;      // как HOME.HOVER_SCROLL_SEC
@@ -5463,7 +5464,12 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
         if (metrics.el !== el || now - metrics.at > 500) {
             metrics.el = el;
             metrics.at = now;
-            metrics.box = el.getBoundingClientRect();
+            var r = el.getBoundingClientRect();
+            // Лента карточки фильма двигает transform саму себя (enableDetailRowTransform),
+            // и рамка уезжает вместе со сдвигом: левая зона пряталась за край
+            // экрана, а правая росла. Возвращаем рамку на место
+            var shift = el._txTrack === el ? getScrollX(el) : 0;
+            metrics.box = { left: r.left + shift, right: r.right + shift, width: r.width };
             metrics.step = cardStep(el);
         }
         return metrics;
