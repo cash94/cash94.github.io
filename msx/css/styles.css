@@ -12275,3 +12275,83 @@ html.apple-device {
     margin-bottom: calc(var(--cu) * 1.4) !important;
   }
 }
+
+/* ===== Вход в карточку-«сцену» (Animations: beginDetailEnter / playDetailEnter) =====
+   Пока содержимое собирается — detail-entering: шапка, кнопки, описание и
+   ленты прозрачны (раньше они появлялись разом, за кадр-два, — «резко»).
+   Готово — detail-enter: они поднимаются и проявляются лесенкой, кадр фона
+   проявляется из чёрного. Только opacity и transform — их ведёт композитор.
+   У кадра фона opacity задана с !important (её анимация не перебьёт), поэтому
+   поверх него растворяется чёрная вуаль ::after — то же самое на вид. Она же
+   срабатывает и при каждом показе кадра (снятие .hidden перезапускает
+   анимацию): фон, пришедший позже содержимого, не впрыгивает. */
+@keyframes detailRiseIn {
+  from { -webkit-transform: translate3d(0, 2.6vh, 0); transform: translate3d(0, 2.6vh, 0); }
+  to { -webkit-transform: translate3d(0, 0, 0); transform: translate3d(0, 0, 0); }
+}
+
+@keyframes detailFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes detailVeilOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+#detail-view.catalog-detail-mode.detail-cinema.detail-entering .detail-cinema-head,
+#detail-view.catalog-detail-mode.detail-cinema.detail-entering #catalog-detail-actions,
+#detail-view.catalog-detail-mode.detail-cinema.detail-entering #catalog-detail-overview,
+#detail-view.catalog-detail-mode.detail-cinema.detail-entering .detail-cinema-below {
+  opacity: 0;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema.detail-enter .detail-cinema-head,
+#detail-view.catalog-detail-mode.detail-cinema.detail-enter #catalog-detail-actions,
+#detail-view.catalog-detail-mode.detail-cinema.detail-enter #catalog-detail-overview {
+  /* Прозрачность — плавно с обеих сторон: кривая с быстрым стартом
+     проявляла текст почти целиком за первые 50–70 мс, и вход снова читался
+     рывком. Подъём — с торможением у места */
+  -webkit-animation: detailFadeIn 0.55s ease-in-out both, detailRiseIn 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation: detailFadeIn 0.55s ease-in-out both, detailRiseIn 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema.detail-enter #catalog-detail-actions {
+  -webkit-animation-delay: 0.06s;
+  animation-delay: 0.06s;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema.detail-enter #catalog-detail-overview {
+  -webkit-animation-delay: 0.1s;
+  animation-delay: 0.1s;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema.detail-enter .detail-cinema-below {
+  -webkit-animation: detailFadeIn 0.5s ease-in-out 0.15s both;
+  animation: detailFadeIn 0.5s ease-in-out 0.15s both;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-detail-backdrop::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  -webkit-animation: detailVeilOut 0.7s ease-in-out both;
+  animation: detailVeilOut 0.7s ease-in-out both;
+}
+
+/* Пока содержимое собирается, вуаль кадра стоит непрозрачной: иначе её
+   растворение стартовало бы посреди тяжёлой задачи готовности и к первому
+   кадру было бы пройдено наполовину. Снят detail-entering — анимация из
+   правила выше начинается заново, вместе с текстом */
+#detail-view.catalog-detail-mode.detail-cinema.detail-entering .catalog-detail-backdrop::after {
+  -webkit-animation: none;
+  animation: none;
+  opacity: 1;
+}

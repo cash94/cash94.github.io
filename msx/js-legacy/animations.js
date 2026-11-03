@@ -192,6 +192,7 @@ var Animations = function () {
     if (detailView && detailView.dataset) delete detailView.dataset.hiding;
   }
   function finishDetailHide(detailView, keepContent) {
+    clearDetailEnter(detailView);
     detailView.style.display = 'none';
     detailView.style.pointerEvents = 'none';
     dropDetailShade();
@@ -204,6 +205,52 @@ var Animations = function () {
       try {
         window.resetDetailBackground();
       } catch (e) {}
+    }
+  }
+  var DETAIL_ENTER_MS = 800;
+  var detailEnterTimer = null;
+  var detailEnterGen = 0;
+  function beginDetailEnter(detailView) {
+    detailEnterGen++;
+    if (detailEnterTimer) {
+      clearTimeout(detailEnterTimer);
+      detailEnterTimer = null;
+    }
+    detailView.classList.remove('detail-enter');
+    detailView.classList.add('detail-entering');
+  }
+  function playDetailEnter(detailView, animate) {
+    if (!detailView || !detailView.classList.contains('detail-entering')) return;
+    if (detailEnterTimer) {
+      clearTimeout(detailEnterTimer);
+      detailEnterTimer = null;
+    }
+    if (!animate || typeof requestAnimationFrame !== 'function') {
+      detailView.classList.remove('detail-entering');
+      return;
+    }
+    var gen = detailEnterGen;
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        if (gen !== detailEnterGen || !detailView.classList.contains('detail-entering')) return;
+        detailView.classList.remove('detail-entering');
+        detailView.classList.add('detail-enter');
+        detailEnterTimer = setTimeout(function () {
+          detailEnterTimer = null;
+          detailView.classList.remove('detail-enter');
+        }, DETAIL_ENTER_MS);
+      });
+    });
+  }
+  function clearDetailEnter(detailView) {
+    detailEnterGen++;
+    if (detailEnterTimer) {
+      clearTimeout(detailEnterTimer);
+      detailEnterTimer = null;
+    }
+    if (detailView) {
+      detailView.classList.remove('detail-entering');
+      detailView.classList.remove('detail-enter');
     }
   }
   function clearDetailRevealTimer() {
@@ -221,6 +268,7 @@ var Animations = function () {
       dropDetailShade();
       return null;
     }
+    playDetailEnter(detailView, true);
     return fadeElement(detailView, 1, DETAIL_FADE.show, DETAIL_FADE.easeOut, function () {
       dropDetailShade();
     });
@@ -261,10 +309,15 @@ var Animations = function () {
     detailView.style.backgroundColor = 'rgb(0, 0, 0)';
     detailView.style.transition = '';
     detailView.style.opacity = '0';
+    beginDetailEnter(detailView);
     showDetailLoading();
     if (!afterSwap) {
       detailRevealPending = false;
       clearDetailRevealTimer();
+      detailEnterTimer = setTimeout(function () {
+        detailEnterTimer = null;
+        playDetailEnter(detailView, true);
+      }, DETAIL_FADE.revealMaxMs);
       return fadeElement(detailView, 1, DETAIL_FADE.show, DETAIL_FADE.easeOut, function () {
         dropDetailShade();
       });
@@ -285,6 +338,7 @@ var Animations = function () {
       revealDetail(detailView);
       return;
     }
+    playDetailEnter(detailView, true);
     if (!detailView._fadeHandle && !detailHideTween) {
       detailView.style.transition = '';
       detailView.style.opacity = '1';
@@ -300,6 +354,7 @@ var Animations = function () {
     detailSwapFaded = false;
     clearDetailRevealTimer();
     dropDetailShade();
+    clearDetailEnter(detailView);
     detailView.style.display = 'block';
     detailView.style.zIndex = '100';
     detailView.style.pointerEvents = 'auto';

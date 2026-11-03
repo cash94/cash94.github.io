@@ -319,6 +319,7 @@ var Animations = (function () {
     }
 
     function finishDetailHide(detailView, keepContent) {
+        clearDetailEnter(detailView);
         detailView.style.display = 'none';
         detailView.style.pointerEvents = 'none';
         dropDetailShade();
@@ -356,6 +357,71 @@ var Animations = (function () {
         }
     }
 
+    /*
+     * Вход содержимого карточки.
+     *
+     * Сама карточка проявляется чёрной подложкой поверх уходящего экрана, а её
+     * содержимое (шапка, кнопки, ленты) до готовности спрятано и потом
+     * появлялось разом, за кадр-два, — это и читалось как «открылась резко».
+     * Теперь до готовности на карточке класс detail-entering (содержимое
+     * прозрачно), а по готовности — detail-enter: содержимое поднимается и
+     * проявляется CSS-анимацией (styles.css, блок «Вход в карточку»). Только
+     * opacity и transform — это ведёт композитор, основной поток в это время
+     * свободен для постеров и фона. Оформление — только у каталожной карточки
+     * («сцена»), у карточки раздачи классы ничего не меняют.
+     */
+    var DETAIL_ENTER_MS = 800;      // дольше самой анимации (0.6 с + задержка лент)
+    var detailEnterTimer = null;
+    // Поколение входа: отложенный на кадр старт не должен сработать поверх
+    // уже закрытой или заново открытой карточки
+    var detailEnterGen = 0;
+
+    function beginDetailEnter(detailView) {
+        detailEnterGen++;
+        if (detailEnterTimer) { clearTimeout(detailEnterTimer); detailEnterTimer = null; }
+        detailView.classList.remove('detail-enter');
+        detailView.classList.add('detail-entering');
+    }
+
+    /**
+     * Содержимое готово — запустить вход. animate:false — сразу, без анимации.
+     *
+     * Старт — через два кадра, а не в той же задаче: готовность объявляется
+     * посреди сборки карточки, и до конца задачи основной поток ещё десятки
+     * миллисекунд (на ТВ — сотни) раскладывает и рисует её. Анимация, начатая
+     * тут же, отсчитывала время с этого момента, и к первому кадру на экране
+     * шапка и кнопки были уже почти проявлены — вход снова выглядел рывком.
+     * Через кадр тяжёлая работа уже в коммите, и первые кадры анимации
+     * действительно показываются.
+     */
+    function playDetailEnter(detailView, animate) {
+        if (!detailView || !detailView.classList.contains('detail-entering')) return;
+        if (detailEnterTimer) { clearTimeout(detailEnterTimer); detailEnterTimer = null; }
+        if (!animate || typeof requestAnimationFrame !== 'function') {
+            detailView.classList.remove('detail-entering');
+            return;
+        }
+        var gen = detailEnterGen;
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                if (gen !== detailEnterGen || !detailView.classList.contains('detail-entering')) return;
+                detailView.classList.remove('detail-entering');
+                detailView.classList.add('detail-enter');
+                // Класс снимаем после анимации: следующее открытие должно начать её заново
+                detailEnterTimer = setTimeout(function () {
+                    detailEnterTimer = null;
+                    detailView.classList.remove('detail-enter');
+                }, DETAIL_ENTER_MS);
+            });
+        });
+    }
+
+    function clearDetailEnter(detailView) {
+        detailEnterGen++;
+        if (detailEnterTimer) { clearTimeout(detailEnterTimer); detailEnterTimer = null; }
+        if (detailView) { detailView.classList.remove('detail-entering'); detailView.classList.remove('detail-enter'); }
+    }
+
     function clearDetailRevealTimer() {
         if (detailRevealTimer) {
             clearTimeout(detailRevealTimer);
@@ -377,6 +443,7 @@ var Animations = (function () {
             dropDetailShade();
             return null;
         }
+        playDetailEnter(detailView, true);
 
         return fadeElement(detailView, 1, DETAIL_FADE.show, DETAIL_FADE.easeOut, function () {
             // Только теперь: пока карточка не стала непрозрачной, снятие слоя
@@ -480,6 +547,7 @@ var Animations = (function () {
         detailView.style.backgroundColor = 'rgb(0, 0, 0)';
         detailView.style.transition = '';
         detailView.style.opacity = '0';
+        beginDetailEnter(detailView);
 
         // «Загрузка…» — до вызова detailContentReady() из torrents.js / catalog.js
         showDetailLoading();
@@ -487,6 +555,12 @@ var Animations = (function () {
         if (!afterSwap) {
             detailRevealPending = false;
             clearDetailRevealTimer();
+            // Содержимое не имеет права остаться прозрачным, если
+            // detailContentReady так и не позовут (оборванная загрузка)
+            detailEnterTimer = setTimeout(function () {
+                detailEnterTimer = null;
+                playDetailEnter(detailView, true);
+            }, DETAIL_FADE.revealMaxMs);
             // dropDetailShade в конце: при обычном открытии подложки нет и
             // вызов холостой, а вот восстановление выпотрошенной карточки её
             // поднимает (см. beginDetailSwap) — и снять её может только тот,
@@ -516,6 +590,7 @@ var Animations = (function () {
         if (!detailView || detailView.style.display === 'none') return;
 
         if (detailRevealPending) { revealDetail(detailView); return; }
+        playDetailEnter(detailView, true);
 
         // Страховка от полупрозрачного экрана: если появление уже не идёт
         // (переход снят или не стартовал), карточка обязана быть непрозрачной
@@ -545,6 +620,8 @@ var Animations = (function () {
         detailSwapFaded = false;
         clearDetailRevealTimer();
         dropDetailShade();
+        // Содержимое на месте — показываем как есть, без входа
+        clearDetailEnter(detailView);
 
         detailView.style.display = 'block';
         detailView.style.zIndex = '100';
