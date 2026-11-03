@@ -406,7 +406,18 @@ function workerFetchTmdbDetailsUncached(item) {
       (d.recommendations && d.recommendations.length > 0));
   }
 
+  // Записи, сохранённые до появления в /details поля logo (логотип названия
+  // для карточки-«сцены»), живут в IndexedDB до 30 дней — и всё это время
+  // карточка показывала текст вместо логотипа. Такую запись один раз берём
+  // заново с сервера. Отметка _logoSchema — что запись уже из сети после
+  // этой правки: старый сервер поля logo не отдаёт, и без отметки карточка
+  // ходила бы в сеть на каждом открытии
+  function hasLogoInfo(d) {
+    return Object.prototype.hasOwnProperty.call(d, 'logo') || d._logoSchema === 1;
+  }
+
   function saveEverywhere(data) {
+    if (data && typeof data === 'object') data._logoSchema = 1;
     saveToTmdbCache('details', p, data);
     tmdbDetailsSet(idbKey, data);
     return data;
@@ -414,7 +425,7 @@ function workerFetchTmdbDetailsUncached(item) {
 
   // 2. IndexedDB
   return tmdbDetailsGet(idbKey).then(function (idbRow) {
-    if (isValidDetails(idbRow)) {
+    if (isValidDetails(idbRow) && hasLogoInfo(idbRow)) {
       saveToTmdbCache('details', p, idbRow);
       return idbRow;
     }
@@ -423,6 +434,12 @@ function workerFetchTmdbDetailsUncached(item) {
     return safeFetch(detailsUrl).then(function (d) {
       if (isValidDetails(d)) {
         return saveEverywhere(d);
+      }
+
+      // Перезапрос старой записи не удался — она полнее, чем /item
+      if (isValidDetails(idbRow)) {
+        saveToTmdbCache('details', p, idbRow);
+        return idbRow;
       }
 
       // 4. Fallback на /api/tmdb/item

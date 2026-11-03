@@ -620,6 +620,48 @@ function getCinemaLanes() {
   }
   return out;
 }
+var CINEMA_LANE_MIN_TOP = 0.03;
+function cinemaLaneScrollTarget(wrap, dv) {
+  var vh = window.innerHeight;
+  var viewH = dv.clientHeight;
+  var max = Math.max(0, dv.scrollHeight - viewH);
+  var base = dv.getBoundingClientRect().top - dv.scrollTop;
+  var clamp = function (v) {
+    return Math.max(0, Math.min(max, Math.round(v)));
+  };
+  var off = vh * CINEMA_LANE_TOP,
+    minTop = vh * CINEMA_LANE_MIN_TOP;
+  var lanes = [];
+  for (var n = 0; n < CINEMA_LANE_IDS.length; n++) {
+    var grid = getEl(CINEMA_LANE_IDS[n]);
+    var w = grid && grid.parentNode;
+    if (!w || w.classList.contains('hidden') || w.style.display === 'none') continue;
+    var r = w.getBoundingClientRect();
+    if (!r.height) continue;
+    lanes.push({
+      el: w,
+      top: r.top - base,
+      bottom: r.bottom - base
+    });
+  }
+  var i = 0;
+  while (i < lanes.length) {
+    var s = clamp(lanes[i].top - off);
+    var j = i;
+    while (j + 1 < lanes.length && lanes[j + 1].bottom <= s + viewH) j++;
+    var sLow = clamp(lanes[i].top - minTop);
+    var k = j;
+    while (k + 1 < lanes.length && lanes[k + 1].bottom <= sLow + viewH) k++;
+    if (k > j) {
+      j = k;
+      s = clamp(Math.max(s, lanes[k].bottom - viewH));
+    }
+    for (var m = i; m <= j; m++) if (lanes[m].el === wrap) return s;
+    i = j + 1;
+  }
+  var wr = wrap.getBoundingClientRect();
+  return clamp(wr.top - base - off);
+}
 function cinemaVerticalStep(f, dir) {
   var lanes = getCinemaLanes();
   var li = -1;
@@ -3328,9 +3370,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
       return;
     }
     if (vertEl && !isRowViewport && isCinemaLaneWrap(container) && isCinemaDetail()) {
-      var cvTop = container.getBoundingClientRect().top - vertEl.getBoundingClientRect().top + vertEl.scrollTop;
-      var cvTarget = Math.round(cvTop - window.innerHeight * CINEMA_LANE_TOP);
-      cvTarget = Math.max(0, Math.min(cvTarget, vertEl.scrollHeight - vertEl.clientHeight));
+      var cvTarget = cinemaLaneScrollTarget(container, vertEl);
       if (Math.abs(scrollRestTop(vertEl) - cvTarget) > 4) applyScroll(vertEl, {
         scrollTop: cvTarget
       }, smooth, CINEMA_SCROLL_S, CINEMA_SCROLL_EASE);
