@@ -2190,8 +2190,10 @@ function renderDeviceInfo() {
   setupAndroidAppSettings();
   var box = getEl('device-info');
   if (!box) return;
-  var dpr = window.devicePixelRatio || 1;
-  var rows = [['Приложение', deviceAppName()], ['Платформа', APPLE_PLATFORM_NAMES[AppState.applePlatform] || PLATFORM_NAMES[AppState.platform] || AppState.platform || '—'], ['Плеер', devicePlayerName()], ['Версия', AppState.currentVersion || '—'], ['Браузер', browserVersionName()], ['User-Agent', navigator.userAgent || '—'], ['Экран', window.innerWidth + '×' + window.innerHeight + (dpr !== 1 ? ' (×' + Math.round(dpr * 100) / 100 + ')' : '') + deviceKeyboardViewport()]];
+  var vp = window.uiViewport;
+  var dpr = (window.devicePixelRatio || 1) * (vp ? vp.native / vp.width : 1);
+  var vpNote = vp && vp.width !== vp.native ? ' · у системы ' + vp.native + '×' + screen.height : '';
+  var rows = [['Приложение', deviceAppName()], ['Платформа', APPLE_PLATFORM_NAMES[AppState.applePlatform] || PLATFORM_NAMES[AppState.platform] || AppState.platform || '—'], ['Плеер', devicePlayerName()], ['Версия', AppState.currentVersion || '—'], ['Браузер', browserVersionName()], ['User-Agent', navigator.userAgent || '—'], ['Экран', window.innerWidth + '×' + window.innerHeight + (dpr !== 1 ? ' (×' + Math.round(dpr * 100) / 100 + ')' : '') + vpNote + deviceKeyboardViewport()]];
   if (AppState.vidaaOsVersion || AppState.vidaaFirmware) {
     rows.splice(2, 0, ['Прошивка', AppState.vidaaFirmware || '—'], ['VIDAA OS', (AppState.vidaaOsVersion || '—') + (AppState.vidaaDirectPlay ? ' · видео напрямую с TorrServer' : '')]);
   }

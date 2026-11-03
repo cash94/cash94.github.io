@@ -2136,8 +2136,11 @@
         homeState.cardCssKey = key;
         homeState.cardWidth = g.w;
         // Кадр плитки: до 400 физических точек хватает w300 (720p, в том
-        // числе с масштабом 1.25), шире — w780 (1080p). w300 легче вчетверо
-        var dpr = window.devicePixelRatio || 1;
+        // числе с масштабом 1.25), шире — w780 (1080p). w300 легче вчетверо.
+        // Разрешение интерфейса в Android (index.html: uiViewport) уменьшает
+        // страницу масштабом, а devicePixelRatio о нём не знает
+        var vp = window.uiViewport;
+        var dpr = (window.devicePixelRatio || 1) * (vp ? vp.native / vp.width : 1);
         homeState.tileImgSize = g.w * dpr <= 400 ? 'w300' : 'w780';
         var st = el('home-card-style');
         if (!st) {

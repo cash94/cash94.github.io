@@ -2764,7 +2764,11 @@ function renderDeviceInfo() {
   setupAndroidAppSettings();
   var box = getEl('device-info');
   if (!box) return;
-  var dpr = window.devicePixelRatio || 1;
+  // Разрешение интерфейса в Android (index.html: uiViewport): страница
+  // уменьшена масштабом — показываем настоящий множитель и исходную ширину
+  var vp = window.uiViewport;
+  var dpr = (window.devicePixelRatio || 1) * (vp ? vp.native / vp.width : 1);
+  var vpNote = vp && vp.width !== vp.native ? ' · у системы ' + vp.native + '×' + screen.height : '';
   var rows = [
     ['Приложение', deviceAppName()],
     ['Платформа', APPLE_PLATFORM_NAMES[AppState.applePlatform] || PLATFORM_NAMES[AppState.platform] || AppState.platform || '—'],
@@ -2772,7 +2776,7 @@ function renderDeviceInfo() {
     ['Версия', AppState.currentVersion || '—'],
     ['Браузер', browserVersionName()],
     ['User-Agent', navigator.userAgent || '—'],
-    ['Экран', window.innerWidth + '×' + window.innerHeight + (dpr !== 1 ? ' (×' + (Math.round(dpr * 100) / 100) + ')' : '') + deviceKeyboardViewport()]
+    ['Экран', window.innerWidth + '×' + window.innerHeight + (dpr !== 1 ? ' (×' + (Math.round(dpr * 100) / 100) + ')' : '') + vpNote + deviceKeyboardViewport()]
   ];
   // Hisense: прошивка и VIDAA OS (config.js: detectVidaaInfo) — от версии
   // VIDAA зависит, играет ли плеер файл напрямую

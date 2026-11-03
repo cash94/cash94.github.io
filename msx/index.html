@@ -4,6 +4,36 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <!-- Android-приложение: разрешение интерфейса. WebView делит экран на
+       плотность из прошивки, и телевизор 1080p с плотностью 2.0 получает
+       960×540 — там включается ужатый ТВ-профиль styles.css (max-height: 620px),
+       а соседний с плотностью 1.5 — полноценные 1280×720. Ширина в meta
+       viewport задаёт, на сколько CSS-пикселей раскладывать страницу, масштаб
+       вписывает её в экран (у WebView включён useWideViewPort). Чёткость не
+       страдает: рисуется всё равно в физические точки. «Авто» на телевизоре
+       поднимает 960 до 1280, выбор — «Внешний вид» (ui-customizer.js:
+       uiResolution). До таблиц стилей: иначе страница разложится дважды. -->
+  <script>
+    (function () {
+      if (!window.AndroidJS || screen.width < screen.height) return;
+      var dpr = window.devicePixelRatio || 1;
+      var info = { native: screen.width, phys: Math.round(screen.width * dpr), auto: 0, width: screen.width };
+      window.uiViewport = info;
+      // Авто — только на телевизоре (у телефона и планшета сенсорный экран)
+      // и только если в физических точках 1280 помещается без растяжения
+      var touch = window.matchMedia && matchMedia('(any-pointer: coarse)').matches;
+      if (!touch && info.native < 1280 && info.phys >= 1280) info.auto = 1280;
+      var want = 0;
+      try { want = parseInt(localStorage.getItem('uiResolution'), 10) || 0; } catch (e) { }
+      var w = want || info.auto;
+      if (!w || w === info.native) return;
+      var scale = info.native / w;
+      info.width = w;
+      var m = document.querySelector('meta[name="viewport"]');
+      if (m) m.setAttribute('content', 'width=' + w + ', initial-scale=' + scale +
+        ', minimum-scale=' + scale + ', maximum-scale=' + scale + ', user-scalable=no, viewport-fit=cover');
+    })();
+  </script>
   <title>TorrStream by Johnny</title>
 
   <!-- Для Vidaa OS -->
@@ -93,7 +123,7 @@
       "js-legacy/legacy-polyfills.js": "e0e9de38",
       "js/account.js": "65c22e09",
       "js/animations.js": "e22d06b9",
-      "js/app.js": "16a5ef1f",
+      "js/app.js": "31557434",
       "js/catalog-idb-patch.js": "7cf849b3",
       "js/catalog-worker-bridge.js": "7f94619a",
       "js/catalog-worker-patch.js": "240192eb",
@@ -106,7 +136,7 @@
       "js/control.js": "686ba714",
       "js/donate.js": "14adc57a",
       "js/favorites-db.js": "8772a3b7",
-      "js/home.js": "b3a64f73",
+      "js/home.js": "7b7e2c16",
       "js/nav.js": "02a98d5e",
       "js/osk.js": "acd5c812",
       "js/perf-probe.js": "7143cc61",
@@ -126,7 +156,7 @@
       "js/torrents-worker.js": "8681c310",
       "js/torrents.js": "33bb71d1",
       "js/torrserverstats.js": "93bbc0fa",
-      "js/ui-customizer.js": "2ecfb3b3"
+      "js/ui-customizer.js": "ab310609"
       // ASSET_V:end
     };
     function assetV(p) {

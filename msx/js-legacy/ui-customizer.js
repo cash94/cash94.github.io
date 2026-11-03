@@ -242,6 +242,31 @@
       density: 'compact'
     };
   }
+  function refitForScreen(raw, fit) {
+    var kind = fit ? 'short' : 'normal';
+    var auto = raw.fitAuto;
+    var prev = raw.fitFor;
+    if (!prev) {
+      auto = {
+        cardSize: clampStep(Math.round(540 * 0.266), SLIDERS.cardSize),
+        density: 'compact'
+      };
+      prev = raw.cardSize === auto.cardSize && raw.density === auto.density ? 'short' : kind;
+    }
+    if (prev === kind) return raw;
+    if (prev === 'normal') auto = {
+      cardSize: defaultSettings.cardSize,
+      density: defaultSettings.density
+    };
+    var cs = raw.cardSize === undefined ? defaultSettings.cardSize : raw.cardSize;
+    var dn = raw.density === undefined ? defaultSettings.density : raw.density;
+    if (!auto || cs !== auto.cardSize || dn !== auto.density) return raw;
+    var next = fit || {
+      cardSize: defaultSettings.cardSize,
+      density: defaultSettings.density
+    };
+    return Object.assign({}, raw, next);
+  }
   function resolvedDefaults() {
     return Object.assign({}, defaultSettings, viewportDefaults());
   }
@@ -278,8 +303,11 @@
     var raw = migrateLegacy(saved ? JSON.parse(saved) : null);
     var fit = viewportDefaults();
     var needFit = !!fit && !!raw && raw.fitVersion !== FIT_VERSION;
+    if (raw && !needFit) raw = refitForScreen(raw, fit);
     currentSettings = normalizeSettings(needFit ? Object.assign({}, defaultSettings, raw, fit) : Object.assign({}, defaultSettings, fit, raw));
     currentSettings.fitVersion = FIT_VERSION;
+    currentSettings.fitFor = fit ? 'short' : 'normal';
+    currentSettings.fitAuto = fit;
     if (saved) saveSettings();
   } catch (e) {
     currentSettings = resolvedDefaults();
@@ -573,12 +601,41 @@
     var cfg = SLIDERS[setting];
     return '<div class="ui-slider" data-setting="' + setting + '">' + '<div class="ui-slider-track">' + '<div class="ui-slider-fill"></div>' + '<div class="ui-slider-thumb"></div>' + '</div>' + '<div class="ui-slider-val">' + cfg.fmt(cfg.def) + '</div>' + '</div>' + '<div class="ui-slider-ends"><span>' + minLabel + '</span><span>' + maxLabel + '</span></div>';
   }
+  var RESOLUTION_KEY = 'uiResolution';
+  var RESOLUTIONS = [[960, '960 × 540'], [1280, '1280 × 720'], [1920, '1920 × 1080']];
+  function resolutionChoice() {
+    try {
+      return String(parseInt(localStorage.getItem(RESOLUTION_KEY), 10) || 'auto');
+    } catch (e) {
+      return 'auto';
+    }
+  }
+  function resolutionGroup() {
+    var vp = window.uiViewport;
+    if (!vp) return '';
+    var autoW = vp.auto || vp.native;
+    var opts = [['auto', 'Авто (' + autoW + ' × ' + Math.round(autoW * screen.height / screen.width) + ')']];
+    for (var i = 0; i < RESOLUTIONS.length; i++) {
+      if (RESOLUTIONS[i][0] <= Math.max(vp.phys, 1280)) opts.push([String(RESOLUTIONS[i][0]), RESOLUTIONS[i][1]]);
+    }
+    return '<div class="ui-customizer-group"><h3>Разрешение интерфейса</h3>' + '<div class="ui-customizer-hint">На сколько точек раскладывать экран. Больше — мельче элементы и больше помещается; чёткость та же. После выбора приложение перезагрузит страницу.</div>' + '<div class="ui-customizer-options">' + optionRow(RESOLUTION_KEY, opts) + '</div></div>';
+  }
+  function setResolution(value) {
+    if (value === resolutionChoice()) return;
+    try {
+      if (value === 'auto') localStorage.removeItem(RESOLUTION_KEY);else localStorage.setItem(RESOLUTION_KEY, value);
+    } catch (e) {
+      return;
+    }
+    saveSettings();
+    location.reload();
+  }
   function createCustomizerPanel() {
     if (document.getElementById('ui-customizer-overlay')) return;
     var overlay = document.createElement('div');
     overlay.id = 'ui-customizer-overlay';
     overlay.className = 'ui-customizer-overlay hidden';
-    overlay.innerHTML = '<div class="ui-customizer-panel" id="ui-customizer-panel" role="dialog" aria-label="Настройка интерфейса">' + '<div class="ui-customizer-header">' + '<div><h2>Внешний вид</h2>' + '<div class="ui-embed-hint">Всплывающим окном — в любом разделе: жёлтая кнопка пульта или клавиша «C».</div></div>' + '<button class="ui-customizer-close" id="ui-close-customizer" title="Закрыть"><i class="fi fi-rr-cross"></i></button>' + '</div>' + '<div class="ui-customizer-content">' + '<div class="ui-customizer-group"><h3>Размер карточек и постеров</h3>' + '<div class="ui-customizer-hint">Один размер для сетки и для рядов-карусели. Максимум — 260 × 460.</div>' + sliderRow('cardSize', '120 × ' + posterHeight(SLIDERS.cardSize.min), CARD_MAX_W + ' × ' + CARD_MAX_H) + '</div>' + '<div class="ui-customizer-group"><h3>Масштаб детального просмотра</h3>' + '<div class="ui-customizer-hint">Шапка, описание, кнопки, актёры и список файлов на экране фильма.</div>' + sliderRow('detailScale', SLIDERS.detailScale.min + '%', SLIDERS.detailScale.max + '%') + '</div>' + '<div class="ui-customizer-group"><h3>Шапка</h3>' + '<div class="ui-customizer-hint">Размер шрифта верхней строки: TorrStream, разделы, лупа, «Настройки», часы и дата. Не влезет в экран — шапка уменьшится до того, что влезает.</div>' + sliderRow('topbarScale', SLIDERS.topbarScale.min + '%', SLIDERS.topbarScale.max + '%') + '</div>' + '<div class="ui-customizer-group"><h3>Вид шапки</h3>' + '<div class="ui-customizer-hint">Разделы подписями или иконками: главная — домик, настройки — шестерёнка. Иконки занимают меньше места.</div>' + '<div class="ui-customizer-options">' + optionRow('topbarStyle', [['text', 'Текст'], ['icons', 'Иконки']]) + '</div></div>' + '<div class="ui-customizer-group"><h3>Экран «Настройки»</h3>' + '<div class="ui-customizer-hint">Размер всего экрана настроек — разделы, подписи, поля, переключатели, кнопки — и этой панели.</div>' + sliderRow('settingsScale', SLIDERS.settingsScale.min + '%', SLIDERS.settingsScale.max + '%') + '</div>' + '<div class="ui-customizer-group"><h3>Текст описания</h3>' + '<div class="ui-customizer-hint">Размер шрифта описания на экране фильма. Кнопки, постеры и остальное не меняются.</div>' + sliderRow('detailTextScale', SLIDERS.detailTextScale.min + '%', SLIDERS.detailTextScale.max + '%') + '</div>' + '<div class="ui-customizer-group"><h3>Результаты поиска</h3>' + '<div class="ui-customizer-hint">Размер списка раздач в поиске по трекерам: название, трекер, размер, сиды, озвучки и отступы между ними.</div>' + sliderRow('searchScale', SLIDERS.searchScale.fmt(SLIDERS.searchScale.min), SLIDERS.searchScale.fmt(SLIDERS.searchScale.max)) + '</div>' + '<div class="ui-customizer-group"><h3>Количество колонок</h3>' + '<div class="ui-customizer-hint">«Авто» — колонки считаются из размера карточки.</div>' + '<div class="ui-customizer-options">' + optionRow('catalogColumns', [['auto', 'Авто'], ['3', '3'], ['4', '4'], ['5', '5'], ['6', '6'], ['7', '7'], ['8', '8']]) + '</div>' + '</div>' + '<div class="ui-customizer-group"><h3>Размер подписей карточки</h3>' + '<div class="ui-customizer-hint">Название под постером.</div>' + sliderRow('titleSize', SLIDERS.titleSize.min + ' px', SLIDERS.titleSize.max + ' px') + '<div class="ui-customizer-hint">Оценка на постере.</div>' + sliderRow('ratingSize', SLIDERS.ratingSize.min + ' px', SLIDERS.ratingSize.max + ' px') + '<div class="ui-customizer-hint">Тип: фильм или сериал.</div>' + sliderRow('typeSize', SLIDERS.typeSize.min + ' px', SLIDERS.typeSize.max + ' px') + '<div class="ui-customizer-hint">Год на постере.</div>' + sliderRow('yearSize', SLIDERS.yearSize.min + ' px', SLIDERS.yearSize.max + ' px') + '</div>' + '<div class="ui-customizer-group"><h3>Текст на баннере главной</h3>' + '<div class="ui-customizer-hint">Название, рейтинг с жанрами и описание. Кнопки и сам баннер не меняются.</div>' + sliderRow('heroTextScale', SLIDERS.heroTextScale.min + '%', SLIDERS.heroTextScale.max + '%') + '</div>' + '<div class="ui-customizer-group"><h3>Скругление углов</h3><div class="ui-customizer-options">' + optionRow('borderRadius', [['none', 'Без'], ['small', 'Малое'], ['medium', 'Среднее'], ['large', 'Большое']]) + '</div></div>' + '<div class="ui-customizer-group"><h3>Плотность интерфейса</h3><div class="ui-customizer-options">' + optionRow('density', [['compact', 'Компактный'], ['comfortable', 'Комфортный'], ['spacious', 'Просторный']]) + '</div></div>' + '<div class="ui-customizer-group"><h3>Анимации</h3><div class="ui-customizer-options">' + optionRow('animations', [['none', 'Отключить'], ['reduced', 'Быстрые'], ['normal', 'Обычные']]) + '</div></div>' + '<div class="ui-customizer-group"><h3>Анимация прокрутки рядов</h3>' + '<div class="ui-customizer-hint">Горизонтальное движение каруселей каталога и списков в карточке фильма. На слабых устройствах плавное движение может подтормаживать — выберите «Без анимации».</div>' + '<div class="ui-customizer-options">' + optionRow('scrollAnim', [['none', 'Без анимации'], ['fast', 'Быстрая'], ['smooth', 'Плавная']]) + '</div></div>' + '<div class="ui-customizer-group"><h3>Яркость постеров</h3><div class="ui-customizer-options">' + optionRow('posterBrightness', [['dim', 'Приглушённая'], ['normal', 'Обычная'], ['bright', 'Яркая']]) + '</div></div>' + '<div class="ui-customizer-group"><h3>Цвет фокуса</h3>' + '<div class="ui-customizer-hint">Цвет рамки вокруг выбранного элемента: карточки, кнопки, ряды, фильтры, плеер.</div>' + '<div class="ui-customizer-options ui-swatches">' + swatchRow() + '</div>' + '</div>' + '<div class="ui-customizer-group"><h3>Отображение элементов</h3>' + '<label class="ui-checkbox" data-check="showRatings"><input type="checkbox" id="ui-show-ratings"' + (currentSettings.showRatings ? ' checked' : '') + '><span>Показывать рейтинги</span></label>' + '<label class="ui-checkbox" data-check="showYear"><input type="checkbox" id="ui-show-year"' + (currentSettings.showYear ? ' checked' : '') + '><span>Показывать год</span></label>' + '</div>' + '<div class="ui-customizer-group"><h3>Трейлеры на главной</h3>' + '<div class="ui-customizer-hint">Постояв на карточке 5 секунд, баннер главной сам включает её трейлер вместо картинки. Выключите, если это мешает или тормозит на слабом устройстве.</div>' + '<label class="ui-checkbox" data-check="heroTrailers"><input type="checkbox" id="ui-hero-trailers"' + (currentSettings.heroTrailers ? ' checked' : '') + '><span>Автовоспроизведение трейлеров</span></label>' + '</div>' + '</div>' + '<div class="ui-customizer-footer">' + '<button class="ui-cust-btn" id="ui-reset-defaults">Сбросить</button>' + '<button class="ui-cust-btn primary" id="ui-apply-settings">Сохранить</button>' + '</div>' + '</div>';
+    overlay.innerHTML = '<div class="ui-customizer-panel" id="ui-customizer-panel" role="dialog" aria-label="Настройка интерфейса">' + '<div class="ui-customizer-header">' + '<div><h2>Внешний вид</h2>' + '<div class="ui-embed-hint">Всплывающим окном — в любом разделе: жёлтая кнопка пульта или клавиша «C».</div></div>' + '<button class="ui-customizer-close" id="ui-close-customizer" title="Закрыть"><i class="fi fi-rr-cross"></i></button>' + '</div>' + '<div class="ui-customizer-content">' + resolutionGroup() + '<div class="ui-customizer-group"><h3>Размер карточек и постеров</h3>' + '<div class="ui-customizer-hint">Один размер для сетки и для рядов-карусели. Максимум — 260 × 460.</div>' + sliderRow('cardSize', '120 × ' + posterHeight(SLIDERS.cardSize.min), CARD_MAX_W + ' × ' + CARD_MAX_H) + '</div>' + '<div class="ui-customizer-group"><h3>Масштаб детального просмотра</h3>' + '<div class="ui-customizer-hint">Шапка, описание, кнопки, актёры и список файлов на экране фильма.</div>' + sliderRow('detailScale', SLIDERS.detailScale.min + '%', SLIDERS.detailScale.max + '%') + '</div>' + '<div class="ui-customizer-group"><h3>Шапка</h3>' + '<div class="ui-customizer-hint">Размер шрифта верхней строки: TorrStream, разделы, лупа, «Настройки», часы и дата. Не влезет в экран — шапка уменьшится до того, что влезает.</div>' + sliderRow('topbarScale', SLIDERS.topbarScale.min + '%', SLIDERS.topbarScale.max + '%') + '</div>' + '<div class="ui-customizer-group"><h3>Вид шапки</h3>' + '<div class="ui-customizer-hint">Разделы подписями или иконками: главная — домик, настройки — шестерёнка. Иконки занимают меньше места.</div>' + '<div class="ui-customizer-options">' + optionRow('topbarStyle', [['text', 'Текст'], ['icons', 'Иконки']]) + '</div></div>' + '<div class="ui-customizer-group"><h3>Экран «Настройки»</h3>' + '<div class="ui-customizer-hint">Размер всего экрана настроек — разделы, подписи, поля, переключатели, кнопки — и этой панели.</div>' + sliderRow('settingsScale', SLIDERS.settingsScale.min + '%', SLIDERS.settingsScale.max + '%') + '</div>' + '<div class="ui-customizer-group"><h3>Текст описания</h3>' + '<div class="ui-customizer-hint">Размер шрифта описания на экране фильма. Кнопки, постеры и остальное не меняются.</div>' + sliderRow('detailTextScale', SLIDERS.detailTextScale.min + '%', SLIDERS.detailTextScale.max + '%') + '</div>' + '<div class="ui-customizer-group"><h3>Результаты поиска</h3>' + '<div class="ui-customizer-hint">Размер списка раздач в поиске по трекерам: название, трекер, размер, сиды, озвучки и отступы между ними.</div>' + sliderRow('searchScale', SLIDERS.searchScale.fmt(SLIDERS.searchScale.min), SLIDERS.searchScale.fmt(SLIDERS.searchScale.max)) + '</div>' + '<div class="ui-customizer-group"><h3>Количество колонок</h3>' + '<div class="ui-customizer-hint">«Авто» — колонки считаются из размера карточки.</div>' + '<div class="ui-customizer-options">' + optionRow('catalogColumns', [['auto', 'Авто'], ['3', '3'], ['4', '4'], ['5', '5'], ['6', '6'], ['7', '7'], ['8', '8']]) + '</div>' + '</div>' + '<div class="ui-customizer-group"><h3>Размер подписей карточки</h3>' + '<div class="ui-customizer-hint">Название под постером.</div>' + sliderRow('titleSize', SLIDERS.titleSize.min + ' px', SLIDERS.titleSize.max + ' px') + '<div class="ui-customizer-hint">Оценка на постере.</div>' + sliderRow('ratingSize', SLIDERS.ratingSize.min + ' px', SLIDERS.ratingSize.max + ' px') + '<div class="ui-customizer-hint">Тип: фильм или сериал.</div>' + sliderRow('typeSize', SLIDERS.typeSize.min + ' px', SLIDERS.typeSize.max + ' px') + '<div class="ui-customizer-hint">Год на постере.</div>' + sliderRow('yearSize', SLIDERS.yearSize.min + ' px', SLIDERS.yearSize.max + ' px') + '</div>' + '<div class="ui-customizer-group"><h3>Текст на баннере главной</h3>' + '<div class="ui-customizer-hint">Название, рейтинг с жанрами и описание. Кнопки и сам баннер не меняются.</div>' + sliderRow('heroTextScale', SLIDERS.heroTextScale.min + '%', SLIDERS.heroTextScale.max + '%') + '</div>' + '<div class="ui-customizer-group"><h3>Скругление углов</h3><div class="ui-customizer-options">' + optionRow('borderRadius', [['none', 'Без'], ['small', 'Малое'], ['medium', 'Среднее'], ['large', 'Большое']]) + '</div></div>' + '<div class="ui-customizer-group"><h3>Плотность интерфейса</h3><div class="ui-customizer-options">' + optionRow('density', [['compact', 'Компактный'], ['comfortable', 'Комфортный'], ['spacious', 'Просторный']]) + '</div></div>' + '<div class="ui-customizer-group"><h3>Анимации</h3><div class="ui-customizer-options">' + optionRow('animations', [['none', 'Отключить'], ['reduced', 'Быстрые'], ['normal', 'Обычные']]) + '</div></div>' + '<div class="ui-customizer-group"><h3>Анимация прокрутки рядов</h3>' + '<div class="ui-customizer-hint">Горизонтальное движение каруселей каталога и списков в карточке фильма. На слабых устройствах плавное движение может подтормаживать — выберите «Без анимации».</div>' + '<div class="ui-customizer-options">' + optionRow('scrollAnim', [['none', 'Без анимации'], ['fast', 'Быстрая'], ['smooth', 'Плавная']]) + '</div></div>' + '<div class="ui-customizer-group"><h3>Яркость постеров</h3><div class="ui-customizer-options">' + optionRow('posterBrightness', [['dim', 'Приглушённая'], ['normal', 'Обычная'], ['bright', 'Яркая']]) + '</div></div>' + '<div class="ui-customizer-group"><h3>Цвет фокуса</h3>' + '<div class="ui-customizer-hint">Цвет рамки вокруг выбранного элемента: карточки, кнопки, ряды, фильтры, плеер.</div>' + '<div class="ui-customizer-options ui-swatches">' + swatchRow() + '</div>' + '</div>' + '<div class="ui-customizer-group"><h3>Отображение элементов</h3>' + '<label class="ui-checkbox" data-check="showRatings"><input type="checkbox" id="ui-show-ratings"' + (currentSettings.showRatings ? ' checked' : '') + '><span>Показывать рейтинги</span></label>' + '<label class="ui-checkbox" data-check="showYear"><input type="checkbox" id="ui-show-year"' + (currentSettings.showYear ? ' checked' : '') + '><span>Показывать год</span></label>' + '</div>' + '<div class="ui-customizer-group"><h3>Трейлеры на главной</h3>' + '<div class="ui-customizer-hint">Постояв на карточке 5 секунд, баннер главной сам включает её трейлер вместо картинки. Выключите, если это мешает или тормозит на слабом устройстве.</div>' + '<label class="ui-checkbox" data-check="heroTrailers"><input type="checkbox" id="ui-hero-trailers"' + (currentSettings.heroTrailers ? ' checked' : '') + '><span>Автовоспроизведение трейлеров</span></label>' + '</div>' + '</div>' + '<div class="ui-customizer-footer">' + '<button class="ui-cust-btn" id="ui-reset-defaults">Сбросить</button>' + '<button class="ui-cust-btn primary" id="ui-apply-settings">Сохранить</button>' + '</div>' + '</div>';
     document.body.appendChild(overlay);
     updateActiveButtons();
     setupPanelListeners();
@@ -727,7 +784,8 @@
     var buttons = document.querySelectorAll('#ui-customizer-panel .ui-option');
     for (var i = 0; i < buttons.length; i++) {
       var btn = buttons[i];
-      btn.classList.toggle('active', String(currentSettings[btn.dataset.setting]) === String(btn.dataset.value));
+      var cur = btn.dataset.setting === RESOLUTION_KEY ? resolutionChoice() : currentSettings[btn.dataset.setting];
+      btn.classList.toggle('active', String(cur) === String(btn.dataset.value));
     }
     var r = document.getElementById('ui-show-ratings');
     var y = document.getElementById('ui-show-year');
@@ -746,6 +804,10 @@
     });
     panel.addEventListener('click', function (e) {
       var opt = e.target.closest ? e.target.closest('.ui-option') : null;
+      if (opt && opt.dataset.setting === RESOLUTION_KEY) {
+        setResolution(opt.dataset.value);
+        return;
+      }
       if (opt) {
         currentSettings[opt.dataset.setting] = opt.dataset.value;
         updateActiveButtons();

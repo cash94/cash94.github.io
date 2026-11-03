@@ -250,6 +250,29 @@
         };
     }
 
+    // Экран сменил класс (низкий ↔ обычный) — в Android так бывает при выборе
+    // разрешения интерфейса. Размер карточек и плотность, которых пользователь
+    // не трогал, подгоняем под новый экран: иначе карточки 144 px, подобранные
+    // под 540, так и остались бы на 720. fitFor/fitAuto — для какого экрана и
+    // какие значения выставила подгонка; у сохранённых до них настроек
+    // подгонка для 960×540 узнаётся по своим значениям.
+    function refitForScreen(raw, fit) {
+        var kind = fit ? 'short' : 'normal';
+        var auto = raw.fitAuto;
+        var prev = raw.fitFor;
+        if (!prev) {
+            auto = { cardSize: clampStep(Math.round(540 * 0.266), SLIDERS.cardSize), density: 'compact' };
+            prev = raw.cardSize === auto.cardSize && raw.density === auto.density ? 'short' : kind;
+        }
+        if (prev === kind) return raw;
+        if (prev === 'normal') auto = { cardSize: defaultSettings.cardSize, density: defaultSettings.density };
+        var cs = raw.cardSize === undefined ? defaultSettings.cardSize : raw.cardSize;
+        var dn = raw.density === undefined ? defaultSettings.density : raw.density;
+        if (!auto || cs !== auto.cardSize || dn !== auto.density) return raw;
+        var next = fit || { cardSize: defaultSettings.cardSize, density: defaultSettings.density };
+        return Object.assign({}, raw, next);
+    }
+
     // Дефолты с учётом экрана — их же отдаёт кнопка «Сбросить»
     function resolvedDefaults() {
         return Object.assign({}, defaultSettings, viewportDefaults());
@@ -299,10 +322,13 @@
         // Разовая подгонка уже сохранённых настроек под низкий экран. Дальше
         // ползунок пользователя главнее: fitVersion сохраняется вместе с ним.
         var needFit = !!fit && !!raw && raw.fitVersion !== FIT_VERSION;
+        if (raw && !needFit) raw = refitForScreen(raw, fit);
         currentSettings = normalizeSettings(needFit
             ? Object.assign({}, defaultSettings, raw, fit)
             : Object.assign({}, defaultSettings, fit, raw));
         currentSettings.fitVersion = FIT_VERSION;
+        currentSettings.fitFor = fit ? 'short' : 'normal';
+        currentSettings.fitAuto = fit;
         // Помечаем только то, что уже лежало в localStorage. Если настроек не было,
         // ничего не пишем — тогда дефолт продолжит подстраиваться под экран сам.
         if (saved) saveSettings();
@@ -956,6 +982,42 @@
             '<div class="ui-slider-ends"><span>' + minLabel + '</span><span>' + maxLabel + '</span></div>';
     }
 
+    // ==================== РАЗРЕШЕНИЕ ИНТЕРФЕЙСА (Android) ====================
+
+    // Применяет его скрипт в <head> index.html до загрузки стилей, отсюда —
+    // только выбор: значение в localStorage и перезагрузка страницы.
+    // window.uiViewport есть только в Android-приложении в лендскейпе.
+    var RESOLUTION_KEY = 'uiResolution';
+    var RESOLUTIONS = [[960, '960 × 540'], [1280, '1280 × 720'], [1920, '1920 × 1080']];
+
+    function resolutionChoice() {
+        try { return String(parseInt(localStorage.getItem(RESOLUTION_KEY), 10) || 'auto'); } catch (e) { return 'auto'; }
+    }
+
+    function resolutionGroup() {
+        var vp = window.uiViewport;
+        if (!vp) return '';
+        var autoW = vp.auto || vp.native;
+        var opts = [['auto', 'Авто (' + autoW + ' × ' + Math.round(autoW * screen.height / screen.width) + ')']];
+        // Шире физического экрана — только растягивать картинку, не предлагаем
+        for (var i = 0; i < RESOLUTIONS.length; i++) {
+            if (RESOLUTIONS[i][0] <= Math.max(vp.phys, 1280)) opts.push([String(RESOLUTIONS[i][0]), RESOLUTIONS[i][1]]);
+        }
+        return '<div class="ui-customizer-group"><h3>Разрешение интерфейса</h3>' +
+            '<div class="ui-customizer-hint">На сколько точек раскладывать экран. Больше — мельче элементы и больше помещается; чёткость та же. После выбора приложение перезагрузит страницу.</div>' +
+            '<div class="ui-customizer-options">' + optionRow(RESOLUTION_KEY, opts) + '</div></div>';
+    }
+
+    function setResolution(value) {
+        if (value === resolutionChoice()) return;
+        try {
+            if (value === 'auto') localStorage.removeItem(RESOLUTION_KEY);
+            else localStorage.setItem(RESOLUTION_KEY, value);
+        } catch (e) { return; }
+        saveSettings();
+        location.reload();
+    }
+
     function createCustomizerPanel() {
         if (document.getElementById('ui-customizer-overlay')) return;
 
@@ -971,6 +1033,7 @@
             '<button class="ui-customizer-close" id="ui-close-customizer" title="Закрыть"><i class="fi fi-rr-cross"></i></button>' +
             '</div>' +
             '<div class="ui-customizer-content">' +
+            resolutionGroup() +
             '<div class="ui-customizer-group"><h3>Размер карточек и постеров</h3>' +
             '<div class="ui-customizer-hint">Один размер для сетки и для рядов-карусели. Максимум — 260 × 460.</div>' +
             sliderRow('cardSize', '120 × ' + posterHeight(SLIDERS.cardSize.min), CARD_MAX_W + ' × ' + CARD_MAX_H) +
@@ -1268,7 +1331,8 @@
         var buttons = document.querySelectorAll('#ui-customizer-panel .ui-option');
         for (var i = 0; i < buttons.length; i++) {
             var btn = buttons[i];
-            btn.classList.toggle('active', String(currentSettings[btn.dataset.setting]) === String(btn.dataset.value));
+            var cur = btn.dataset.setting === RESOLUTION_KEY ? resolutionChoice() : currentSettings[btn.dataset.setting];
+            btn.classList.toggle('active', String(cur) === String(btn.dataset.value));
         }
         var r = document.getElementById('ui-show-ratings');
         var y = document.getElementById('ui-show-year');
@@ -1292,6 +1356,10 @@
         // Опции (делегирование) — выбираем и сразу применяем (живой предпросмотр)
         panel.addEventListener('click', function (e) {
             var opt = e.target.closest ? e.target.closest('.ui-option') : null;
+            if (opt && opt.dataset.setting === RESOLUTION_KEY) {
+                setResolution(opt.dataset.value);
+                return;
+            }
             if (opt) {
                 currentSettings[opt.dataset.setting] = opt.dataset.value;
                 updateActiveButtons();

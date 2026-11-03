@@ -1637,7 +1637,8 @@
     if (homeState.cardCssKey === key) return;
     homeState.cardCssKey = key;
     homeState.cardWidth = g.w;
-    var dpr = window.devicePixelRatio || 1;
+    var vp = window.uiViewport;
+    var dpr = (window.devicePixelRatio || 1) * (vp ? vp.native / vp.width : 1);
     homeState.tileImgSize = g.w * dpr <= 400 ? 'w300' : 'w780';
     var st = el('home-card-style');
     if (!st) {
