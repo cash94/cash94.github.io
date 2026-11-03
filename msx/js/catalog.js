@@ -510,27 +510,10 @@ function initCatalogDetailButtons() {
     if (trailerBtn && !trailerBtn._initialized) {
         trailerBtn._initialized = true;
 
-        // Мышь/тач по кнопке только переносят на неё фокус (превью играет на
-        // фоне), плеер открывает OK с пульта: control.js зовёт f.click() без
-        // предшествующего pointerdown
-        var pointerDownAt = 0;
-        var markPointer = function () { pointerDownAt = Date.now(); };
-        trailerBtn.addEventListener('pointerdown', markPointer, true);
-        trailerBtn.addEventListener('mousedown', markPointer, true);
-        trailerBtn.addEventListener('touchstart', markPointer, { capture: true, passive: true });
-
+        // Кнопка не кликабельна: ни мышь/тач, ни OK с пульта плеер не открывают,
+        // клик лишь переносит на неё фокус (превью играет на фоне)
         trailerBtn.onclick = function () {
-            if (pointerDownAt && Date.now() - pointerDownAt < 1500) {
-                pointerDownAt = 0;
-                if (typeof window.focusEl === 'function') window.focusEl(trailerBtn);
-                return;
-            }
-            if (rutubeTrailerState.currentUrl) {
-                openRutubeTrailerInPlayer(
-                    rutubeTrailerState.currentUrl,
-                    rutubeTrailerState.currentTitle || 'Трейлер'
-                );
-            }
+            if (typeof window.focusEl === 'function') window.focusEl(trailerBtn);
         };
 
         // Отслеживаем класс "focused" (навигация с пульта не вызывает нативный focus)
