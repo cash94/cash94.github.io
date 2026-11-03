@@ -5558,7 +5558,7 @@ function fillRecommendationCard(card, r, mt) {
     card._year.textContent = date ? String(date).substring(0, 4) : '';
 
     setDetailCardPoster(card, r.poster_path
-        ? getTmdbImageUrl(r.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL)
+        ? getTmdbImageUrl(r.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM)
         : '');
     card.classList.remove('hidden');
 }

@@ -4271,7 +4271,7 @@ function fillRecommendationCard(card, r, mt) {
   card._bar.classList.toggle('hidden', !rating);
   var date = r.release_date || r.first_air_date;
   card._year.textContent = date ? String(date).substring(0, 4) : '';
-  setDetailCardPoster(card, r.poster_path ? getTmdbImageUrl(r.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL) : '');
+  setDetailCardPoster(card, r.poster_path ? getTmdbImageUrl(r.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM) : '');
   card.classList.remove('hidden');
 }
 var detailCollectionCache = {};
