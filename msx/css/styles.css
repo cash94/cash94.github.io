@@ -12355,3 +12355,17 @@ html.apple-device {
   animation: none;
   opacity: 1;
 }
+
+/* ===== Вход содержимого экрана (Animations.beginContentEnter / playContentEnter) =====
+   Сетка категории, открытой с главной (openCategory в home.js): пока рисуется —
+   прозрачна, нарисовалась — поднимается и проявляется, как содержимое
+   карточки-«сцены». Сдвигаем саму сетку, а не #content-catalog: у него свой
+   transform — FLIP-прокрутка (control.js), и анимация перебила бы её */
+#catalog-grid.content-entering {
+  opacity: 0;
+}
+
+#catalog-grid.content-enter {
+  -webkit-animation: detailFadeIn 0.45s ease-in-out both, detailRiseIn 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation: detailFadeIn 0.45s ease-in-out both, detailRiseIn 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}

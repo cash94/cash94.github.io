@@ -4,6 +4,8 @@
   var HOME = {
     TTL_MS: 3 * 24 * 60 * 60 * 1000,
     FOCUS_DELAY_MS: 100,
+    CATEGORY_FADE_S: 0.2,
+    DETAIL_COVER_MS: 450,
     POSTER_CONCURRENCY: 10,
     MAX_PARALLEL_ROW_LOADS: 3,
     FETCH_TIMEOUT_MS: 10000,
@@ -1594,6 +1596,22 @@
     if (hls || video) queueHeroTeardown(video, hls);
     if (now) flushHeroTeardown();
   }
+  function pauseHeroForExit() {
+    homeState.hero.gen++;
+    if (homeState.hero.timer) {
+      clearTimeout(homeState.hero.timer);
+      homeState.hero.timer = null;
+    }
+    stopCategoryTimers();
+    resetHeroRing();
+    var video = homeState.hero.video || el('home-hero-video');
+    if (video) {
+      try {
+        video.muted = true;
+        video.pause();
+      } catch (e) {}
+    }
+  }
   function suspendHero(now) {
     homeState.hero.gen++;
     if (homeState.hero.timer) {
@@ -2295,8 +2313,8 @@
     homeState.lastRowKey = key;
     homeState.lastColIndex = index;
     if (typeof window.loadCatalog !== 'function') return true;
-    suspendHero();
-    scrollHomeToTop();
+    if (homeState.openingCategory) return true;
+    pauseHeroForExit();
     if (window.Nav) Nav.push('grid', {
       key: 'cat:' + catKey,
       label: catKey
@@ -2306,14 +2324,38 @@
     try {
       localStorage.removeItem('lastCatalogCardIndex');
     } catch (e) {}
-    if (typeof window.showContentScreen === 'function') window.showContentScreen('catalog');
-    Promise.resolve(window.loadCatalog(catKey)).then(function () {
-      setTimeout(function () {
-        if (!window.AppState || AppState.currentScreen !== 'catalog') return;
-        if (typeof catalogState !== 'undefined' && catalogState.currentCatalog !== catKey) return;
-        if (typeof window.ensureCatalogFocus === 'function') window.ensureCatalogFocus(true);
-      }, HOME.FOCUS_DELAY_MS);
-    });
+    var homeEl = el('content-home');
+    var anim = typeof Animations !== 'undefined' ? Animations : null;
+    var canFade = !!(homeEl && anim && typeof anim.fadeOut === 'function' && anim.beginContentEnter);
+    homeState.openingCategory = true;
+    var go = function () {
+      homeState.openingCategory = false;
+      suspendHero();
+      if (window.AppState && AppState.currentScreen !== 'home') {
+        if (canFade) anim.resetFade(homeEl);
+        return;
+      }
+      scrollHomeToTop();
+      var grid = el('catalog-grid');
+      if (canFade && grid) anim.beginContentEnter(grid);
+      if (typeof window.showContentScreen === 'function') window.showContentScreen('catalog');
+      if (canFade) anim.resetFade(homeEl);
+      Promise.resolve(window.loadCatalog(catKey)).then(function () {
+        if (canFade && grid) anim.playContentEnter(grid);
+        setTimeout(function () {
+          if (!window.AppState || AppState.currentScreen !== 'catalog') return;
+          if (typeof catalogState !== 'undefined' && catalogState.currentCatalog !== catKey) return;
+          if (typeof window.ensureCatalogFocus === 'function') window.ensureCatalogFocus(true);
+        }, HOME.FOCUS_DELAY_MS);
+      }, function () {
+        if (canFade && grid) anim.clearContentEnter(grid);
+      });
+    };
+    if (canFade) anim.fadeOut(homeEl, {
+      duration: HOME.CATEGORY_FADE_S,
+      keepFaded: true,
+      onDone: go
+    });else go();
     return true;
   }
   function openHomeItem(item, key, index) {
@@ -2321,8 +2363,16 @@
     homeState.lastRowKey = key;
     homeState.lastColIndex = index;
     if (window.Nav) Nav.push('detail', Nav.detailData(item, index));
-    suspendHero();
-    scrollHomeToTop();
+    pauseHeroForExit();
+    setTimeout(function () {
+      suspendHero();
+      if (window.AppState && AppState.currentScreen === 'home') {
+        var f = document.querySelector('.focused');
+        if (f && findCardPosition(f)) setHeroFromCard(f);
+        return;
+      }
+      scrollHomeToTop();
+    }, HOME.DETAIL_COVER_MS);
     if (window.AppState) {
       AppState.catalogIndex = index;
       AppState.androidBackCatalog = item;

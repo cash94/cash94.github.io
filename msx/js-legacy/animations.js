@@ -405,6 +405,51 @@ var Animations = function () {
     if (el.style.display === 'none') return true;
     return false;
   }
+  var CONTENT_ENTER_MS = 750;
+  var CONTENT_ENTER_MAX_MS = 4000;
+  function clearContentEnter(el) {
+    if (!el) return;
+    el._enterGen = (el._enterGen || 0) + 1;
+    if (el._enterTimer) {
+      clearTimeout(el._enterTimer);
+      el._enterTimer = null;
+    }
+    el.classList.remove('content-entering');
+    el.classList.remove('content-enter');
+  }
+  function beginContentEnter(el) {
+    if (!el) return;
+    clearContentEnter(el);
+    el.classList.add('content-entering');
+    var gen = el._enterGen;
+    el._enterTimer = setTimeout(function () {
+      el._enterTimer = null;
+      if (gen === el._enterGen) playContentEnter(el);
+    }, CONTENT_ENTER_MAX_MS);
+  }
+  function playContentEnter(el) {
+    if (!el || !el.classList.contains('content-entering')) return;
+    if (el._enterTimer) {
+      clearTimeout(el._enterTimer);
+      el._enterTimer = null;
+    }
+    if (typeof requestAnimationFrame !== 'function') {
+      el.classList.remove('content-entering');
+      return;
+    }
+    var gen = el._enterGen;
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        if (gen !== el._enterGen || !el.classList.contains('content-entering')) return;
+        el.classList.remove('content-entering');
+        el.classList.add('content-enter');
+        el._enterTimer = setTimeout(function () {
+          el._enterTimer = null;
+          el.classList.remove('content-enter');
+        }, CONTENT_ENTER_MS);
+      });
+    });
+  }
   function resetFade(el) {
     if (!el) return;
     stopFade(el);
@@ -731,6 +776,9 @@ var Animations = function () {
     showDetailLoading: showDetailLoading,
     hideDetailLoading: hideDetailLoading,
     fadeIn: fadeIn,
+    beginContentEnter: beginContentEnter,
+    playContentEnter: playContentEnter,
+    clearContentEnter: clearContentEnter,
     fadeOut: fadeOut,
     resetFade: resetFade,
     UI_FADE: UI_FADE,

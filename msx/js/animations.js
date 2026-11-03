@@ -718,6 +718,55 @@ var Animations = (function () {
 
     // Снять недоигранное затухание и вернуть элемент к «чистому» состоянию:
     // inline-прозрачность и переход убираем, дальше решает CSS
+    /*
+     * Вход содержимого экрана — тот же приём, что у карточки-«сцены»
+     * (beginDetailEnter / playDetailEnter), для любого контейнера: пока
+     * содержимое собирается, на нём класс content-entering (прозрачно), по
+     * готовности — content-enter (подъём и проявление, styles.css, «Вход
+     * содержимого»). Старт — через два кадра: в задаче готовности основной
+     * поток ещё раскладывает и рисует, и начатая там анимация проходила бы
+     * первые кадры невидимо. Только opacity и transform.
+     */
+    var CONTENT_ENTER_MS = 750;     // дольше самой анимации
+    var CONTENT_ENTER_MAX_MS = 4000; // страховка: готовность так и не пришла
+
+    function clearContentEnter(el) {
+        if (!el) return;
+        el._enterGen = (el._enterGen || 0) + 1;
+        if (el._enterTimer) { clearTimeout(el._enterTimer); el._enterTimer = null; }
+        el.classList.remove('content-entering');
+        el.classList.remove('content-enter');
+    }
+
+    function beginContentEnter(el) {
+        if (!el) return;
+        clearContentEnter(el);
+        el.classList.add('content-entering');
+        var gen = el._enterGen;
+        el._enterTimer = setTimeout(function () {
+            el._enterTimer = null;
+            if (gen === el._enterGen) playContentEnter(el);
+        }, CONTENT_ENTER_MAX_MS);
+    }
+
+    function playContentEnter(el) {
+        if (!el || !el.classList.contains('content-entering')) return;
+        if (el._enterTimer) { clearTimeout(el._enterTimer); el._enterTimer = null; }
+        if (typeof requestAnimationFrame !== 'function') { el.classList.remove('content-entering'); return; }
+        var gen = el._enterGen;
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                if (gen !== el._enterGen || !el.classList.contains('content-entering')) return;
+                el.classList.remove('content-entering');
+                el.classList.add('content-enter');
+                el._enterTimer = setTimeout(function () {
+                    el._enterTimer = null;
+                    el.classList.remove('content-enter');
+                }, CONTENT_ENTER_MS);
+            });
+        });
+    }
+
     function resetFade(el) {
         if (!el) return;
         stopFade(el);
@@ -1274,6 +1323,10 @@ var Animations = (function () {
 
         // Плавные переходы экранов: вкладки, оверлей поиска, подмена сетки каталога
         fadeIn: fadeIn,
+        // Вход содержимого экрана (сетка категории с главной)
+        beginContentEnter: beginContentEnter,
+        playContentEnter: playContentEnter,
+        clearContentEnter: clearContentEnter,
         fadeOut: fadeOut,
         resetFade: resetFade,
         UI_FADE: UI_FADE,

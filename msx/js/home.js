@@ -37,6 +37,12 @@
         // Пауза между «ряды в DOM» и «фокус на карточке»: столько же, сколько
         // CATALOG_CONSTANTS.FOCUS_DELAY_MS у каталога
         FOCUS_DELAY_MS: 100,
+        // Вход в категорию: столько гаснет главная (openCategory), дальше сетка
+        // проявляется сама, когда нарисована. Коротко — это уже ожидание
+        CATEGORY_FADE_S: 0.2,
+        // Карточка фильма закрывает главную за ~0,38 с (DETAIL_FADE.show в
+        // animations.js) — после этого трейлер разбираем и ряд возвращаем к началу
+        DETAIL_COVER_MS: 450,
         POSTER_CONCURRENCY: 10,
         MAX_PARALLEL_ROW_LOADS: 3,
         FETCH_TIMEOUT_MS: 10000,
@@ -2065,6 +2071,23 @@
      * заново (баннер остался бы картинкой без кругляшка).
      * now — разобрать видео немедленно, а не на простое (см. flushHeroTeardown).
      */
+    /**
+     * Уход с главной с затуханием (вход в категорию, в карточку фильма): пока
+     * главная гаснет, баннер должен стоять как есть. suspendHero сразу
+     * убирает видео трейлера, и под ним одним кадром проступал статичный кадр
+     * фона — вспышка в начале плавного ухода. Здесь всё останавливаем, а видео
+     * только замирает на текущем кадре и замолкает; разбирает его suspendHero,
+     * когда главная уже не видна.
+     */
+    function pauseHeroForExit() {
+        homeState.hero.gen++;
+        if (homeState.hero.timer) { clearTimeout(homeState.hero.timer); homeState.hero.timer = null; }
+        stopCategoryTimers();
+        resetHeroRing();
+        var video = homeState.hero.video || el('home-hero-video');
+        if (video) { try { video.muted = true; video.pause(); } catch (e) { } }
+    }
+
     function suspendHero(now) {
         homeState.hero.gen++;
         if (homeState.hero.timer) { clearTimeout(homeState.hero.timer); homeState.hero.timer = null; }
@@ -2959,27 +2982,65 @@
      * списка категорий больше нет — возвращает на главную, на эту же плитку
      * (lastRowKey / lastColIndex).
      */
+    /*
+     * Вход в категорию — плавный, как вход в карточку фильма. Раньше главная
+     * пропадала одним кадром, потом стоял чёрный экран, пока грузилась сетка, и
+     * сетка впрыгивала целиком. Теперь:
+     *  1. главная под шапкой гаснет (HOME.CATEGORY_FADE_S) — шапка остаётся;
+     *  2. сетка до готовности прозрачна, а нарисовавшись — поднимается и
+     *     проявляется (Animations.beginContentEnter / playContentEnter).
+     * Только opacity и transform; постеры, как и раньше, проявляются сами.
+     */
     function openCategory(catKey, key, index) {
         homeState.lastRowKey = key;
         homeState.lastColIndex = index;
         if (typeof window.loadCatalog !== 'function') return true;
-        suspendHero();
-        scrollHomeToTop();
+        // Повторное OK, пока главная гаснет: открытие уже идёт
+        if (homeState.openingCategory) return true;
+        // Баннер замирает, а не пропадает: см. pauseHeroForExit
+        pauseHeroForExit();
         if (window.Nav) Nav.push('grid', { key: 'cat:' + catKey, label: catKey });
         if (window.AppState) AppState.inSearch = 'catalog';
         if (typeof catalogState !== 'undefined') catalogState.favoritesFromTopbar = false;
         // Сетка начинается с первой карточки, а не с той, где стояли в прошлый раз
         try { localStorage.removeItem('lastCatalogCardIndex'); } catch (e) { }
-        if (typeof window.showContentScreen === 'function') window.showContentScreen('catalog');
-        // Фокус на первую карточку — сами, как вкладка «Избранное» (app.js):
-        // loadCatalog его не ставит, и пульт ждал бы подстраховку фокуса
-        Promise.resolve(window.loadCatalog(catKey)).then(function () {
-            setTimeout(function () {
-                if (!window.AppState || AppState.currentScreen !== 'catalog') return;
-                if (typeof catalogState !== 'undefined' && catalogState.currentCatalog !== catKey) return;
-                if (typeof window.ensureCatalogFocus === 'function') window.ensureCatalogFocus(true);
-            }, HOME.FOCUS_DELAY_MS);
-        });
+
+        var homeEl = el('content-home');
+        var anim = typeof Animations !== 'undefined' ? Animations : null;
+        var canFade = !!(homeEl && anim && typeof anim.fadeOut === 'function' && anim.beginContentEnter);
+        homeState.openingCategory = true;
+
+        var go = function () {
+            homeState.openingCategory = false;
+            // Главной уже не видно — теперь трейлер можно разобрать
+            suspendHero();
+            // Пока главная гасла, ушли в другое место (шапка, «Назад») — не перебиваем
+            if (window.AppState && AppState.currentScreen !== 'home') {
+                if (canFade) anim.resetFade(homeEl);
+                return;
+            }
+            scrollHomeToTop();
+            var grid = el('catalog-grid');
+            if (canFade && grid) anim.beginContentEnter(grid);
+            if (typeof window.showContentScreen === 'function') window.showContentScreen('catalog');
+            // Главная уже спрятана — погашенная прозрачность ей больше не нужна
+            if (canFade) anim.resetFade(homeEl);
+            // Фокус на первую карточку — сами, как вкладка «Избранное» (app.js):
+            // loadCatalog его не ставит, и пульт ждал бы подстраховку фокуса
+            Promise.resolve(window.loadCatalog(catKey)).then(function () {
+                if (canFade && grid) anim.playContentEnter(grid);
+                setTimeout(function () {
+                    if (!window.AppState || AppState.currentScreen !== 'catalog') return;
+                    if (typeof catalogState !== 'undefined' && catalogState.currentCatalog !== catKey) return;
+                    if (typeof window.ensureCatalogFocus === 'function') window.ensureCatalogFocus(true);
+                }, HOME.FOCUS_DELAY_MS);
+            }, function () {
+                if (canFade && grid) anim.clearContentEnter(grid);
+            });
+        };
+
+        if (canFade) anim.fadeOut(homeEl, { duration: HOME.CATEGORY_FADE_S, keepFaded: true, onDone: go });
+        else go();
         return true;
     }
 
@@ -2988,8 +3049,22 @@
         homeState.lastRowKey = key;
         homeState.lastColIndex = index;
         if (window.Nav) Nav.push('detail', Nav.detailData(item, index));
-        suspendHero();
-        scrollHomeToTop();
+        // Карточка проявляется поверх главной (Animations.animateDetailShow), и
+        // пока она полупрозрачна, главная видна: баннер замирает, а не
+        // пропадает, и ряд не прыгает к началу. Разбор трейлера и прокрутка —
+        // когда карточка уже закрыла главную
+        pauseHeroForExit();
+        setTimeout(function () {
+            suspendHero();
+            if (window.AppState && AppState.currentScreen === 'home') {
+                // Уже вернулись (карточку закрыли сразу): баннер заводим заново,
+                // иначе он так и стоял бы замершим кадром трейлера
+                var f = document.querySelector('.focused');
+                if (f && findCardPosition(f)) setHeroFromCard(f);
+                return;
+            }
+            scrollHomeToTop();
+        }, HOME.DETAIL_COVER_MS);
         if (window.AppState) {
             AppState.catalogIndex = index;
             AppState.androidBackCatalog = item;
