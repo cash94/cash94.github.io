@@ -4974,14 +4974,27 @@ function getTorrentProgressBatch(hash, files) {
         if (!videoFiles.length) return result;
 
         try {
+            // Фильм/серия каждого файла: сервер запоминает их и отдаёт общий
+            // таймкод фильма — начатый в другой раздаче (4K → 1080p) продолжится
+            // с того же места (getTimecodeMediaKey в player.js)
+            var mediaKeys = null;
+            if (typeof window.getTimecodeMediaKey === 'function') {
+                for (var m = 0; m < videoFiles.length; m++) {
+                    var mk = null;
+                    try { mk = window.getTimecodeMediaKey(hash, videoFiles[m].id, videoFiles); } catch (e) { mk = null; }
+                    if (mk) (mediaKeys || (mediaKeys = {}))[String(videoFiles[m].id)] = mk;
+                }
+            }
+            var batchBody = {
+                hash: hash,
+                fileIds: videoFiles.map(function (file) { return parseInt(file.id, 10); }),
+                clientId: localStorage.getItem('clientId')
+            };
+            if (mediaKeys) batchBody.mediaKeys = mediaKeys;
             var response = await fetch(SERVER_URL + '/api/timecode/batch', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    hash: hash,
-                    fileIds: videoFiles.map(function (file) { return parseInt(file.id, 10); }),
-                    clientId: localStorage.getItem('clientId')
-                })
+                body: JSON.stringify(batchBody)
             });
             if (!response.ok) return result;
             var data = await response.json();

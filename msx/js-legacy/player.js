@@ -996,7 +996,8 @@ function _saveTimecodeToServer() {
           hash: currentTimecodeData.hash,
           fileId: currentTimecodeData.fileId,
           timecode: currentTimecodeData.timecode,
-          duration: currentTimecodeData.duration
+          duration: currentTimecodeData.duration,
+          mediaKey: currentTimecodeMediaKey()
         })
       });
       if (response.ok) console.log('💾 Таймкод сохранен: ' + formatTime(currentTimecodeData.timecode));
@@ -1014,7 +1015,8 @@ function _loadTimecodeFromServer() {
     if (!hash || !fileId) return 0;
     try {
       var savedClientId = localStorage.getItem('clientId');
-      var response = yield fetchWithTimeout(SERVER_URL + '/api/timecode/get?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId));
+      var mediaKey = getTimecodeMediaKey(hash, fileId);
+      var response = yield fetchWithTimeout(SERVER_URL + '/api/timecode/get?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId) + (mediaKey ? '&mediaKey=' + encodeURIComponent(mediaKey) : ''));
       if (response.ok) {
         var data = yield response.json();
         if (data.success && data.timecode > 0) return data.timecode;
@@ -1025,6 +1027,13 @@ function _loadTimecodeFromServer() {
     return 0;
   });
   return _loadTimecodeFromServer.apply(this, arguments);
+}
+function currentTimecodeMediaKey() {
+  try {
+    return getTimecodeMediaKey(currentTimecodeData.hash, currentTimecodeData.fileId) || undefined;
+  } catch (e) {
+    return undefined;
+  }
 }
 function clearTimecodeData() {
   currentTimecodeData = {
@@ -1549,6 +1558,45 @@ function getTorrentSingleSeason(torrent) {
   var seasons = window.getTorrentSeasons(torrent);
   return seasons.length === 1 ? seasons[0] : null;
 }
+function getTimecodeMediaKey(hash, fileId, files) {
+  if (!hash || fileId === null || fileId === undefined) return null;
+  var h = String(hash).toLowerCase();
+  var torrent = findLoadedTorrent(h) || {
+    hash: h
+  };
+  var tmdbId = parseInt(getTorrentTmdbId(torrent) || '', 10);
+  if (!(tmdbId > 0)) return null;
+  var known = typeof knownTorrentMeta !== 'undefined' && knownTorrentMeta ? knownTorrentMeta.get(h) : null;
+  var seasons = typeof window.getTorrentSeasons === 'function' ? window.getTorrentSeasons(torrent) : [];
+  var type = torrent.media_type || known && known.mediaType || (seasons.length ? 'tv' : null);
+  if (!files) files = currentTorrentHash && String(currentTorrentHash).toLowerCase() === h ? currentEpisodeFiles : null;
+  var file = null;
+  for (var i = 0; files && i < files.length; i++) {
+    if (String(files[i].id) === String(fileId)) {
+      file = files[i];
+      break;
+    }
+  }
+  var ref = file && typeof parseEpisodeRef === 'function' ? parseEpisodeRef(file.path || file.name) : null;
+  if (type === 'tv' || !type && ref) {
+    var meta = typeof window.getTorrentEpisodeMeta === 'function' ? window.getTorrentEpisodeMeta(h, fileId) : null;
+    var season = null,
+      episode = null;
+    if (meta && meta.season !== undefined && meta.season !== null && meta.episode) {
+      season = meta.season;
+      episode = meta.episode;
+    } else if (ref) {
+      season = ref.season !== null ? ref.season : seasons.length === 1 ? seasons[0] : null;
+      episode = ref.episode;
+    }
+    season = parseInt(season, 10);
+    episode = parseInt(episode, 10);
+    return season >= 0 && episode > 0 ? 'tv:' + tmdbId + ':' + season + ':' + episode : null;
+  }
+  if (files && files.length === 1 && file) return 'movie:' + tmdbId;
+  return null;
+}
+window.getTimecodeMediaKey = getTimecodeMediaKey;
 function resolveSkipTarget(torrent, fileId) {
   var tmdbId = getTorrentTmdbId(torrent) || AppState.currentTMDB || null;
   if (!tmdbId) return null;
@@ -4812,7 +4860,8 @@ function setupPageUnloadHandler() {
           hash: currentTimecodeData.hash,
           fileId: currentTimecodeData.fileId,
           timecode: currentTimecodeData.timecode,
-          duration: currentTimecodeData.duration
+          duration: currentTimecodeData.duration,
+          mediaKey: currentTimecodeMediaKey()
         }));
       }
     });
@@ -4831,7 +4880,8 @@ function setupPageUnloadHandler() {
           hash: currentTimecodeData.hash,
           fileId: currentTimecodeData.fileId,
           timecode: currentTimecodeData.timecode,
-          duration: currentTimecodeData.duration
+          duration: currentTimecodeData.duration,
+          mediaKey: currentTimecodeMediaKey()
         }));
       }
     });
@@ -4844,7 +4894,8 @@ function setupPageUnloadHandler() {
           hash: currentTimecodeData.hash,
           fileId: currentTimecodeData.fileId,
           timecode: currentTimecodeData.timecode,
-          duration: currentTimecodeData.duration
+          duration: currentTimecodeData.duration,
+          mediaKey: currentTimecodeMediaKey()
         }));
       }
     });
@@ -4912,7 +4963,8 @@ function updatePlayerTimeline(timelineData) {
           fileId: currentTimecodeData.fileId,
           timecode: timecodeToSave,
           duration: currentTimecodeData.duration,
-          completed: isCompleted
+          completed: isCompleted,
+          mediaKey: currentTimecodeMediaKey()
         })
       }));
     }

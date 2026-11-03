@@ -1253,7 +1253,8 @@ async function saveTimecodeToServer() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         clientId: savedClientId, hash: currentTimecodeData.hash, fileId: currentTimecodeData.fileId,
-        timecode: currentTimecodeData.timecode, duration: currentTimecodeData.duration
+        timecode: currentTimecodeData.timecode, duration: currentTimecodeData.duration,
+        mediaKey: currentTimecodeMediaKey()
       })
     });
     if (response.ok) console.log('💾 Таймкод сохранен: ' + formatTime(currentTimecodeData.timecode));
@@ -1264,13 +1265,25 @@ async function loadTimecodeFromServer(hash, fileId) {
   if (!hash || !fileId) return 0;
   try {
     var savedClientId = localStorage.getItem('clientId');
-    var response = await fetchWithTimeout(SERVER_URL + '/api/timecode/get?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId));
+    var mediaKey = getTimecodeMediaKey(hash, fileId);
+    var response = await fetchWithTimeout(SERVER_URL + '/api/timecode/get?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId) +
+      (mediaKey ? '&mediaKey=' + encodeURIComponent(mediaKey) : ''));
     if (response.ok) {
       var data = await response.json();
       if (data.success && data.timecode > 0) return data.timecode;
     }
   } catch (error) { console.error('Ошибка загрузки таймкода:', error); }
   return 0;
+}
+
+/**
+ * Фильм/серия текущего таймкода для сервера (getTimecodeMediaKey): по нему
+ * таймкод становится общим для всех раздач фильма. undefined — поле не уйдёт
+ * в JSON вовсе.
+ */
+function currentTimecodeMediaKey() {
+  try { return getTimecodeMediaKey(currentTimecodeData.hash, currentTimecodeData.fileId) || undefined; }
+  catch (e) { return undefined; }
 }
 
 function clearTimecodeData() { currentTimecodeData = { hash: null, fileId: null, timecode: 0, duration: 0 }; }
@@ -1715,6 +1728,54 @@ function getTorrentSingleSeason(torrent) {
   var seasons = window.getTorrentSeasons(torrent);
   return seasons.length === 1 ? seasons[0] : null;
 }
+
+/**
+ * Ключ фильма / серии TMDB для общего таймкода (сервер, services/timecodes.js):
+ * «movie:<id>» или «tv:<id>:<сезон>:<серия>», null — не знаем наверняка.
+ * По нему разные раздачи одного фильма продолжают просмотр с одного места.
+ *
+ * Ошибка здесь хуже, чем отсутствие ключа: чужой таймкод перемотал бы фильм не
+ * туда. Поэтому без догадок: серия — только из сопоставления с TMDB или из
+ * имени файла (S01E05), без запасного «порядковый номер = серия»; фильм — только
+ * если видеофайл в раздаче один (в сборнике у каждого файла свой фильм, а id у
+ * раздачи один).
+ *
+ * @param {string} hash
+ * @param {string|number} fileId
+ * @param {Array} [files] видеофайлы раздачи; без них — серии текущей раздачи плеера
+ */
+function getTimecodeMediaKey(hash, fileId, files) {
+  if (!hash || fileId === null || fileId === undefined) return null;
+  var h = String(hash).toLowerCase();
+  var torrent = findLoadedTorrent(h) || { hash: h };
+  var tmdbId = parseInt(getTorrentTmdbId(torrent) || '', 10);
+  if (!(tmdbId > 0)) return null;
+  var known = typeof knownTorrentMeta !== 'undefined' && knownTorrentMeta ? knownTorrentMeta.get(h) : null;
+  var seasons = typeof window.getTorrentSeasons === 'function' ? window.getTorrentSeasons(torrent) : [];
+  var type = torrent.media_type || (known && known.mediaType) || (seasons.length ? 'tv' : null);
+  if (!files) files = (currentTorrentHash && String(currentTorrentHash).toLowerCase() === h) ? currentEpisodeFiles : null;
+  var file = null;
+  for (var i = 0; files && i < files.length; i++) {
+    if (String(files[i].id) === String(fileId)) { file = files[i]; break; }
+  }
+  var ref = (file && typeof parseEpisodeRef === 'function') ? parseEpisodeRef(file.path || file.name) : null;
+
+  if (type === 'tv' || (!type && ref)) {
+    var meta = typeof window.getTorrentEpisodeMeta === 'function' ? window.getTorrentEpisodeMeta(h, fileId) : null;
+    var season = null, episode = null;
+    if (meta && meta.season !== undefined && meta.season !== null && meta.episode) {
+      season = meta.season; episode = meta.episode;
+    } else if (ref) {
+      season = ref.season !== null ? ref.season : (seasons.length === 1 ? seasons[0] : null);
+      episode = ref.episode;
+    }
+    season = parseInt(season, 10); episode = parseInt(episode, 10);
+    return (season >= 0 && episode > 0) ? 'tv:' + tmdbId + ':' + season + ':' + episode : null;
+  }
+  if (files && files.length === 1 && file) return 'movie:' + tmdbId;
+  return null;
+}
+window.getTimecodeMediaKey = getTimecodeMediaKey;
 
 /**
  * id TMDB, сезон и серия файла для запроса заставок или null.
@@ -5078,7 +5139,7 @@ function setupPageUnloadHandler() {
       if (AppState && AppState.currentStreamId) navigator.sendBeacon(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, '');
       if (currentTimecodeData && currentTimecodeData.hash && currentTimecodeData.fileId && currentTimecodeData.timecode > 0) {
         var savedClientId = localStorage.getItem('clientId');
-        navigator.sendBeacon(SERVER_URL + '/api/timecode/save', JSON.stringify({ clientId: savedClientId, hash: currentTimecodeData.hash, fileId: currentTimecodeData.fileId, timecode: currentTimecodeData.timecode, duration: currentTimecodeData.duration }));
+        navigator.sendBeacon(SERVER_URL + '/api/timecode/save', JSON.stringify({ clientId: savedClientId, hash: currentTimecodeData.hash, fileId: currentTimecodeData.fileId, timecode: currentTimecodeData.timecode, duration: currentTimecodeData.duration, mediaKey: currentTimecodeMediaKey() }));
       }
     });
     window.addEventListener('beforeunload', function () {
@@ -5088,14 +5149,14 @@ function setupPageUnloadHandler() {
       }
       if (currentTimecodeData.hash && currentTimecodeData.fileId && currentTimecodeData.timecode > 0) {
         var savedClientId = localStorage.getItem('clientId');
-        navigator.sendBeacon(SERVER_URL + '/api/timecode/save', JSON.stringify({ clientId: savedClientId, hash: currentTimecodeData.hash, fileId: currentTimecodeData.fileId, timecode: currentTimecodeData.timecode, duration: currentTimecodeData.duration }));
+        navigator.sendBeacon(SERVER_URL + '/api/timecode/save', JSON.stringify({ clientId: savedClientId, hash: currentTimecodeData.hash, fileId: currentTimecodeData.fileId, timecode: currentTimecodeData.timecode, duration: currentTimecodeData.duration, mediaKey: currentTimecodeMediaKey() }));
       }
     });
     window.addEventListener('pagehide', function () {
       if (AppState.currentStreamId) navigator.sendBeacon(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, '');
       if (currentTimecodeData.hash && currentTimecodeData.fileId && currentTimecodeData.timecode > 0) {
         var savedClientId = localStorage.getItem('clientId');
-        navigator.sendBeacon(SERVER_URL + '/api/timecode/save', JSON.stringify({ clientId: savedClientId, hash: currentTimecodeData.hash, fileId: currentTimecodeData.fileId, timecode: currentTimecodeData.timecode, duration: currentTimecodeData.duration }));
+        navigator.sendBeacon(SERVER_URL + '/api/timecode/save', JSON.stringify({ clientId: savedClientId, hash: currentTimecodeData.hash, fileId: currentTimecodeData.fileId, timecode: currentTimecodeData.timecode, duration: currentTimecodeData.duration, mediaKey: currentTimecodeMediaKey() }));
       }
     });
     document.addEventListener('visibilitychange', function () {
@@ -5147,7 +5208,7 @@ function updatePlayerTimeline(timelineData) {
       // раньше, чем это сохранение доедет, и покажет предыдущую серию
       trackTimecodeSave(fetch(SERVER_URL + '/api/timecode/save', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId: savedClientId, hash: currentTimecodeData.hash, fileId: currentTimecodeData.fileId, timecode: timecodeToSave, duration: currentTimecodeData.duration, completed: isCompleted })
+        body: JSON.stringify({ clientId: savedClientId, hash: currentTimecodeData.hash, fileId: currentTimecodeData.fileId, timecode: timecodeToSave, duration: currentTimecodeData.duration, completed: isCompleted, mediaKey: currentTimecodeMediaKey() })
       }));
     }
     if (AppState.playFromHash && AppState.isCatalogSerials) { AppState.isCatalogSearch = false; return; }
