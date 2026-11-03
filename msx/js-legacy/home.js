@@ -449,7 +449,8 @@
           media_type: it.mediaType,
           poster_path: pp,
           vote_average: null,
-          isHistoryItem: true
+          isHistoryItem: true,
+          resume: it.resume || null
         };
       });
     });
@@ -502,7 +503,7 @@
     if (!screen) return null;
     hero = document.createElement('section');
     hero.id = 'home-hero';
-    hero.innerHTML = '<div id="home-hero-media">' + '<div id="home-hero-backdrop" class="home-hero-empty"></div>' + '</div>' + '<div id="home-hero-shade"></div>' + '<div class="home-hero-ring" id="home-hero-ring" hidden>' + '<svg viewBox="0 0 44 44">' + '<circle class="home-ring-track" cx="22" cy="22" r="19"></circle>' + '<circle class="home-ring-bar" cx="22" cy="22" r="19" transform="rotate(-90 22 22)"></circle>' + '</svg>' + '<div class="home-ring-icon">▶</div>' + '</div>' + '<div id="home-hero-body">' + '<div id="home-hero-head">' + '<div id="home-hero-logo"><img alt=""></div>' + '<h1 id="home-hero-title"></h1>' + '</div>' + '<div id="home-hero-meta"></div>' + '<div id="home-hero-overview"></div>' + '<div class="home-hero-actions">' + '<button type="button" class="home-hero-btn" id="home-play-btn" hidden>' + '<span class="home-hero-btn-icon">▶</span>Смотреть</button>' + '<button type="button" class="home-hero-btn home-hero-arrow" id="home-prev-btn" hidden' + ' title="Предыдущий"><i class="fi fi-rr-angle-left"></i></button>' + '<button type="button" class="home-hero-btn home-hero-arrow" id="home-next-btn" hidden' + ' title="Следующий"><i class="fi fi-rr-angle-right"></i></button>' + '<div class="home-hero-dots" id="home-hero-dots" hidden></div>' + '</div>' + '</div>';
+    hero.innerHTML = '<div id="home-hero-media">' + '<div id="home-hero-backdrop" class="home-hero-empty"></div>' + '</div>' + '<div id="home-hero-shade"></div>' + '<div class="home-hero-ring" id="home-hero-ring" hidden>' + '<svg viewBox="0 0 44 44">' + '<circle class="home-ring-track" cx="22" cy="22" r="19"></circle>' + '<circle class="home-ring-bar" cx="22" cy="22" r="19" transform="rotate(-90 22 22)"></circle>' + '</svg>' + '<div class="home-ring-icon">▶</div>' + '</div>' + '<div id="home-hero-body">' + '<div id="home-hero-head">' + '<div id="home-hero-logo"><img alt=""></div>' + '<h1 id="home-hero-title"></h1>' + '</div>' + '<div id="home-hero-meta"></div>' + '<div id="home-hero-overview"></div>' + '<div class="home-hero-actions">' + '<button type="button" class="home-hero-btn" id="home-play-btn" hidden>' + '<span class="home-hero-btn-icon">▶</span><span id="home-play-label">Смотреть</span></button>' + '<button type="button" class="home-hero-btn home-hero-arrow" id="home-prev-btn" hidden' + ' title="Предыдущий"><i class="fi fi-rr-angle-left"></i></button>' + '<button type="button" class="home-hero-btn home-hero-arrow" id="home-next-btn" hidden' + ' title="Следующий"><i class="fi fi-rr-angle-right"></i></button>' + '<div class="home-hero-dots" id="home-hero-dots" hidden></div>' + '</div>' + '</div>';
     var rows = el('home-rows');
     if (rows) screen.insertBefore(hero, rows);else screen.appendChild(hero);
     hero.addEventListener('click', function (e) {
@@ -695,6 +696,7 @@
       btn.hidden = false;
       invalidateFocus();
     }
+    setPlayLabel(item);
     var path = src.backdrop_path || item && item.backdrop_path;
     var poster = src.poster_path || item && item.poster_path || '';
     var bd = path ? homeState.goodBackdrops[path] || backdropUrlFor(path) : '';
@@ -1716,7 +1718,28 @@
     card.dataset.mediaType = mt;
     card.dataset.title = title;
     card.innerHTML = '<div class="torrent-poster">' + '<div class="row-poster-img"><div class="no-poster catalog-poster-loading"></div></div>' + '</div>' + '<div class="home-tile-label">' + esc(title) + '</div>';
+    if (item.isHistoryItem) setCardProgress(card, item.resume);
     return card;
+  }
+  function setCardProgress(card, r) {
+    var pct = r && r.duration > 0 ? Math.min(100, Math.max(0, r.timecode / r.duration * 100)) : 0;
+    var bar = card._progressBar;
+    if (!(pct > 0)) {
+      if (bar) bar.parentNode.style.display = 'none';
+      return;
+    }
+    if (!bar) {
+      var poster = card.querySelector('.torrent-poster');
+      if (!poster) return;
+      var track = document.createElement('div');
+      track.className = 'home-card-progress';
+      bar = document.createElement('i');
+      track.appendChild(bar);
+      poster.appendChild(track);
+      card._progressBar = bar;
+    }
+    bar.parentNode.style.display = '';
+    bar.style.width = pct.toFixed(1) + '%';
   }
   function createCategoryTile(item, key, index) {
     var card = document.createElement('div');
@@ -2311,9 +2334,73 @@
     }
     return true;
   }
+  function heroResume(item) {
+    var r = item && item.isHistoryItem ? item.resume : null;
+    if (!r || !r.hash || !(r.timecode > 0)) return null;
+    var finished = typeof window.isResumeFinished === 'function' && window.isResumeFinished(r);
+    if (finished && item.media_type !== 'tv') return null;
+    return r;
+  }
+  function formatResumeTime(sec) {
+    sec = Math.max(0, Math.floor(sec || 0));
+    var h = Math.floor(sec / 3600),
+      m = Math.floor(sec / 60) % 60,
+      s = sec % 60;
+    var mm = (h && m < 10 ? '0' : '') + m,
+      ss = (s < 10 ? '0' : '') + s;
+    return (h ? h + ':' : '') + mm + ':' + ss;
+  }
+  function resumeLabel(item, r) {
+    var finished = typeof window.isResumeFinished === 'function' && window.isResumeFinished(r);
+    var ep = r.season !== undefined && r.episode ? 'С' + r.season + ' Е' + r.episode : '';
+    if (finished) return 'Следующая серия';
+    return 'Продолжить' + (ep ? ' · ' + ep : '') + ' · ' + formatResumeTime(r.timecode);
+  }
+  function setPlayLabel(item) {
+    var label = el('home-play-label');
+    if (!label) return;
+    var r = heroResume(item);
+    var text = r ? resumeLabel(item, r) : 'Смотреть';
+    if (label.textContent !== text) label.textContent = text;
+  }
+  function resumeHeroItem(item, r) {
+    suspendHero();
+    window.resumeWatching(item, r).then(function (res) {
+      if (res === 'started' || res === 'offline') return;
+      if (typeof window.showToast === 'function') window.showToast('Раздачи больше нет в TorrServer — выберите её заново');
+      openHomeItem(item, homeState.rowKeys[homeState.activeRow], homeState.lastColIndex);
+    }, function () {
+      openHomeItem(item, homeState.rowKeys[homeState.activeRow], homeState.lastColIndex);
+    });
+    return true;
+  }
+  function updateHistoryResume() {
+    var list = homeState.data && homeState.data.history;
+    if (!list || !list.length) return Promise.resolve();
+    return homeFetch(withClientId(serverUrl() + '/api/history')).then(function (data) {
+      if (!data || !data.success || !data.history) return;
+      var byKey = {};
+      for (var i = 0; i < data.history.length; i++) {
+        var h = data.history[i];
+        byKey[String(h.tmdbId) + '_' + h.mediaType] = h.resume || null;
+      }
+      var ri = homeState.rowKeys.indexOf('history');
+      var rowEl = ri !== -1 ? homeState.rowEls[ri] : null;
+      for (var j = 0; j < list.length; j++) {
+        var k = String(list[j].id) + '_' + list[j].media_type;
+        if (!Object.prototype.hasOwnProperty.call(byKey, k)) continue;
+        list[j].resume = byKey[k];
+        var card = rowEl ? rowEl.querySelector('.catalog-row-card[data-item-index="' + j + '"]') : null;
+        if (card) setCardProgress(card, list[j].resume);
+      }
+      if (homeState.hero.item) setPlayLabel(homeState.hero.item);
+    })['catch'](function () {});
+  }
   function playHeroItem() {
     var item = homeState.hero.item;
     if (!item) return ensureHomeFocus(true);
+    var resume = heroResume(item);
+    if (resume && typeof window.resumeWatching === 'function') return resumeHeroItem(item, resume);
     suspendHero();
     var details = homeState.heroDetails[heroKey(item)] || item;
     var title = itemTitle(details) !== 'Без названия' ? itemTitle(details) : itemTitle(item);
@@ -3202,6 +3289,7 @@
     uncover: uncoverHome,
     rearmTrailer: rearmHeroTrailer,
     removeHistoryItem: removeHistoryItem,
+    updateResume: updateHistoryResume,
     logoUrl: knownLogoUrl,
     state: homeState
   };

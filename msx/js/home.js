@@ -591,7 +591,9 @@
                     media_type: it.mediaType,
                     poster_path: pp,
                     vote_average: null,
-                    isHistoryItem: true
+                    isHistoryItem: true,
+                    // Где остановились — для «Продолжить» в баннере (heroResume)
+                    resume: it.resume || null
                 };
             });
         });
@@ -704,7 +706,7 @@
             '<div class="home-hero-actions">' +
             // «Подробнее» тут намеренно нет: карточка открывается OK прямо с ряда
             '<button type="button" class="home-hero-btn" id="home-play-btn" hidden>' +
-            '<span class="home-hero-btn-icon">▶</span>Смотреть</button>' +
+            '<span class="home-hero-btn-icon">▶</span><span id="home-play-label">Смотреть</span></button>' +
             // Листание фильмов категории — только пока фокус на её плитке
             // (setCategoryArrows); у обычной карточки их нет
             '<button type="button" class="home-hero-btn home-hero-arrow" id="home-prev-btn" hidden' +
@@ -972,6 +974,7 @@
             btn.hidden = false;
             invalidateFocus();
         }
+        setPlayLabel(item);
 
         // Постер — запас на две беды: у ряда «Продолжить просмотр» широкого кадра
         // нет вовсе, а у остальных он может не отдаться ни с одного зеркала.
@@ -2302,8 +2305,35 @@
             '<div class="row-poster-img"><div class="no-poster catalog-poster-loading"></div></div>' +
             '</div>' +
             '<div class="home-tile-label">' + esc(title) + '</div>';
+        if (item.isHistoryItem) setCardProgress(card, item.resume);
 
         return card;
+    }
+
+    /**
+     * Полоска «сколько посмотрено» внизу постера — у карточек «Продолжить
+     * просмотр», где сервер знает место (resume). Узел один на карточку,
+     * обновление — только ширина.
+     */
+    function setCardProgress(card, r) {
+        var pct = (r && r.duration > 0) ? Math.min(100, Math.max(0, r.timecode / r.duration * 100)) : 0;
+        var bar = card._progressBar;
+        if (!(pct > 0)) {
+            if (bar) bar.parentNode.style.display = 'none';
+            return;
+        }
+        if (!bar) {
+            var poster = card.querySelector('.torrent-poster');
+            if (!poster) return;
+            var track = document.createElement('div');
+            track.className = 'home-card-progress';
+            bar = document.createElement('i');
+            track.appendChild(bar);
+            poster.appendChild(track);
+            card._progressBar = bar;
+        }
+        bar.parentNode.style.display = '';
+        bar.style.width = pct.toFixed(1) + '%';
     }
 
     /**
@@ -2978,9 +3008,95 @@
      * просмотр, но с главной он не открывался, поэтому возврат правим на home
      * (ветку returnTo === 'home' разбирает hideSearchResults в torrents.js).
      */
+    // ==================== «ПРОДОЛЖИТЬ» В БАННЕРЕ ====================
+    //
+    // На карточке ряда «Продолжить просмотр» кнопка баннера — не «Смотреть»
+    // (поиск раздачи), а «Продолжить · С1 Е3 · 20:15»: запуск с того места,
+    // где остановились, без захода в карточку (resumeWatching в player.js).
+    // Место — поле resume записи истории (общий таймкод фильма/серии, сервер
+    // 1.0.56). Нет его, или фильм досмотрен — кнопка обычная.
+
+    /** resume элемента, если по нему есть что продолжать, иначе null */
+    function heroResume(item) {
+        var r = item && item.isHistoryItem ? item.resume : null;
+        if (!r || !r.hash || !(r.timecode > 0)) return null;
+        var finished = typeof window.isResumeFinished === 'function' && window.isResumeFinished(r);
+        // Фильм досмотрен — продолжать нечего, остаётся «Смотреть»
+        if (finished && item.media_type !== 'tv') return null;
+        return r;
+    }
+
+    function formatResumeTime(sec) {
+        sec = Math.max(0, Math.floor(sec || 0));
+        var h = Math.floor(sec / 3600), m = Math.floor(sec / 60) % 60, s = sec % 60;
+        var mm = (h && m < 10 ? '0' : '') + m, ss = (s < 10 ? '0' : '') + s;
+        return (h ? h + ':' : '') + mm + ':' + ss;
+    }
+
+    function resumeLabel(item, r) {
+        var finished = typeof window.isResumeFinished === 'function' && window.isResumeFinished(r);
+        var ep = r.season !== undefined && r.episode ? 'С' + r.season + ' Е' + r.episode : '';
+        // Досмотренная серия — дальше следующая; номер её знает только список
+        // файлов раздачи, поэтому без номера
+        if (finished) return 'Следующая серия';
+        return 'Продолжить' + (ep ? ' · ' + ep : '') + ' · ' + formatResumeTime(r.timecode);
+    }
+
+    function setPlayLabel(item) {
+        var label = el('home-play-label');
+        if (!label) return;
+        var r = heroResume(item);
+        var text = r ? resumeLabel(item, r) : 'Смотреть';
+        if (label.textContent !== text) label.textContent = text;
+    }
+
+    function resumeHeroItem(item, r) {
+        suspendHero();
+        window.resumeWatching(item, r).then(function (res) {
+            if (res === 'started' || res === 'offline') return;
+            // Раздачу удалили из TorrServer (или в ней нет этого файла) —
+            // открываем карточку: там «Смотреть» найдёт раздачу заново
+            if (typeof window.showToast === 'function') window.showToast('Раздачи больше нет в TorrServer — выберите её заново');
+            openHomeItem(item, homeState.rowKeys[homeState.activeRow], homeState.lastColIndex);
+        }, function () {
+            openHomeItem(item, homeState.rowKeys[homeState.activeRow], homeState.lastColIndex);
+        });
+        return true;
+    }
+
+    /**
+     * После просмотра (player.js, возврат на главную): перечитать места
+     * просмотра у записей ряда и подпись кнопки. Только поле resume — ряд не
+     * перестраиваем, фокус и прокрутка остаются где были.
+     */
+    function updateHistoryResume() {
+        var list = homeState.data && homeState.data.history;
+        if (!list || !list.length) return Promise.resolve();
+        return homeFetch(withClientId(serverUrl() + '/api/history')).then(function (data) {
+            if (!data || !data.success || !data.history) return;
+            var byKey = {};
+            for (var i = 0; i < data.history.length; i++) {
+                var h = data.history[i];
+                byKey[String(h.tmdbId) + '_' + h.mediaType] = h.resume || null;
+            }
+            var ri = homeState.rowKeys.indexOf('history');
+            var rowEl = ri !== -1 ? homeState.rowEls[ri] : null;
+            for (var j = 0; j < list.length; j++) {
+                var k = String(list[j].id) + '_' + list[j].media_type;
+                if (!Object.prototype.hasOwnProperty.call(byKey, k)) continue;
+                list[j].resume = byKey[k];
+                var card = rowEl ? rowEl.querySelector('.catalog-row-card[data-item-index="' + j + '"]') : null;
+                if (card) setCardProgress(card, list[j].resume);
+            }
+            if (homeState.hero.item) setPlayLabel(homeState.hero.item);
+        })['catch'](function () { });
+    }
+
     function playHeroItem() {
         var item = homeState.hero.item;
         if (!item) return ensureHomeFocus(true);
+        var resume = heroResume(item);
+        if (resume && typeof window.resumeWatching === 'function') return resumeHeroItem(item, resume);
         suspendHero();
 
         var details = homeState.heroDetails[heroKey(item)] || item;
@@ -4183,6 +4299,7 @@
         uncover: uncoverHome,
         rearmTrailer: rearmHeroTrailer,
         removeHistoryItem: removeHistoryItem,
+        updateResume: updateHistoryResume,
         logoUrl: knownLogoUrl,
         state: homeState
     };

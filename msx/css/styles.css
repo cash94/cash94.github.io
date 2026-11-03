@@ -6650,6 +6650,25 @@ html.legacy-browser #home-hero.home-hero-playing #home-hero-backdrop {
   color: #fff;
 }
 
+/* Сколько посмотрено — у карточек «Продолжить просмотр» (setCardProgress в
+   home.js). Поверх низа постера, цвет — цвет фокуса из «Внешнего вида» */
+.home-card-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 5px;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.home-card-progress > i {
+  display: block;
+  height: 100%;
+  background: var(--focus-color, #e50914);
+}
+
 /* Кадр в плитке — середина чуть выше центра (лица в кадре обычно там); тот
    же сдвиг годится и постеру, если кадра нет */
 .home-card .row-poster-img > img {

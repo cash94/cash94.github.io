@@ -2659,6 +2659,86 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
   return false;
 }
 
+// ==================== «ПРОДОЛЖИТЬ» С ГЛАВНОЙ ====================
+// Кнопка баннера главной на карточке ряда «Продолжить просмотр» (home.js):
+// запуск прямо оттуда, без захода в карточку фильма и раздачи. Где
+// остановились, отдаёт сервер в /api/history (поле resume — общий таймкод
+// фильма/серии, routes/history.js).
+
+// Серия досмотрена — дальше этой доли «Продолжить» ведёт на следующую
+var RESUME_FINISHED_SHARE = 0.92;
+
+function isResumeFinished(resume) {
+  return !!(resume && resume.duration > 0 && resume.timecode >= resume.duration * RESUME_FINISHED_SHARE);
+}
+window.isResumeFinished = isResumeFinished;
+
+/**
+ * Продолжить просмотр записи истории.
+ * @param {Object} item   элемент ряда главной (id, media_type, title, poster_path)
+ * @param {Object} resume {hash, fileId, timecode, duration, season?, episode?}
+ * @returns {Promise<string>} 'started' — ушли в плеер; 'missing' — раздачи
+ *          (или файла, или следующей серии) нет в TorrServer, пусть вызывающий
+ *          откроет карточку; 'offline' — TorrServer недоступен (баннер уже показан)
+ */
+async function resumeWatching(item, resume) {
+  if (!resume || !resume.hash) return 'missing';
+  if (typeof ensureTorrserverOnline === 'function' && !(await ensureTorrserverOnline())) return 'offline';
+  var overlay = getEl('playback-overlay');
+  if (overlay) overlay.classList.add('active');
+  try {
+    var hash = String(resume.hash).toLowerCase();
+    // Раздачу удалили из TorrServer — ждать её незачем: две короткие попытки
+    var torrent = await resolveTorrentWithFiles(hash, 2, 500);
+    if (!torrent) return 'missing';
+    var files = [];
+    if (Array.isArray(torrent.file_stats)) files = torrent.file_stats;
+    else if (torrent.data) {
+      try { var data = JSON.parse(torrent.data); if (data.TorrServer && data.TorrServer.Files) files = data.TorrServer.Files; } catch (e) { }
+    }
+    var videoFiles = extractVideoFiles(files);
+    var idx = -1;
+    for (var i = 0; i < videoFiles.length; i++) {
+      if (String(videoFiles[i].id) === String(resume.fileId)) { idx = i; break; }
+    }
+    if (idx === -1) return 'missing';
+    // Досмотренная серия — следующая, со своего места (null: плеер спросит
+    // сервер); досмотренного фильма здесь не бывает — баннер такой не предлагает
+    var seek = Math.floor(resume.timecode) || 0;
+    if (isResumeFinished(resume)) {
+      if (item.media_type !== 'tv' || idx + 1 >= videoFiles.length) return 'missing';
+      idx++;
+      seek = null;
+    }
+
+    // Раздача становится «открытой»: плеер берёт из неё серии, заголовок и тип
+    if (!torrent.tmdbId && item.id) torrent.tmdbId = String(item.id);
+    if (!torrent.media_type && item.media_type) torrent.media_type = item.media_type;
+    if (typeof knownTorrentMeta !== 'undefined' && knownTorrentMeta && item.id) {
+      var known = knownTorrentMeta.get(hash) || {};
+      knownTorrentMeta.set(hash, {
+        id: known.id || String(item.id), mediaType: known.mediaType || item.media_type,
+        poster: known.poster || torrent.poster || null, title: known.title || torrent.title
+      });
+    }
+    AppState.currentDetailItem = torrent;
+    AppState.androidBackCatalog = item;
+    AppState.isCatalogSerials = false;
+    // Нативный плеер Android: по возврату не открывать карточку раздачи
+    // (updatePlayerTimeline), экран под плеером — главная
+    if (window.AndroidJS) AppState.playFromHash = true;
+
+    var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + videoFiles[idx].id;
+    if (overlay) overlay.classList.remove('active');
+    var started = await startHLSPlayback(playUrl, seek, false, idx);
+    if (window.AndroidJS) AppState.currentScreen = 'home';
+    return started === false ? 'missing' : 'started';
+  } finally {
+    if (overlay) overlay.classList.remove('active');
+  }
+}
+window.resumeWatching = resumeWatching;
+
 // ==================== ВНЕШНИЕ ПЛЕЕРЫ НА УСТРОЙСТВАХ APPLE ====================
 // Выбор — Настройки → Плеер (app.js: setupApplePlayerChoice), список и URL-схемы —
 // как у Lampa (src/interaction/player.js, settings/params.js). Плееру уходит прямая
@@ -3663,6 +3743,25 @@ function showDetailView(field = null) {
         }
       }, 100);
       return; // не открываем detail и не дропаем торрент
+    }
+
+    // Запускали с главной («Продолжить» в баннере, resumeWatching): туда и
+    // возвращаемся, карточку раздачи не открываем. Раздачу останавливаем, как
+    // и после просмотра из карточки, — TorrServer незачем её дальше качать
+    if (navUnder && navUnder.screen === 'home' && window.HomeScreen) {
+      var homeHash = (AppState.currentDetailItem && AppState.currentDetailItem.hash) || null;
+      if (homeHash) {
+        dropTorrentToServer(homeHash)['catch'](function () { });
+        if (torrentProgressCache.has(homeHash)) torrentProgressCache.delete(homeHash);
+      }
+      AppState.playFromHash = false;
+      AppState.currentDetailItem = null;
+      HomeScreen.show();
+      // Новое место — в кнопку баннера, когда таймкод выхода доедет до сервера
+      awaitPendingTimecodeSave().then(function () {
+        if (typeof HomeScreen.updateResume === 'function') HomeScreen.updateResume();
+      });
+      return;
     }
 
     getEl('torrserver-section').style.display = 'block';
