@@ -2274,6 +2274,7 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       Authorization: authHeaders.Authorization
     };
     lastPlaybackFromSearch = fromSearch;
+    androidReturnHome = resumingFromHome ? torrentHash : null;
     if (!AppState.playFromHash) AppState.inSearch = 'torrents';else {
       AppState.currentDetailItem = AppState.androidBackCatalog;
       AppState.inSearch = 'catalog';
@@ -2289,6 +2290,28 @@ function isResumeFinished(resume) {
   return !!(resume && resume.duration > 0 && resume.timecode >= resume.duration * RESUME_FINISHED_SHARE);
 }
 window.isResumeFinished = isResumeFinished;
+var resumingFromHome = false;
+var androidReturnHome = null;
+var androidReturnHomeTimer = null;
+function returnHomeFromAndroidPlayer() {
+  AppState.playFromHash = false;
+  AppState.isCatalogSearch = false;
+  if (androidReturnHomeTimer) return;
+  androidReturnHomeTimer = setTimeout(function () {
+    androidReturnHomeTimer = null;
+    var hash = androidReturnHome;
+    if (hash) {
+      dropTorrentToServer(hash)['catch'](function () {});
+      if (torrentProgressCache.has(hash)) torrentProgressCache.delete(hash);
+    }
+    AppState.currentDetailItem = null;
+    if (!window.HomeScreen) return;
+    HomeScreen.show();
+    awaitPendingTimecodeSave().then(function () {
+      if (typeof HomeScreen.updateResume === 'function') HomeScreen.updateResume();
+    });
+  }, 0);
+}
 function resumeWatching(_x17, _x18) {
   return _resumeWatching.apply(this, arguments);
 }
@@ -2341,7 +2364,13 @@ function _resumeWatching() {
       if (window.AndroidJS) AppState.playFromHash = true;
       var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + videoFiles[idx].id;
       if (overlay) overlay.classList.remove('active');
-      var started = yield startHLSPlayback(playUrl, seek, false, idx);
+      resumingFromHome = true;
+      var started;
+      try {
+        started = yield startHLSPlayback(playUrl, seek, false, idx);
+      } finally {
+        resumingFromHome = false;
+      }
       if (window.AndroidJS) AppState.currentScreen = 'home';
       return started === false ? 'missing' : 'started';
     } finally {
@@ -3194,7 +3223,7 @@ function _startHLSPlayback() {
       }
       if (playInExternalPlayer(originalUrl, buildExternalPlayerTitle(), androidSeek, fromSearch)) {
         getEl('config-screen').style.display = 'none';
-        getEl('torrserver-section').style.display = 'none';
+        if (!androidReturnHome) getEl('torrserver-section').style.display = 'none';
         return;
       }
     }
@@ -5048,6 +5077,10 @@ function updatePlayerTimeline(timelineData) {
           mediaKey: currentTimecodeMediaKey()
         })
       }));
+    }
+    if (androidReturnHome) {
+      returnHomeFromAndroidPlayer();
+      return;
     }
     if (AppState.playFromHash && AppState.isCatalogSerials) {
       AppState.isCatalogSearch = false;

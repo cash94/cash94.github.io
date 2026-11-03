@@ -2650,6 +2650,7 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
     var authHeaders = getAuthHeaders();
     if (authHeaders && authHeaders.Authorization) playerData.headers = { Authorization: authHeaders.Authorization };
     lastPlaybackFromSearch = fromSearch;
+    androidReturnHome = resumingFromHome ? torrentHash : null;
     if (!AppState.playFromHash) AppState.inSearch = 'torrents';
     else { AppState.currentDetailItem = AppState.androidBackCatalog; AppState.inSearch = 'catalog'; }
     AppState.currentScreen = 'detail';
@@ -2672,6 +2673,40 @@ function isResumeFinished(resume) {
   return !!(resume && resume.duration > 0 && resume.timecode >= resume.duration * RESUME_FINISHED_SHARE);
 }
 window.isResumeFinished = isResumeFinished;
+
+// Нативный плеер Android. resumingFromHome — идёт запуск из resumeWatching;
+// androidReturnHome — хэш раздачи, запущенной так (ставит playInExternalPlayer
+// на каждый запуск): по возврату (updatePlayerTimeline) — на главную, а не в
+// карточку, и раздачу остановить
+var resumingFromHome = false;
+var androidReturnHome = null;
+var androidReturnHomeTimer = null;
+
+/**
+ * Возврат из нативного плеера, запущенного с главной. Таймлайнов приходит
+ * пачка (по серии на каждую досмотренную при автопереключении) — главную
+ * показываем один раз, после пачки.
+ */
+function returnHomeFromAndroidPlayer() {
+  AppState.playFromHash = false;
+  AppState.isCatalogSearch = false;
+  if (androidReturnHomeTimer) return;
+  androidReturnHomeTimer = setTimeout(function () {
+    androidReturnHomeTimer = null;
+    var hash = androidReturnHome;
+    if (hash) {
+      dropTorrentToServer(hash)['catch'](function () { });
+      if (torrentProgressCache.has(hash)) torrentProgressCache.delete(hash);
+    }
+    AppState.currentDetailItem = null;
+    if (!window.HomeScreen) return;
+    HomeScreen.show();
+    // Новое место — в кнопку баннера, когда таймкод выхода доедет до сервера
+    awaitPendingTimecodeSave().then(function () {
+      if (typeof HomeScreen.updateResume === 'function') HomeScreen.updateResume();
+    });
+  }, 0);
+}
 
 /**
  * Продолжить просмотр записи истории.
@@ -2730,7 +2765,10 @@ async function resumeWatching(item, resume) {
 
     var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + videoFiles[idx].id;
     if (overlay) overlay.classList.remove('active');
-    var started = await startHLSPlayback(playUrl, seek, false, idx);
+    resumingFromHome = true;
+    var started;
+    try { started = await startHLSPlayback(playUrl, seek, false, idx); }
+    finally { resumingFromHome = false; }
     if (window.AndroidJS) AppState.currentScreen = 'home';
     return started === false ? 'missing' : 'started';
   } finally {
@@ -3584,7 +3622,12 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     }
 
     if (playInExternalPlayer(originalUrl, buildExternalPlayerTitle(), androidSeek, fromSearch)) {
-      getEl('config-screen').style.display = 'none'; getEl('torrserver-section').style.display = 'none'; return;
+      getEl('config-screen').style.display = 'none';
+      // Запуск с главной: главная (она внутри torrserver-section) остаётся под
+      // плеером. Иначе по возврату чёрный экран, если таймлайн не пришёл —
+      // плеер закрыли до начала показа (resultPlayer пропускает 0/0)
+      if (!androidReturnHome) getEl('torrserver-section').style.display = 'none';
+      return;
     }
   }
   resetPlaybackState();
@@ -5310,6 +5353,7 @@ function updatePlayerTimeline(timelineData) {
         body: JSON.stringify({ clientId: savedClientId, hash: currentTimecodeData.hash, fileId: currentTimecodeData.fileId, timecode: timecodeToSave, duration: currentTimecodeData.duration, completed: isCompleted, mediaKey: currentTimecodeMediaKey() })
       }));
     }
+    if (androidReturnHome) { returnHomeFromAndroidPlayer(); return; }
     if (AppState.playFromHash && AppState.isCatalogSerials) { AppState.isCatalogSearch = false; return; }
     else if (AppState.playFromHash) { AppState.playFromHash = false; AppState.isCatalogSearch = false; return; }
     showDetailView(currentTimecodeData.fileId);
