@@ -187,6 +187,75 @@ function fetchKpPage(type) {
     });
 }
 
+// ==================== РЕЙТИНГ КИНОПОИСКА ====================
+//
+// Плашки «КП 8.7» и «IMDb 8.8» в карточке-«сцене» (renderCinemaScore в
+// public/js/catalog.js). Фильм в Кинопоиске ищем по imdbId (films?imdbId=…):
+// точно и одним запросом, а рейтинг IMDb приходит в том же ответе. imdbId
+// фильма клиент берёт из деталей TMDB; у сериала в деталях его нет — модуль
+// спрашивает TMDB сам (external_ids). Ключ безлимитный, но карточки открывают
+// часто: ответ держим в памяти сутки, «нет в Кинопоиске» — шесть часов. Сбой
+// сети не кэшируем — спросим при следующем открытии.
+
+var KP_FILMS_URL = 'https://kinopoiskapiunofficial.tech/api/v2.2/films';
+var RATING_TTL_MS = 24 * 60 * 60 * 1000;
+var RATING_MISS_TTL_MS = 6 * 60 * 60 * 1000;
+var RATING_CACHE_MAX = 3000;
+
+// «type_id» → { ts, value: {kp, imdb, kpId} | null }; ratingOrder — порядок
+// добавления, по нему вытесняем самые старые
+var ratingCache = {};
+var ratingOrder = [];
+var ratingInflight = {};
+
+function ratingNumber(v) {
+    var n = Number(v);
+    return (isFinite(n) && n > 0 && n <= 10) ? Math.round(n * 10) / 10 : null;
+}
+
+function rememberRating(key, value) {
+    if (!ratingCache[key]) ratingOrder.push(key);
+    ratingCache[key] = { ts: Date.now(), value: value };
+    while (ratingOrder.length > RATING_CACHE_MAX) delete ratingCache[ratingOrder.shift()];
+}
+
+/** imdbId: от клиента, иначе из external_ids TMDB; null — у TMDB его нет */
+function resolveImdbId(type, id, imdb) {
+    if (imdb && /^tt\d+$/.test(imdb)) return Promise.resolve(imdb);
+    return tmdbJson((type === 'tv' ? 'tv/' : 'movie/') + id + '/external_ids').then(function (ext) {
+        var v = ext && ext.imdb_id;
+        return (v && /^tt\d+$/.test(v)) ? v : null;
+    });
+}
+
+/** {kp, imdb, kpId} или null — фильма нет в Кинопоиске (или нет imdbId) */
+function getKpRating(type, id, imdb) {
+    var key = type + '_' + id;
+    var hit = ratingCache[key];
+    if (hit && Date.now() - hit.ts < (hit.value ? RATING_TTL_MS : RATING_MISS_TTL_MS)) {
+        return Promise.resolve(hit.value);
+    }
+    if (ratingInflight[key]) return ratingInflight[key];
+    var run = resolveImdbId(type, id, imdb).then(function (imdbId) {
+        if (!imdbId) return null;
+        return fetchJson(KP_FILMS_URL + '?imdbId=' + encodeURIComponent(imdbId), {
+            headers: { 'accept': 'application/json', 'X-API-KEY': KP_API_KEY }
+        }).then(function (data) {
+            var it = data && Array.isArray(data.items) ? data.items[0] : null;
+            if (!it) return null;
+            var kp = ratingNumber(it.ratingKinopoisk), im = ratingNumber(it.ratingImdb);
+            return (kp || im) ? { kp: kp, imdb: im, kpId: it.kinopoiskId || null } : null;
+        });
+    }).then(function (value) {
+        if (!destroyed) rememberRating(key, value);
+        return value;
+    });
+    ratingInflight[key] = run;
+    var clear = function () { delete ratingInflight[key]; };
+    run.then(clear, clear);
+    return run;
+}
+
 // ==================== TMDB ====================
 
 /** Список зеркал: из apiproxy.json (раз в час), при неудаче — прежний или встроенный */
@@ -465,7 +534,7 @@ function getCollection(key, log) {
 
 module.exports = {
     name: 'kinopoisk-collections',
-    version: '3.3.0',
+    version: '3.4.0',
 
     init: function (app, ctx) {
         var log = ctx.log;
@@ -507,6 +576,18 @@ module.exports = {
                 });
             }, function (e) {
                 res.status(500).json({ success: false, error: e.message });
+            });
+        });
+
+        // Рейтинг Кинопоиска и IMDb для карточки фильма: ?type=movie|tv&id=<TMDB>&imdb=tt…
+        app.get('/api/kinopoisk/rating', function (req, res) {
+            var type = req.query.type === 'tv' ? 'tv' : 'movie';
+            var id = String(req.query.id || '');
+            if (!/^\d+$/.test(id)) return res.status(400).json({ success: false, error: 'Нужен id TMDB' });
+            getKpRating(type, id, String(req.query.imdb || '')).then(function (r) {
+                res.json({ success: true, kp: r ? r.kp : null, imdb: r ? r.imdb : null, kpId: r ? r.kpId : null });
+            }, function (e) {
+                res.status(502).json({ success: false, error: e.message });
             });
         });
 
@@ -556,6 +637,9 @@ module.exports = {
         timers = [];
         cache = {};
         inflight = {};
+        ratingCache = {};
+        ratingOrder = [];
+        ratingInflight = {};
         console.log('[kinopoisk-collections] Уничтожение...');
     }
 };

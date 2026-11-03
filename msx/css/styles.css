@@ -11849,6 +11849,214 @@ html.apple-device {
   margin: 0 calc(var(--cs) * 0.5) calc(var(--cs) * 0.5) 0;
 }
 
+/* --- ОЦЕНКА И ПЛАШКИ: справа внизу сцены, как на сайте TMDB --------------
+   Кругляш оценки зрителей и плашки «16+» / «Завершён» (renderCinemaScore в
+   catalog.js). Низ блока — на линии нижнего отступа колонки слева: top в 100vh
+   минус тот же отступ, а translateY(-100%) поднимает блок своей высотой
+   (bottom в прокручиваемом #detail-view считается от низа всех лент). Уезжает
+   вверх вместе со сценой, когда пульт спускается к лентам. Анимация входа
+   (detailRiseIn) — у содержимого блока: transform самого блока занят */
+.detail-cinema-score {
+  display: none;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-score {
+  display: block;
+  position: absolute;
+  z-index: 2;
+  right: calc(var(--cu) * 3.2);
+  top: calc(100vh - var(--cs) * 3.2);
+  -webkit-transform: translateY(-100%);
+  transform: translateY(-100%);
+  text-align: right;
+  pointer-events: none;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-vote {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: flex-end;
+  justify-content: flex-end;
+  --ring: #21d07a;
+  --ring-track: #204529;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-vote.is-mid {
+  --ring: #d2d531;
+  --ring-track: #423d0f;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-vote.is-low {
+  --ring: #db2360;
+  --ring-track: #571435;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-ring {
+  position: relative;
+  -webkit-flex: none;
+  flex: none;
+  width: calc(var(--cs) * 3.6);
+  height: calc(var(--cs) * 3.6);
+  border-radius: 50%;
+  background: #081c22;
+  box-shadow: 0 0 0 calc(var(--cs) * 0.22) #081c22, 0 calc(var(--cu) * 0.3) calc(var(--cu) * 1.2) rgba(0, 0, 0, 0.5);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-ring svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  -webkit-transform: rotate(-90deg);
+  transform: rotate(-90deg);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-ring circle {
+  fill: none;
+  stroke-width: 3;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-ring-track {
+  stroke: var(--ring-track);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-ring-bar {
+  stroke: var(--ring);
+  stroke-linecap: round;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-ring-value {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  -webkit-transform: translateY(-50%);
+  transform: translateY(-50%);
+  text-align: center;
+  font-size: calc(var(--cs) * 1.15);
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-ring-value sup {
+  font-size: 0.5em;
+  vertical-align: top;
+  position: relative;
+  top: 0.1em;
+  margin-left: 0.05em;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-vote-text {
+  margin-left: calc(var(--cs) * 0.75);
+  text-align: left;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-vote-label {
+  font-size: calc(var(--cs) * 0.85);
+  font-weight: 700;
+  line-height: 1.15;
+  color: #fff;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-vote-count {
+  font-size: calc(var(--cs) * 0.7);
+  line-height: 1.3;
+  margin-top: calc(var(--cs) * 0.2);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-vote-count:empty {
+  display: none;
+}
+
+/* Рейтинги Кинопоиска и IMDb — строкой под кругляшом: метка цветом сервиса,
+   рядом оценка. Пока модуль не ответил, строка пустая и места не занимает */
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-ratings {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-justify-content: flex-end;
+  justify-content: flex-end;
+  margin-top: calc(var(--cs) * 0.9);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-ratings:empty {
+  display: none;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-rating {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  font-size: calc(var(--cs) * 0.95);
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  margin-left: calc(var(--cs) * 0.9);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-rating b {
+  font-size: 0.72em;
+  font-weight: 800;
+  line-height: 1;
+  border-radius: calc(var(--cs) * 0.25);
+  padding: calc(var(--cs) * 0.22) calc(var(--cs) * 0.38);
+  margin-right: calc(var(--cs) * 0.4);
+  text-shadow: none;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-rating.is-kp b {
+  background: #f60;
+  color: #fff;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-rating.is-imdb b {
+  background: #f5c518;
+  color: #000;
+}
+
+/* Плашки — в строку под кругляшом, прижаты вправо; отступы margin'ом */
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-badges {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-justify-content: flex-end;
+  justify-content: flex-end;
+  -webkit-flex-wrap: wrap;
+  flex-wrap: wrap;
+  margin-top: calc(var(--cs) * 0.9);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-badges:empty {
+  display: none;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-badge {
+  font-size: calc(var(--cs) * 0.8);
+  font-weight: 600;
+  line-height: 1.3;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: calc(var(--cs) * 0.3);
+  padding: calc(var(--cs) * 0.25) calc(var(--cs) * 0.65);
+  margin-left: calc(var(--cs) * 0.5);
+}
+
+/* Возрастной рейтинг — в рамке, как на TMDB */
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-badge.is-cert {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
 /* --- КНОПКИ: белая «Поиск торрентов» и круглые со значками --------------- */
 /* Высоту и центровку значков держит line-height, а не display: flex — кнопки
    прячут инлайновым display (трейлер, торрентный режим), и свой display
@@ -12244,6 +12452,17 @@ html.apple-device {
   }
 }
 
+/* --- ТЕЛЕФОН и экраны уже 16:10: блока оценки нет — на телефоне колонка во
+   всю ширину, на узком экране блок лёг бы на описание. Оценка тогда звездой
+   в строке меты (isCinemaScoreShown в catalog.js, тот же медиазапрос) ----- */
+@media screen and (max-width: 600px) and (orientation: portrait),
+  screen and (orientation: landscape) and (max-height: 500px),
+  screen and (max-aspect-ratio: 155/100) {
+  #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-score {
+    display: none !important;
+  }
+}
+
 /* --- ТЕЛЕФОН: все кнопки сцены — круглые значки, без надписей ----------- */
 /* «Поиск торрентов» — магнитом, как и раньше на телефоне. Текст остаётся в
    разметке (font-size: 0) — его читает озвучка */
@@ -12303,13 +12522,15 @@ html.apple-device {
 #detail-view.catalog-detail-mode.detail-cinema.detail-entering .detail-cinema-head,
 #detail-view.catalog-detail-mode.detail-cinema.detail-entering #catalog-detail-actions,
 #detail-view.catalog-detail-mode.detail-cinema.detail-entering #catalog-detail-overview,
+#detail-view.catalog-detail-mode.detail-cinema.detail-entering .detail-cinema-score > div,
 #detail-view.catalog-detail-mode.detail-cinema.detail-entering .detail-cinema-below {
   opacity: 0;
 }
 
 #detail-view.catalog-detail-mode.detail-cinema.detail-enter .detail-cinema-head,
 #detail-view.catalog-detail-mode.detail-cinema.detail-enter #catalog-detail-actions,
-#detail-view.catalog-detail-mode.detail-cinema.detail-enter #catalog-detail-overview {
+#detail-view.catalog-detail-mode.detail-cinema.detail-enter #catalog-detail-overview,
+#detail-view.catalog-detail-mode.detail-cinema.detail-enter .detail-cinema-score > div {
   /* Прозрачность — плавно с обеих сторон: кривая с быстрым стартом
      проявляла текст почти целиком за первые 50–70 мс, и вход снова читался
      рывком. Подъём — с торможением у места */
@@ -12322,7 +12543,8 @@ html.apple-device {
   animation-delay: 0.06s;
 }
 
-#detail-view.catalog-detail-mode.detail-cinema.detail-enter #catalog-detail-overview {
+#detail-view.catalog-detail-mode.detail-cinema.detail-enter #catalog-detail-overview,
+#detail-view.catalog-detail-mode.detail-cinema.detail-enter .detail-cinema-score > div {
   -webkit-animation-delay: 0.1s;
   animation-delay: 0.1s;
 }

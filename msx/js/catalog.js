@@ -4150,6 +4150,26 @@ function ensureCinemaBlocks(panel) {
             '<div id="detail-cinema-chips" class="detail-cinema-chips"></div>';
         panel.insertBefore(head, panel.firstChild);
     }
+    if (!getEl('detail-cinema-score')) {
+        var score = document.createElement('div');
+        score.id = 'detail-cinema-score';
+        score.className = 'detail-cinema-score';
+        score.innerHTML =
+            '<div id="detail-cinema-vote" class="detail-cinema-vote">' +
+            '<div class="detail-cinema-ring">' +
+            '<svg viewBox="0 0 36 36"><circle class="detail-cinema-ring-track" cx="18" cy="18" r="15.9155"></circle>' +
+            '<circle id="detail-cinema-ring-bar" class="detail-cinema-ring-bar" cx="18" cy="18" r="15.9155"></circle></svg>' +
+            '<span id="detail-cinema-ring-value" class="detail-cinema-ring-value"></span>' +
+            '</div>' +
+            '<div class="detail-cinema-vote-text">' +
+            '<div class="detail-cinema-vote-label">Рейтинг<br>TMDB</div>' +
+            '<div id="detail-cinema-vote-count" class="detail-cinema-vote-count"></div>' +
+            '</div>' +
+            '</div>' +
+            '<div id="detail-cinema-ratings" class="detail-cinema-ratings"></div>' +
+            '<div id="detail-cinema-badges" class="detail-cinema-badges"></div>';
+        panel.parentElement.insertBefore(score, panel.nextSibling);
+    }
     var below = getEl('detail-cinema-below');
     if (!below) {
         below = document.createElement('div');
@@ -4247,6 +4267,119 @@ function renderCinemaLogo(item, src) {
     next();
 }
 
+/**
+ * Блок справа внизу сцены, как на сайте TMDB: кругляш оценки зрителей (в
+ * процентах, цвет по порогам TMDB), рейтинги Кинопоиска и IMDb (модуль
+ * kinopoisk-collections с 3.4.0, догружаются после показа) и плашки —
+ * возрастной рейтинг (поле certification, сервер с 1.0.58) и статус, если
+ * фильм ещё не вышел или сериал закончился. На телефоне и экранах уже 16:10 блока нет (styles.css) —
+ * оценка остаётся звездой в строке меты.
+ */
+var CINEMA_STATUS = {
+    tv: {
+        'Returning Series': 'Выходит', 'Ended': 'Завершён', 'Canceled': 'Отменён',
+        'In Production': 'В производстве', 'Planned': 'Анонсирован', 'Pilot': 'Пилот'
+    },
+    movie: {
+        'Post Production': 'Скоро выйдет', 'In Production': 'В производстве',
+        'Planned': 'Анонсирован', 'Rumored': 'Анонсирован', 'Canceled': 'Отменён'
+    }
+};
+var CINEMA_SCORE_HIDDEN_MQ = '(max-width: 600px) and (orientation: portrait), (orientation: landscape) and (max-height: 500px), (max-aspect-ratio: 155/100)';
+
+function isCinemaScoreShown() {
+    return !(window.matchMedia && window.matchMedia(CINEMA_SCORE_HIDDEN_MQ).matches);
+}
+
+function formatCinemaVotes(n) {
+    // toLocaleString с группами разрядов в Chrome 66 на ТВ бывает без ru — руками
+    return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0') + ' ' + pluralRu(n, 'голос', 'голоса', 'голосов');
+}
+
+// Рейтинги Кинопоиска и IMDb: «type_id» → {kp, imdb} | null (нет в Кинопоиске).
+// Ответ модуль кэширует и сам, а здесь — чтобы повторное открытие карточки
+// не ходило в сеть вовсе. Модуля нет (404) — больше не спрашиваем до перезагрузки
+var cinemaKpRatings = {};
+var cinemaKpUnavailable = false;
+
+function cinemaRatingsHtml(r) {
+    if (!r) return '';
+    var html = '';
+    if (r.kp) html += '<span class="detail-cinema-rating is-kp"><b>КП</b>' + r.kp.toFixed(1) + '</span>';
+    if (r.imdb) html += '<span class="detail-cinema-rating is-imdb"><b>IMDb</b>' + r.imdb.toFixed(1) + '</span>';
+    return html;
+}
+
+function updateCinemaScoreVisibility() {
+    var box = getEl('detail-cinema-score');
+    if (!box) return;
+    var vote = getEl('detail-cinema-vote'), ratings = getEl('detail-cinema-ratings'), badges = getEl('detail-cinema-badges');
+    var any = (vote && vote.style.display !== 'none') || (ratings && ratings.innerHTML) || (badges && badges.innerHTML);
+    box.style.display = any ? '' : 'none';
+}
+
+function loadCinemaKpRating(key, type, id, imdb) {
+    if (cinemaKpUnavailable) return;
+    var url = '/api/kinopoisk/rating?type=' + encodeURIComponent(type) + '&id=' + encodeURIComponent(id) +
+        (imdb ? '&imdb=' + encodeURIComponent(imdb) : '');
+    fetch(url).then(function (resp) {
+        if (resp.status === 404) { cinemaKpUnavailable = true; return null; }
+        return resp.ok ? resp.json() : null;
+    }).then(function (data) {
+        if (!data || !data.success) return;
+        var r = (data.kp || data.imdb) ? { kp: data.kp, imdb: data.imdb } : null;
+        cinemaKpRatings[key] = r;
+        // Пока ждали, могли открыть другую карточку
+        var box = getEl('detail-cinema-score'), el = getEl('detail-cinema-ratings');
+        if (!box || !el || box.getAttribute('data-key') !== key) return;
+        el.innerHTML = cinemaRatingsHtml(r);
+        updateCinemaScoreVisibility();
+    })['catch'](function () { });
+}
+
+function renderCinemaScore(item, src) {
+    var box = getEl('detail-cinema-score');
+    if (!box) return;
+    var type = (item.media_type || 'movie') === 'tv' ? 'tv' : 'movie';
+    var id = src.id || item.id;
+    var key = type + '_' + id;
+    var ratingsEl = getEl('detail-cinema-ratings');
+    if (box.getAttribute('data-key') !== key) {
+        box.setAttribute('data-key', key);
+        if (ratingsEl) ratingsEl.innerHTML = '';
+        if (cinemaKpRatings.hasOwnProperty(key)) {
+            if (ratingsEl) ratingsEl.innerHTML = cinemaRatingsHtml(cinemaKpRatings[key]);
+        } else if (id) {
+            loadCinemaKpRating(key, type, id, src.imdb_id || '');
+        }
+    }
+    var vote = Number(src.vote_average) || Number(item.vote_average) || 0;
+    var count = Number(src.vote_count) || Number(item.vote_count) || 0;
+    var pct = vote > 0 && vote <= 10 ? Math.round(vote * 10) : 0;
+
+    var voteEl = getEl('detail-cinema-vote');
+    if (voteEl) voteEl.style.display = pct ? '' : 'none';
+    if (pct) {
+        var bar = getEl('detail-cinema-ring-bar');
+        if (bar) bar.setAttribute('stroke-dasharray', pct + ' 100');
+        voteEl.className = 'detail-cinema-vote ' + (pct >= 70 ? 'is-high' : (pct >= 40 ? 'is-mid' : 'is-low'));
+        var val = getEl('detail-cinema-ring-value');
+        if (val) val.innerHTML = pct + '<sup>%</sup>';
+        var cnt = getEl('detail-cinema-vote-count');
+        if (cnt) cnt.textContent = count > 0 ? formatCinemaVotes(count) : '';
+    }
+
+    var badges = [];
+    var cert = src.certification;
+    if (cert && cert.value) badges.push('<span class="detail-cinema-badge is-cert">' + escapeHtml(String(cert.value)) + '</span>');
+    var statuses = CINEMA_STATUS[(item.media_type || 'movie') === 'tv' ? 'tv' : 'movie'];
+    var status = src.status && statuses[src.status];
+    if (status) badges.push('<span class="detail-cinema-badge">' + escapeHtml(status) + '</span>');
+    var badgesEl = getEl('detail-cinema-badges');
+    if (badgesEl) badgesEl.innerHTML = badges.join('');
+    updateCinemaScoreVisibility();
+}
+
 /** Шапка сцены: логотип или название, строка меты, плашки жанров и стран */
 function renderCinemaHead(item, src) {
     if (!getEl('detail-cinema-head')) return;
@@ -4264,8 +4397,9 @@ function renderCinemaHead(item, src) {
         var rt = formatCinemaRuntime(src.runtime);
         if (rt) parts.push(rt);
     }
+    // Оценку показывает кругляш справа (renderCinemaScore); звезда — только на телефоне
     var rating = getSafeCatalogRating(src) || getSafeCatalogRating(item);
-    if (rating) parts.push('<span class="detail-cinema-star">★</span> ' + rating.toFixed(1));
+    if (rating && !isCinemaScoreShown()) parts.push('<span class="detail-cinema-star">★</span> ' + rating.toFixed(1));
     var meta = getEl('detail-cinema-meta');
     if (meta) meta.innerHTML = parts.join('<span class="detail-cinema-dot">·</span>');
 
@@ -4282,6 +4416,7 @@ function renderCinemaHead(item, src) {
         for (var k = 0; k < chips.length; k++) html += '<span class="detail-cinema-chip">' + escapeHtml(chips[k]) + '</span>';
         box.innerHTML = html;
     }
+    renderCinemaScore(item, src);
 }
 
 /**
