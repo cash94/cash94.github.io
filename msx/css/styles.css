@@ -12295,6 +12295,15 @@ html.apple-device {
 }
 
 /* --- ОПИСАНИЕ ------------------------------------------------------------ */
+/* В «сцене» описание не показываем вовсе — ни на ТВ, ни на телефоне: его
+   открывает кнопка «Подробнее» окном (openDetailOverviewPopup в catalog.js).
+   Блок остаётся в разметке — окно берёт текст из него. !important — против
+   style.display = 'block', который ставит renderDetailHeader. Правило ниже
+   оставлено на случай, если описание в сцену вернут */
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-overview {
+  display: none !important;
+}
+
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-overview {
   font-size: calc(var(--cs) * 0.92 * var(--detail-text-scale, 1)) !important;
   line-height: 1.5 !important;
@@ -12302,8 +12311,6 @@ html.apple-device {
   margin: 0 !important;
   -webkit-line-clamp: 5;
   color: rgba(255, 255, 255, 0.82) !important;
-  /* Клик по тексту открывает окно с полным описанием (catalog.js) */
-  cursor: pointer;
 }
 
 /* Окно с полным описанием «сцены» — openDetailOverviewPopup() в catalog.js.
@@ -12323,7 +12330,8 @@ html.apple-device {
   align-items: center;
   -webkit-justify-content: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.72);
+  /* Лёгкое затемнение: кадр сцены виден под окном */
+  background: rgba(0, 0, 0, 0.35);
 }
 
 .detail-overview-popup.hidden {
@@ -12341,10 +12349,11 @@ html.apple-device {
   padding: calc(1.852vh * 2) calc(1.852vh * 2.4);
   box-sizing: border-box;
   border-radius: calc(1.852vh * 1.1);
-  background: #15151d;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-top: 3px solid var(--focus-color, #ff8c00);
-  box-shadow: 0 1.5vh 5vh rgba(0, 0, 0, 0.6);
+  /* Полупрозрачный серый без backdrop-filter и без размытой тени: размытие
+     на слабых ТВ пересчитывается каждый кадр и тормозит. Плотности хватает,
+     чтобы белый текст читался и поверх светлого кадра */
+  background: rgba(46, 48, 56, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .detail-overview-popup-title {
@@ -12692,6 +12701,13 @@ html.apple-device {
     --cs: var(--cu);
   }
 
+  /* Вертикаль сцены листает свайп «страницами» (control.js: CINEMA_SWIPE_MQ,
+     тот же медиазапрос) — нативную вертикальную прокрутку пальцем выключаем,
+     горизонтальные ленты остаются */
+  #detail-view.catalog-detail-mode.detail-cinema {
+    touch-action: pan-x;
+  }
+
   #detail-view.catalog-detail-mode.detail-cinema .catalog-detail-panel {
     max-width: 70vw !important;
     padding-left: 24px !important;
@@ -12707,11 +12723,12 @@ html.apple-device {
   }
 }
 
-/* --- ТЕЛЕФОН и экраны уже 16:10: блока оценки нет — на телефоне колонка во
-   всю ширину, на узком экране блок лёг бы на описание. Оценка тогда звездой
-   в строке меты (isCinemaScoreShown в catalog.js, тот же медиазапрос) ----- */
+/* --- ТЕЛЕФОН книжно и экраны уже 16:10: блока оценки нет — на телефоне
+   колонка во всю ширину, на узком экране блок лёг бы на колонку. Оценка тогда
+   звездой в строке меты (isCinemaScoreShown в catalog.js, тот же медиазапрос).
+   Телефон боком — с блоком: колонка там 70vw, а описания в сцене больше нет,
+   справа внизу место свободно ------------------------------------------- */
 @media screen and (max-width: 600px) and (orientation: portrait),
-  screen and (orientation: landscape) and (max-height: 500px),
   screen and (max-aspect-ratio: 155/100) {
   #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-score {
     display: none !important;

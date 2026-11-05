@@ -2219,6 +2219,21 @@ function setupCheckboxes() {
     });
   }
 
+  // Скринсейвер в плеере (пелена и заставка на паузе, screensaver.js). В
+  // Android-приложении фильм идёт в нативном плеере — там галка не нужна.
+  var screensaverCheckbox = getEl('player-screensaver');
+  if (screensaverCheckbox) {
+    if (window.AndroidJS) {
+      var screensaverContainer = screensaverCheckbox.closest('.checkbox-container');
+      if (screensaverContainer) screensaverContainer.classList.add('hidden');
+    }
+    AppState.playerScreensaver = localStorage.getItem('playerScreensaver') !== 'false';
+    screensaverCheckbox.checked = AppState.playerScreensaver;
+    screensaverCheckbox.addEventListener('change', function (e) {
+      setPlayerScreensaver(e.target.checked);
+    });
+  }
+
   // Ручное скрытие интерфейса плеера. В Android-приложении панель рисует
   // нативный плеер — галка там ни на что бы не влияла, прячем.
   var manualHideCheckbox = getEl('player-manual-hide');
@@ -2625,6 +2640,17 @@ function setPlayerManualHide(on) {
   }
 }
 window.setPlayerManualHide = setPlayerManualHide;
+
+/** Скринсейвер в плеере: галка в разделе «Плеер» и пункт в шестерёнке */
+function setPlayerScreensaver(on) {
+  AppState.playerScreensaver = !!on;
+  try { localStorage.setItem('playerScreensaver', AppState.playerScreensaver); } catch (e) { }
+  var cb = getEl('player-screensaver');
+  if (cb) cb.checked = AppState.playerScreensaver;
+  // Пелену и заставку, если уже вышли, снимет ближайший тик screensaver.js:
+  // плеер для него перестаёт считаться «на паузе»
+}
+window.setPlayerScreensaver = setPlayerScreensaver;
 
 function setupClockVisibility() {
   var clockDisplay = getEl('clock-display');

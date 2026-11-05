@@ -2157,6 +2157,8 @@ function updatePlayerSettingsMenu() {
   if (autoSkip) autoSkip.classList.toggle('is-on', !!AppState.autoSkipIntro);
   var manualHide = getEl('psetting-manualhide');
   if (manualHide) manualHide.classList.toggle('is-on', !!AppState.playerManualHide);
+  var saver = getEl('psetting-screensaver');
+  if (saver) saver.classList.toggle('is-on', AppState.playerScreensaver !== false);
   var subSize = getEl('psetting-subsize-value');
   if (subSize) subSize.textContent = SUBTITLE_SIZES[getSubtitleSize()].label;
 }
@@ -2173,6 +2175,8 @@ function setupPlayerSettingsButton() {
   // ...и HUD там свой, нативный
   var manualHideItem = getEl('psetting-manualhide');
   if (manualHideItem && window.AndroidJS) manualHideItem.style.display = 'none';
+  var saverItem = getEl('psetting-screensaver');
+  if (saverItem && window.AndroidJS) saverItem.style.display = 'none';
   var btn = getEl('player-settings-btn');
   var panel = getEl('player-settings-panel');
   if (!btn || !panel) return;
@@ -2192,6 +2196,8 @@ function setupPlayerSettingsButton() {
       setAutoSkip(!AppState.autoSkipIntro);
     } else if (item && item.id === 'psetting-manualhide' && typeof setPlayerManualHide === 'function') {
       setPlayerManualHide(!AppState.playerManualHide);
+    } else if (item && item.id === 'psetting-screensaver' && typeof setPlayerScreensaver === 'function') {
+      setPlayerScreensaver(AppState.playerScreensaver === false);
     } else if (item && item.id === 'psetting-subsize') {
       // ОК — следующий размер, после самого крупного — снова самый мелкий
       setSubtitleSize((getSubtitleSize() + 1) % SUBTITLE_SIZES.length);

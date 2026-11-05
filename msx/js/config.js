@@ -151,6 +151,11 @@ var AppState = {
   // бездействия (player.js, resetMouseIdleTimer), его убирают «Назад» или
   // «вверх» на ползунке перемотки (control.js). Из localStorage.
   playerManualHide: false,
+  // Настройка «Включить скринсейвер» (раздел «Плеер» и шестерёнка): на паузе
+  // в плеере гаснет картинка и выходит заставка (screensaver.js). Выключена —
+  // в плеере нет ни пелены, ни заставки; вне плеера заставка как была.
+  // Из localStorage; по умолчанию включена.
+  playerScreensaver: true,
   // Настройка «Предзагрузка» (TorrServer): перед стартом плеера набрать буфер
   // в окне со статистикой раздачи (torrserverstats.js, runPlaybackPreload).
   // Из localStorage; по умолчанию включена.

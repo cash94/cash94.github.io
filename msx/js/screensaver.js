@@ -19,6 +19,8 @@
 // с AVPlay на Tizen: tizen-avplay.js подменяет paused у #video-player, а кадр
 // AVPlay рисуется слоем ПОД страницей, так что пелена его тоже затемняет.
 // Любое нажатие убирает и заставку, и пелену и показывает HUD плеера.
+// Настройка «Включить скринсейвер» (AppState.playerScreensaver) выключает в
+// плеере и пелену, и заставку — playerPaused() тогда всегда «нет».
 //
 // Грузится СРАЗУ после config.js — раньше всех, кто слушает клавиатуру на
 // window в фазе захвата (osk.js, ui-customizer.js, torrserverstats.js). Только
@@ -88,6 +90,9 @@
     function playerPaused() {
         var st = window.AppState;
         if (!st || st.currentScreen !== 'player' || st.isYoutubePlayback || st.isSeeking) return false;
+        // «Включить скринсейвер» снят: пауза в плеере не гасит экран и не
+        // зовёт заставку (canStart в плеере спрашивает только нас)
+        if (st.playerScreensaver === false) return false;
         var v = document.getElementById('video-player');
         if (!v || !v.paused || v.readyState < 2) return false;
         var po = document.getElementById('player-overlay');

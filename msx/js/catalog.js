@@ -495,9 +495,9 @@ function initCatalogDetailButtons() {
             // подзаголовке (там оно и остаётся, отдельный блок не показываем).
             // Обрезку задаёт CSS: -webkit-line-clamp, снимает класс .expanded.
             var dv = getEl('detail-view');
-            // В «сцене» описание не разворачиваем на месте: длинный текст
-            // выталкивал кнопки и ленты за нижний край экрана. Полный текст —
-            // во всплывающем окне поверх кадра
+            // В «сцене» описания на экране нет (styles.css): длинный текст
+            // выталкивал кнопки и ленты за нижний край. Его показывает только
+            // эта кнопка — всплывающим окном поверх кадра
             if (isCinemaCatalogDetail(dv)) {
                 openDetailOverviewPopup();
                 return;
@@ -510,15 +510,6 @@ function initCatalogDetailButtons() {
             // Подпись под круглой кнопкой сцены (detail-cinema в styles.css)
             togBtn.setAttribute('data-label', togBtn.textContent);
         };
-    }
-
-    // Мышь и тач: в «сцене» клик по обрезанному описанию открывает его целиком
-    var ovEl = getEl('catalog-detail-overview');
-    if (ovEl && !ovEl._popupInit) {
-        ovEl._popupInit = true;
-        ovEl.addEventListener('click', function () {
-            if (isCinemaCatalogDetail()) openDetailOverviewPopup();
-        });
     }
 
     // --- Кнопка «Трейлер» ---
@@ -564,8 +555,9 @@ function isCinemaCatalogDetail(dv) {
 }
 
 /* ===== ОПИСАНИЕ «СЦЕНЫ» ВО ВСПЛЫВАЮЩЕМ ОКНЕ =====
- * В карточке-«сцене» описание обрезано до нескольких строк; «Подробнее» (или
- * клик по тексту) открывает его целиком в окне поверх карточки.
+ * В карточке-«сцене» описания на экране нет; «Подробнее» открывает его в окне
+ * поверх карточки. Текст берём из скрытого #catalog-detail-overview — его по-
+ * прежнему заполняет renderDetailHeader.
  *
  * Окно живёт в <body>, а не в #detail-view: у карточки бывают transform'ы
  * (анимация входа), и position: fixed внутри них считался бы от карточки.
@@ -4453,7 +4445,8 @@ var CINEMA_STATUS = {
         'Planned': 'Анонсирован', 'Rumored': 'Анонсирован', 'Canceled': 'Отменён'
     }
 };
-var CINEMA_SCORE_HIDDEN_MQ = '(max-width: 600px) and (orientation: portrait), (orientation: landscape) and (max-height: 500px), (max-aspect-ratio: 155/100)';
+// Тот же медиазапрос, что прячет .detail-cinema-score в styles.css
+var CINEMA_SCORE_HIDDEN_MQ = '(max-width: 600px) and (orientation: portrait), (max-aspect-ratio: 155/100)';
 
 function isCinemaScoreShown() {
     return !(window.matchMedia && window.matchMedia(CINEMA_SCORE_HIDDEN_MQ).matches);

@@ -420,13 +420,6 @@ function initCatalogDetailButtons() {
       togBtn.setAttribute('data-label', togBtn.textContent);
     };
   }
-  var ovEl = getEl('catalog-detail-overview');
-  if (ovEl && !ovEl._popupInit) {
-    ovEl._popupInit = true;
-    ovEl.addEventListener('click', function () {
-      if (isCinemaCatalogDetail()) openDetailOverviewPopup();
-    });
-  }
   var trailerBtn = getEl('catalog-trailer-btn');
   if (trailerBtn && !trailerBtn._initialized) {
     trailerBtn._initialized = true;
@@ -3391,7 +3384,7 @@ var CINEMA_STATUS = {
     'Canceled': 'Отменён'
   }
 };
-var CINEMA_SCORE_HIDDEN_MQ = '(max-width: 600px) and (orientation: portrait), (orientation: landscape) and (max-height: 500px), (max-aspect-ratio: 155/100)';
+var CINEMA_SCORE_HIDDEN_MQ = '(max-width: 600px) and (orientation: portrait), (max-aspect-ratio: 155/100)';
 function isCinemaScoreShown() {
   return !(window.matchMedia && window.matchMedia(CINEMA_SCORE_HIDDEN_MQ).matches);
 }

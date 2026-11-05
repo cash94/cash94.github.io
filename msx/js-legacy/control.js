@@ -757,7 +757,11 @@ document.addEventListener('wheel', function (e) {
   if (Math.abs(cinemaWheelAccum) < CINEMA_WHEEL_STEP_PX) return;
   if (now < cinemaWheelLockUntil) return;
   cinemaWheelAccum = 0;
-  var down = dy > 0;
+  cinemaPageStep(dv, dy > 0);
+}, {
+  passive: false
+});
+function cinemaPageStep(dv, down) {
   var rest = scrollRestTop(dv),
     stops = cinemaPageStops(dv),
     to = null;
@@ -772,13 +776,48 @@ document.addEventListener('wheel', function (e) {
       break;
     }
   }
-  if (to === null) return;
-  cinemaWheelLockUntil = now + CINEMA_SCROLL_S * 1000 * 0.9;
+  if (to === null) return false;
+  cinemaWheelLockUntil = Date.now() + CINEMA_SCROLL_S * 1000 * 0.9;
   applyScroll(dv, {
     scrollTop: to
   }, true, CINEMA_SCROLL_S, CINEMA_SCROLL_EASE);
+  return true;
+}
+var CINEMA_SWIPE_MQ = '(orientation: landscape) and (max-height: 500px)';
+var CINEMA_SWIPE_MIN_PX = 30;
+var cinemaSwipe = null;
+function cinemaSwipeActive() {
+  return !!(window.matchMedia && window.matchMedia(CINEMA_SWIPE_MQ).matches) && isCinemaDetail() && currentScreen() === 'detail';
+}
+document.addEventListener('touchstart', function (e) {
+  cinemaSwipe = null;
+  if (!e.touches || e.touches.length !== 1 || !cinemaSwipeActive()) return;
+  var dv = getEl('detail-view');
+  if (!dv || !dv.contains(e.target) || hasOwnVerticalScroll(e.target, dv)) return;
+  cinemaSwipe = {
+    x: e.touches[0].clientX,
+    y: e.touches[0].clientY
+  };
 }, {
-  passive: false
+  passive: true
+});
+document.addEventListener('touchend', function (e) {
+  var sw = cinemaSwipe;
+  cinemaSwipe = null;
+  if (!sw || !e.changedTouches || !e.changedTouches.length) return;
+  var dx = e.changedTouches[0].clientX - sw.x,
+    dy = e.changedTouches[0].clientY - sw.y;
+  if (Math.abs(dy) < CINEMA_SWIPE_MIN_PX || Math.abs(dy) < Math.abs(dx)) return;
+  if (Date.now() < cinemaWheelLockUntil) return;
+  var dv = getEl('detail-view');
+  if (dv) cinemaPageStep(dv, dy < 0);
+}, {
+  passive: true
+});
+document.addEventListener('touchcancel', function () {
+  cinemaSwipe = null;
+}, {
+  passive: true
 });
 function getDetailFileEntry(fi) {
   var list = getEl('files-list');

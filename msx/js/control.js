@@ -1211,19 +1211,64 @@ document.addEventListener('wheel', function (e) {
     // пролистывать несколько страниц за один жест
     if (now < cinemaWheelLockUntil) return;
     cinemaWheelAccum = 0;
+    cinemaPageStep(dv, dy > 0);
+}, { passive: false });
 
-    var down = dy > 0;
+/** Шаг сцены на соседнюю остановку вниз или вверх — общий для колеса и свайпа */
+function cinemaPageStep(dv, down) {
     var rest = scrollRestTop(dv), stops = cinemaPageStops(dv), to = null;
     if (down) {
         for (var i = 0; i < stops.length; i++) if (stops[i] > rest + 4) { to = stops[i]; break; }
     } else {
         for (var j = stops.length - 1; j >= 0; j--) if (stops[j] < rest - 4) { to = stops[j]; break; }
     }
-    if (to === null) return;
-
-    cinemaWheelLockUntil = now + CINEMA_SCROLL_S * 1000 * 0.9;
+    if (to === null) return false;
+    cinemaWheelLockUntil = Date.now() + CINEMA_SCROLL_S * 1000 * 0.9;
     applyScroll(dv, { scrollTop: to }, true, CINEMA_SCROLL_S, CINEMA_SCROLL_EASE);
-}, { passive: false });
+    return true;
+}
+
+/*
+ * Свайп вверх/вниз на телефоне боком — те же страницы, что у колеса и пульта.
+ *
+ * Нативную вертикальную прокрутку сцены там выключает CSS (touch-action:
+ * pan-x у #detail-view, тот же медиазапрос CINEMA_SWIPE_MQ) — без
+ * preventDefault в touchmove: неpassive-слушатель касаний на document тормозил
+ * бы прокрутку на всех экранах. Горизонтальные ленты листаются пальцем как
+ * раньше. Слушатели пассивные: жест разбираем по началу и концу касания.
+ * Книжный телефон и планшеты не трогаем — там прокрутка своя, по пикселям.
+ */
+var CINEMA_SWIPE_MQ = '(orientation: landscape) and (max-height: 500px)';
+var CINEMA_SWIPE_MIN_PX = 30;        // меньше — это тап или дрожание пальца
+var cinemaSwipe = null;
+
+function cinemaSwipeActive() {
+    return !!(window.matchMedia && window.matchMedia(CINEMA_SWIPE_MQ).matches) &&
+        isCinemaDetail() && currentScreen() === 'detail';
+}
+
+document.addEventListener('touchstart', function (e) {
+    cinemaSwipe = null;
+    if (!e.touches || e.touches.length !== 1 || !cinemaSwipeActive()) return;
+    var dv = getEl('detail-view');
+    if (!dv || !dv.contains(e.target) || hasOwnVerticalScroll(e.target, dv)) return;
+    cinemaSwipe = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+}, { passive: true });
+
+document.addEventListener('touchend', function (e) {
+    var sw = cinemaSwipe;
+    cinemaSwipe = null;
+    if (!sw || !e.changedTouches || !e.changedTouches.length) return;
+    var dx = e.changedTouches[0].clientX - sw.x, dy = e.changedTouches[0].clientY - sw.y;
+    // Горизонтальный жест — это лента, не страница
+    if (Math.abs(dy) < CINEMA_SWIPE_MIN_PX || Math.abs(dy) < Math.abs(dx)) return;
+    if (Date.now() < cinemaWheelLockUntil) return;
+    var dv = getEl('detail-view');
+    // Палец вверх — страница ниже, как при прокрутке
+    if (dv) cinemaPageStep(dv, dy < 0);
+}, { passive: true });
+
+document.addEventListener('touchcancel', function () { cinemaSwipe = null; }, { passive: true });
 
 /**
  * Плитка, на которую встаём, входя в ряд серий сверху.

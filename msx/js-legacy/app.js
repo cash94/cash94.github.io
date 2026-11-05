@@ -1723,6 +1723,18 @@ function setupCheckboxes() {
       setAutoSkip(e.target.checked);
     });
   }
+  var screensaverCheckbox = getEl('player-screensaver');
+  if (screensaverCheckbox) {
+    if (window.AndroidJS) {
+      var screensaverContainer = screensaverCheckbox.closest('.checkbox-container');
+      if (screensaverContainer) screensaverContainer.classList.add('hidden');
+    }
+    AppState.playerScreensaver = localStorage.getItem('playerScreensaver') !== 'false';
+    screensaverCheckbox.checked = AppState.playerScreensaver;
+    screensaverCheckbox.addEventListener('change', function (e) {
+      setPlayerScreensaver(e.target.checked);
+    });
+  }
   var manualHideCheckbox = getEl('player-manual-hide');
   if (manualHideCheckbox) {
     if (window.AndroidJS) {
@@ -2065,6 +2077,15 @@ function setPlayerManualHide(on) {
   }
 }
 window.setPlayerManualHide = setPlayerManualHide;
+function setPlayerScreensaver(on) {
+  AppState.playerScreensaver = !!on;
+  try {
+    localStorage.setItem('playerScreensaver', AppState.playerScreensaver);
+  } catch (e) {}
+  var cb = getEl('player-screensaver');
+  if (cb) cb.checked = AppState.playerScreensaver;
+}
+window.setPlayerScreensaver = setPlayerScreensaver;
 function setupClockVisibility() {
   var clockDisplay = getEl('clock-display');
   if (clockDisplay) {

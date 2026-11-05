@@ -50,6 +50,7 @@
   function playerPaused() {
     var st = window.AppState;
     if (!st || st.currentScreen !== 'player' || st.isYoutubePlayback || st.isSeeking) return false;
+    if (st.playerScreensaver === false) return false;
     var v = document.getElementById('video-player');
     if (!v || !v.paused || v.readyState < 2) return false;
     var po = document.getElementById('player-overlay');
