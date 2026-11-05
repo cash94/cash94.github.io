@@ -3147,8 +3147,26 @@ function isFlipScroller(el) {
     return !!flipContentFor(el);
 }
 
+/* Срок перехода (_flipUntil) — это предсказание: заказ + длительность + 50 мс.
+ * На слабом ТВ переход стартует позже — основной поток ещё занят шагом
+ * (разворот чанка, постеры), и к сроку сетка бывает сдвинута на десятки и
+ * сотни px. Если считать её в этот момент стоящей, расчёты «в покое» берут
+ * сдвинутый прямоугольник за настоящий: доводка прижатия (catalogGridPinTarget)
+ * уводила строку вверх, к середине экрана, а следующий шаг стартовал прыжком.
+ *
+ * Поэтому сразу после срока, в окне FLIP_SETTLE_GRACE_MS, спрашиваем сам
+ * transform. Это стиль одного элемента, без раскладки, и только в коротком
+ * окне после шага — на ходу и в покое лишней работы нет. */
+var FLIP_SETTLE_GRACE_MS = 600;
+
 function isFlipInFlight(el) {
-    return !!(el && el._flipEl && Date.now() < (el._flipUntil || 0));
+    if (!el || !el._flipEl) return false;
+    var until = el._flipUntil || 0;
+    if (!until) return false;
+    var now = Date.now();
+    if (now < until) return true;
+    if (now > until + FLIP_SETTLE_GRACE_MS) return false;
+    return Math.abs(flipCurrentY(el)) >= 0.5;
 }
 
 /** Текущий сдвиг содержимого посреди перехода (px) */
@@ -3923,7 +3941,8 @@ function scheduleCatalogGridPinCheck(scrollContainer, attempt) {
 
         // Пока кнопку держат или твин ещё едет, мерить нечего: следующий шаг
         // всё равно пересчитает цель сам
-        var moving = navHold ||
+        // isFlipInFlight — не только по сроку: переход мог опоздать (см. там)
+        var moving = navHold || isFlipInFlight(scrollContainer) ||
             (typeof Animations !== 'undefined' &&
                 typeof Animations.isScrollTweening === 'function' &&
                 Animations.isScrollTweening(scrollContainer));
@@ -4344,6 +4363,13 @@ function focusEl(el, opts) {
     if ((isRowCard || (el.classList && el.classList.contains('catalog-card'))) &&
         typeof revealCatalogElement === 'function') {
         revealCatalogElement(el);
+    }
+
+    // «Мои торренты»: фокус постоял на раздаче — её детали, сезоны и кадры
+    // фоном заранее (torrents.js, prefetchTorrentDetail). Здесь только таймер.
+    if (s === 'torrents' && el.dataset && el.dataset.hash &&
+        typeof window.scheduleTorrentDetailPrefetch === 'function') {
+        window.scheduleTorrentDetailPrefetch(el);
     }
 
     // То же самое для списка результатов поиска (оконная видимость в

@@ -289,9 +289,11 @@ function _torrServerFetch() {
     var headers = _objectSpread({
       'Content-Type': 'application/json'
     }, getAuthHeaders());
-    return fetch(AppState.currentTorrserverUrl + endpoint, _objectSpread(_objectSpread({}, options), {}, {
+    var init = _objectSpread(_objectSpread({}, options), {}, {
       headers: _objectSpread(_objectSpread({}, headers), options.headers || {})
-    }));
+    });
+    var url = AppState.currentTorrserverUrl + endpoint;
+    return window.bgFetch ? window.bgFetch(url, init) : fetch(url, init);
   });
   return _torrServerFetch.apply(this, arguments);
 }
@@ -1660,7 +1662,7 @@ function _loadClientConfig() {
     try {
       var savedClientId = localStorage.getItem('clientId');
       var url = SERVER_URL + '/api/client/config' + (savedClientId ? '?clientId=' + encodeURIComponent(savedClientId) : '');
-      var response = yield fetch(url);
+      var response = yield bgFetch(url);
       if (response.ok) {
         var data = yield response.json();
         AppState.clientId = data.clientId;
@@ -1705,7 +1707,7 @@ function _saveClientConfig() {
     var password = getEl('auth-password').value.trim();
     if (password) config.password = password;
     try {
-      var response = yield fetch(SERVER_URL + '/api/client/config', {
+      var response = yield bgFetch(SERVER_URL + '/api/client/config', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1856,7 +1858,7 @@ function _detectMonoServer() {
       probe.abort();
     }, 4000);
     try {
-      var r = yield fetch(baseUrl + '/api/info', {
+      var r = yield bgFetch(baseUrl + '/api/info', {
         method: 'GET',
         headers: headers,
         signal: probe.signal
@@ -1940,10 +1942,11 @@ function _checkServer() {
       }, TORRSERVER_PROBE_TIMEOUT_MS);
       var response;
       try {
-        response = yield fetch(testUrl + '/echo', {
+        response = yield bgFetch(testUrl + '/echo', {
           method: 'GET',
           headers: headers,
-          signal: probe.signal
+          signal: probe.signal,
+          bgMode: 'text'
         });
       } finally {
         clearTimeout(probeTimer);
@@ -2248,6 +2251,16 @@ function hideCatalogDetailExtra() {
   });
 }
 window.hideCatalogDetailExtra = hideCatalogDetailExtra;
+function tsServerJson(path) {
+  if (window.PosterPrefetch && typeof window.PosterPrefetch.json === 'function') {
+    return window.PosterPrefetch.json(path);
+  }
+  return fetch(path).then(function (r) {
+    return r.ok ? r.json() : null;
+  }).catch(function () {
+    return null;
+  });
+}
 function getTmdbDetailsWithCache(_x8, _x9) {
   return _getTmdbDetailsWithCache.apply(this, arguments);
 }
@@ -2255,6 +2268,7 @@ function _getTmdbDetailsWithCache() {
   _getTmdbDetailsWithCache = _asyncToGenerator(function* (tmdbId, mediaType) {
     if (!tmdbId) return null;
     if (!mediaType) mediaType = 'movie';
+    var path = '/api/tmdb/details?id=' + tmdbId + '&type=' + mediaType;
     if (window.getFromTmdbCache && window.saveToTmdbCache) {
       var cacheParams = {
         id: tmdbId,
@@ -2262,40 +2276,251 @@ function _getTmdbDetailsWithCache() {
       };
       var cachedData = window.getFromTmdbCache('details', cacheParams);
       if (cachedData) return cachedData;
-      try {
-        var response = yield fetch('/api/tmdb/details?id=' + tmdbId + '&type=' + mediaType);
-        if (response.ok) {
-          var data = yield response.json();
-          window.saveToTmdbCache('details', cacheParams, data);
-          return data;
-        }
-      } catch (error) {
-        console.error('Ошибка загрузки TMDB данных:', error);
-      }
-    } else {
-      if (!window.tmdbDetailsCache) window.tmdbDetailsCache = new LruCache(200, 24 * 60 * 60 * 1000);
-      var cacheKey = tmdbId + '_' + mediaType;
-      if (window.tmdbDetailsCache.has(cacheKey)) {
-        var cached = window.tmdbDetailsCache.get(cacheKey);
-        if (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) return cached.data;
-      }
-      try {
-        var response = yield fetch('/api/tmdb/details?id=' + tmdbId + '&type=' + mediaType);
-        if (response.ok) {
-          var data = yield response.json();
-          window.tmdbDetailsCache.set(cacheKey, {
-            data: data,
-            timestamp: Date.now()
-          });
-          return data;
-        }
-      } catch (error) {
-        console.error('Ошибка загрузки TMDB данных:', error);
-      }
+      var data = yield tsServerJson(path);
+      if (data) window.saveToTmdbCache('details', cacheParams, data);
+      return data || null;
     }
-    return null;
+    if (!window.tmdbDetailsCache) window.tmdbDetailsCache = new LruCache(200, 24 * 60 * 60 * 1000);
+    var cacheKey = tmdbId + '_' + mediaType;
+    if (window.tmdbDetailsCache.has(cacheKey)) {
+      var cached = window.tmdbDetailsCache.get(cacheKey);
+      if (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) return cached.data;
+    }
+    var fresh = yield tsServerJson(path);
+    if (fresh) window.tmdbDetailsCache.set(cacheKey, {
+      data: fresh,
+      timestamp: Date.now()
+    });
+    return fresh || null;
   });
   return _getTmdbDetailsWithCache.apply(this, arguments);
+}
+function torrentBackdropUrl(path) {
+  if (!path) return null;
+  path = String(path);
+  if (path.indexOf('http') === 0) return path;
+  if (window.getTmdbImageUrl) return window.getTmdbImageUrl(path, 'w1280');
+  return getPrimaryImageBase() + 'w1280' + (path.charAt(0) === '/' ? path : '/' + path);
+}
+window.renderTorrentTitleLogo = renderTorrentTitleLogo;
+var TORRENT_LOGO_WAIT_MS = 1500;
+var torrentLogoGen = 0;
+var torrentLogoUrls = new LruCache(300, 24 * 60 * 60 * 1000);
+function torrentLogoUrl(tmdbId, mediaType) {
+  var key = mediaType + ':' + tmdbId;
+  if (torrentLogoUrls.has(key)) return Promise.resolve(torrentLogoUrls.get(key) || null);
+  var url = null;
+  if (window.HomeScreen && typeof window.HomeScreen.logoUrl === 'function') {
+    try {
+      url = window.HomeScreen.logoUrl({
+        id: Number(tmdbId) || tmdbId,
+        media_type: mediaType
+      });
+    } catch (e) {
+      url = null;
+    }
+  }
+  if (url) {
+    torrentLogoUrls.set(key, url);
+    return Promise.resolve(url);
+  }
+  return tsServerJson('/api/tmdb/logo?id=' + encodeURIComponent(tmdbId) + '&type=' + mediaType).then(function (d) {
+    if (!d) return null;
+    var path = d.logo && d.logo.file_path;
+    var u = path && window.getTmdbImageUrl ? window.getTmdbImageUrl(path, 'w500') : '';
+    torrentLogoUrls.set(key, u);
+    return u || null;
+  });
+}
+function ensureTorrentTitleLogo() {
+  var img = getEl('detail-title-logo');
+  if (img) return img;
+  var title = getEl('detail-title-text');
+  if (!title || !title.parentNode) return null;
+  img = document.createElement('img');
+  img.id = 'detail-title-logo';
+  img.className = 'detail-title-logo hidden';
+  img.alt = '';
+  img.decoding = 'async';
+  title.parentNode.insertBefore(img, title);
+  return img;
+}
+function resetTorrentTitleLogo() {
+  torrentLogoGen++;
+  var img = getEl('detail-title-logo');
+  if (img) {
+    img.onload = img.onerror = null;
+    img.classList.add('hidden');
+    if (img.getAttribute('src')) img.removeAttribute('src');
+  }
+  var title = getEl('detail-title-text');
+  if (title) {
+    title.classList.remove('detail-title-has-logo');
+    title.style.visibility = '';
+  }
+}
+function holdTorrentTitleForLogo() {
+  resetTorrentTitleLogo();
+  var title = getEl('detail-title-text');
+  if (!title) return;
+  var mine = torrentLogoGen;
+  title.style.visibility = 'hidden';
+  setTimeout(function () {
+    if (mine === torrentLogoGen) title.style.visibility = '';
+  }, TORRENT_LOGO_WAIT_MS);
+}
+window.holdTorrentTitleForLogo = holdTorrentTitleForLogo;
+function releaseTorrentTitleHold() {
+  resetTorrentTitleLogo();
+}
+window.releaseTorrentTitleHold = releaseTorrentTitleHold;
+function renderTorrentTitleLogo(torrent, tmdbId, mediaType) {
+  var key = mediaType + ':' + tmdbId;
+  var cur = getEl('detail-title-logo');
+  if (cur && cur._logoKey === key && cur._logoGen === torrentLogoGen) return;
+  resetTorrentTitleLogo();
+  var title = getEl('detail-title-text');
+  var img = ensureTorrentTitleLogo();
+  if (!title || !img) return;
+  var mine = torrentLogoGen;
+  img._logoKey = key;
+  img._logoGen = mine;
+  title.style.visibility = 'hidden';
+  var timer = setTimeout(function () {
+    if (mine === torrentLogoGen) title.style.visibility = '';
+  }, TORRENT_LOGO_WAIT_MS);
+  var giveUp = function () {
+    clearTimeout(timer);
+    if (mine === torrentLogoGen) title.style.visibility = '';
+  };
+  torrentLogoUrl(tmdbId, mediaType).then(function (url) {
+    if (mine !== torrentLogoGen || !isOpenTorrentDetail(torrent)) return;
+    if (!url) {
+      giveUp();
+      img._logoKey = '';
+      return;
+    }
+    var queue = typeof window._detailBackdropQueue === 'function' ? window._detailBackdropQueue(url) : [url];
+    var at = 0;
+    var next = function () {
+      if (mine !== torrentLogoGen) return;
+      if (at >= queue.length) {
+        giveUp();
+        return;
+      }
+      img.src = queue[at++];
+    };
+    img.onload = function () {
+      if (mine !== torrentLogoGen) return;
+      if (!img.naturalWidth) {
+        next();
+        return;
+      }
+      clearTimeout(timer);
+      img.alt = title.textContent || '';
+      img.classList.remove('hidden');
+      title.classList.add('detail-title-has-logo');
+      title.style.visibility = '';
+    };
+    img.onerror = next;
+    next();
+  });
+}
+var TORRENT_PREFETCH_DWELL_MS = 400;
+var TORRENT_PREFETCH_SEASONS_MAX = 3;
+var TORRENT_PREFETCH_STILLS_MAX = 16;
+var torrentPrefetchTimer = null;
+var torrentPrefetchDone = new LruCache(200, 30 * 60 * 1000);
+function isTorrentsNavBusy() {
+  if (window.navHold) return true;
+  var mc = getEl('main-container');
+  return !!(mc && typeof Animations !== 'undefined' && typeof Animations.isScrollTweening === 'function' && Animations.isScrollTweening(mc));
+}
+function scheduleTorrentDetailPrefetch(card) {
+  if (torrentPrefetchTimer) clearTimeout(torrentPrefetchTimer);
+  torrentPrefetchTimer = setTimeout(function run() {
+    torrentPrefetchTimer = null;
+    if (!card.isConnected || !card.classList.contains('focused')) return;
+    if (isTorrentsNavBusy()) {
+      torrentPrefetchTimer = setTimeout(run, TORRENT_PREFETCH_DWELL_MS);
+      return;
+    }
+    var hash = String(card.dataset.hash || '').toLowerCase();
+    var list = window.AppState && AppState.torrents || [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] && String(list[i].hash || '').toLowerCase() === hash) {
+        prefetchTorrentDetail(list[i]);
+        return;
+      }
+    }
+  }, TORRENT_PREFETCH_DWELL_MS);
+}
+window.scheduleTorrentDetailPrefetch = scheduleTorrentDetailPrefetch;
+function prefetchTorrentDetail(torrent) {
+  var hash = torrent && torrent.hash ? String(torrent.hash).toLowerCase() : '';
+  if (!hash || torrentPrefetchDone.has(hash)) return;
+  var known = knownTorrentMeta.get(hash);
+  var tmdbId = torrent.tmdbId || torrent.knownTmdbId || known && known.id || null;
+  if (!tmdbId) {
+    var idMatch = String(torrent.title || '').match(/\[(\d+)\]/);
+    if (idMatch) tmdbId = idMatch[1];
+  }
+  if (!tmdbId) return;
+  torrentPrefetchDone.set(hash, true);
+  var cardType = getTorrentMediaTypeFromCard(torrent);
+  var seasons = getTorrentSeasons(torrent);
+  var isTv = cardType === 'tv' || torrent.media_type === 'tv' || known && known.mediaType === 'tv';
+  if (!isTv && !torrent.media_type && !(known && known.mediaType) && seasons.length) isTv = true;
+  var mediaType = isTv ? 'tv' : torrent.media_type || known && known.mediaType || 'movie';
+  var pf = window.PosterPrefetch;
+  var wantArt = function (details, seasonLists) {
+    if (!pf) return;
+    var urls = [];
+    if (details && details.backdrop_path) urls.push(torrentBackdropUrl(details.backdrop_path));
+    for (var s = 0; s < seasonLists.length && urls.length < TORRENT_PREFETCH_STILLS_MAX + 1; s++) {
+      var eps = seasonLists[s] || [];
+      for (var e = 0; e < eps.length && urls.length < TORRENT_PREFETCH_STILLS_MAX + 1; e++) {
+        if (eps[e] && eps[e].stillPath) urls.push(buildTmdbPosterUrl(eps[e].stillPath, 'w300'));
+      }
+    }
+    if (urls.length) pf.want(urls);
+  };
+  torrentLogoUrl(tmdbId, mediaType).then(function (u) {
+    if (u && pf) pf.want([u]);
+  });
+  if (window.TorrentsWorker && typeof TorrentsWorker.loadAllTmdbData === 'function') {
+    var copy = {},
+      k;
+    for (k in torrent) if (Object.prototype.hasOwnProperty.call(torrent, k)) copy[k] = torrent[k];
+    if (!copy.tmdbId) copy.tmdbId = tmdbId;
+    if (!copy.media_type && known && known.mediaType) copy.media_type = known.mediaType;
+    if (!copy.media_type && /tv|сериал|serial|series/i.test(String(copy.category || ''))) copy.media_type = 'tv';
+    TorrentsWorker.loadAllTmdbData(copy).then(function (r) {
+      if (!r) return;
+      var lists = [];
+      var all = r.allSeasonEpisodes || {};
+      var order = r.seasonNumbers || Object.keys(all);
+      for (var i = 0; i < order.length; i++) if (all[order[i]]) lists.push(all[order[i]]);
+      wantArt(r.details, lists);
+    }, function () {
+      torrentPrefetchDone.delete(hash);
+    });
+    return;
+  }
+  var detailsP = getTmdbDetailsWithCache(tmdbId, mediaType);
+  if (mediaType !== 'tv') {
+    detailsP.then(function (d) {
+      wantArt(d, []);
+    });
+    return;
+  }
+  if (!seasons.length) seasons = [1];
+  seasons = seasons.slice(0, TORRENT_PREFETCH_SEASONS_MAX);
+  Promise.all([detailsP].concat(seasons.map(function (sn) {
+    return loadSeasonStills(tmdbId, sn);
+  }))).then(function (res) {
+    wantArt(res[0], res.slice(1));
+  });
 }
 function resetDetailBackground() {
   var detailView = getEl('detail-view');
@@ -2328,6 +2553,7 @@ function resetDetailBackground() {
   if (detailPoster) detailPoster.innerHTML = '';
   var detailTitleText = getEl('detail-title-text');
   if (detailTitleText) detailTitleText.textContent = '';
+  resetTorrentTitleLogo();
   var oldProgressBlocks = document.querySelectorAll('#detail-progress');
   for (var i = 0; i < oldProgressBlocks.length; i++) {
     oldProgressBlocks[i].remove();
@@ -2392,19 +2618,14 @@ function _loadSeasonStills() {
       var cached = seasonCache.get(cacheKey);
       if (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) return cached.data;
     }
-    try {
-      var response = yield fetch('/api/tmdb/season?id=' + tmdbId + '&seasonNumber=' + seasonNumber);
-      if (response.ok) {
-        var seasonData = yield response.json();
-        var episodes = seasonData.episodes || [];
-        seasonCache.set(cacheKey, {
-          data: episodes,
-          timestamp: Date.now()
-        });
-        return episodes;
-      }
-    } catch (error) {
-      console.error('Ошибка загрузки кадров сезона:', error);
+    var seasonData = yield tsServerJson('/api/tmdb/season?id=' + tmdbId + '&seasonNumber=' + seasonNumber);
+    if (seasonData) {
+      var episodes = seasonData.episodes || [];
+      seasonCache.set(cacheKey, {
+        data: episodes,
+        timestamp: Date.now()
+      });
+      return episodes;
     }
     return [];
   });
@@ -2626,21 +2847,14 @@ function _loadMovieStill() {
       var cached = seasonCache.get(cacheKey);
       if (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) return cached.data;
     }
-    try {
-      var response = yield fetch('/api/tmdb/details?id=' + tmdbId + '&type=movie');
-      if (response.ok) {
-        var data = yield response.json();
-        if (data.poster_path) {
-          var stillUrl = buildTmdbPosterUrl(data.poster_path, 'w300');
-          seasonCache.set(cacheKey, {
-            data: stillUrl,
-            timestamp: Date.now()
-          });
-          return stillUrl;
-        }
-      }
-    } catch (error) {
-      console.error('Ошибка загрузки постера фильма:', error);
+    var data = yield getTmdbDetailsWithCache(tmdbId, 'movie');
+    if (data && data.poster_path) {
+      var stillUrl = buildTmdbPosterUrl(data.poster_path, 'w300');
+      seasonCache.set(cacheKey, {
+        data: stillUrl,
+        timestamp: Date.now()
+      });
+      return stillUrl;
     }
     return null;
   });
@@ -2847,6 +3061,29 @@ function formatNextEpisodeDate(details, torrentSeasons) {
   if (year !== now.getFullYear()) text += ' ' + year;
   return text;
 }
+function formatTorrentSeasonsLabel(seasons, tmdbTotal) {
+  var list = [];
+  for (var i = 0; i < seasons.length; i++) {
+    var n = parseInt(seasons[i], 10);
+    if (!isNaN(n) && list.indexOf(n) === -1) list.push(n);
+  }
+  list.sort(function (a, b) {
+    return a - b;
+  });
+  if (!list.length) return '';
+  var ranges = [];
+  for (var j = 0; j < list.length; j++) {
+    var from = list[j];
+    while (j + 1 < list.length && list[j + 1] === list[j] + 1) j++;
+    ranges.push(from === list[j] ? String(from) : from + '–' + list[j]);
+  }
+  var label = (list.length === 1 ? 'Сезон ' : 'Сезоны ') + ranges.join(', ');
+  var total = parseInt(tmdbTotal, 10) || 0;
+  var real = 0;
+  for (var k = 0; k < list.length; k++) if (list[k] > 0) real++;
+  if (total > real && total > 1) label += ' из ' + total;
+  return label;
+}
 function renderDetailMetaRow() {
   if (!isTorrentDetailMode()) return;
   var row = ensureDetailMetaRow();
@@ -2860,10 +3097,8 @@ function renderDetailMetaRow() {
     if (d.vote_average > 0) {
       parts.push('<span class="detail-meta-rating">' + Math.round(d.vote_average * 10) / 10 + '</span>');
     }
-    if (torrentSeasons.length > 1) {
-      parts.push(torrentSeasons.length + ' ' + pluralRu(torrentSeasons.length, 'сезон', 'сезона', 'сезонов'));
-    } else if (torrentSeasons.length === 1) {
-      parts.push('Сезон ' + torrentSeasons[0]);
+    if (torrentSeasons.length) {
+      parts.push('<span class="detail-meta-seasons">' + escapeHtml(formatTorrentSeasonsLabel(torrentSeasons, d.number_of_seasons)) + '</span>');
     } else {
       parts.push(detailMetaState.isTvSeries ? 'Сериал' : 'Фильм');
     }
@@ -3312,10 +3547,6 @@ function _showDetail() {
         tmdbPromise.then(function (tmdbData) {
           if (!tmdbData || !isOpenTorrentDetail(torrent)) return;
           if (tmdbData.cleanTitle && tmdbData.cleanTitle !== 'Без названия') titleEl.textContent = tmdbData.cleanTitle;
-          if (tmdbData.seasonNumbers && tmdbData.seasonNumbers.length > 1) {
-            var seasonsText = titleEl.textContent;
-            if (!seasonsText.includes('сезон')) titleEl.textContent = seasonsText + ' [сезон ' + tmdbData.seasonNumbers.join(', ') + ']';
-          }
           loadStillsAndUpdateFiles(tmdbData.seasonNumbers || [], tmdbData.allSeasonEpisodes || {}, tmdbData.movieStill, videoFiles.length);
         }).catch(function (error) {
           console.error('Ошибка загрузки TMDB данных:', error);
@@ -3551,6 +3782,7 @@ function _loadAllTmdbDataForTorrent() {
     }
     var mediaType = isTvSeries ? 'tv' : 'movie';
     torrent.media_type = mediaType;
+    if (tmdbId && elements.titleEl) renderTorrentTitleLogo(torrent, tmdbId, mediaType);
     var videoFilesCount = 0;
     try {
       if (typeof getVideoFilesFromTorrent === 'function') {
@@ -3568,7 +3800,7 @@ function _loadAllTmdbDataForTorrent() {
     if (details && elements.detailViewDiv && !isOpenTorrentDetail(torrent)) details = null;
     if (details) {
       if (details.backdrop_path && elements.detailViewDiv) {
-        var backdropUrl = normalizePosterUrl(details.backdrop_path, 'w1280');
+        var backdropUrl = torrentBackdropUrl(details.backdrop_path);
         elements.detailViewDiv.style.backgroundImage = 'linear-gradient(to top, rgba(0, 0, 0, 0.97) 0%, rgba(0, 0, 0, 0.82) 32%, rgba(0, 0, 0, 0.38) 64%, rgba(0, 0, 0, 0.25) 100%), ' + 'linear-gradient(to right, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.5) 45%, rgba(0, 0, 0, 0.1) 100%), ' + 'url("' + backdropUrl + '")';
         elements.detailViewDiv.style.backgroundSize = 'cover';
         elements.detailViewDiv.style.backgroundPosition = 'center';
@@ -4030,7 +4262,7 @@ function getTorrentProgressBatch(hash, files) {
         clientId: localStorage.getItem('clientId')
       };
       if (mediaKeys) batchBody.mediaKeys = mediaKeys;
-      var response = yield fetch(SERVER_URL + '/api/timecode/batch', {
+      var response = yield bgFetch(SERVER_URL + '/api/timecode/batch', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -4471,7 +4703,9 @@ function _searchTorrentsLegacy() {
       var response;
       try {
         searchUrl = yield signJacredSearchUrl(searchUrl, jacDefault, query);
-        response = yield fetch(searchUrl, {
+        response = yield window.bgFetch ? window.bgFetch(searchUrl, {
+          signal: timeoutController.signal
+        }) : fetch(searchUrl, {
           signal: timeoutController.signal
         });
       } catch (netError) {

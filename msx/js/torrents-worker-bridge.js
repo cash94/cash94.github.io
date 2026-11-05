@@ -77,7 +77,15 @@ var TorrentsWorker = (function () {
             var cb = pendingCallbacks[msg.id];
             if (cb) {
                 delete pendingCallbacks[msg.id];
-                if (msg.type === 'ERROR') cb.reject(new Error(msg.error));
+                if (msg.type === 'ERROR') {
+                    // kind/status — у поиска Jacred: вызывающему важно отличить
+                    // обрыв, ошибку HTTP и отказ сети
+                    var err = new Error(msg.error);
+                    if (msg.kind === 'abort') err.name = 'AbortError';
+                    if (msg.kind) err.workerKind = msg.kind;
+                    if (msg.status) err.httpStatus = msg.status;
+                    cb.reject(err);
+                }
                 else cb.resolve(msg.data);
             }
         };
@@ -90,7 +98,7 @@ var TorrentsWorker = (function () {
         };
     }
 
-    function request(type, payload, timeout) {
+    function request(type, payload, timeout, signal) {
         timeout = timeout || 8000;
 
         return new Promise(function (resolve, reject) {
@@ -101,6 +109,24 @@ var TorrentsWorker = (function () {
 
             var id = 'tw_' + (++requestCounter) + '_' + Date.now();
             var msg = { id: id, type: type, payload: payload || {} };
+
+            // Обрыв вызывающей стороной (таймаут, новый поиск): воркер рвёт
+            // свой запрос, промис отклоняется как fetch — AbortError
+            if (signal && typeof signal.addEventListener === 'function') {
+                if (signal.aborted) {
+                    var pre = new Error('aborted'); pre.name = 'AbortError';
+                    reject(pre);
+                    return;
+                }
+                signal.addEventListener('abort', function () {
+                    var cb = pendingCallbacks[id];
+                    if (!cb) return;
+                    delete pendingCallbacks[id];
+                    if (worker) worker.postMessage({ id: 'abort_' + id, type: 'ABORT_REQUEST', payload: { target: id } });
+                    var ab = new Error('aborted'); ab.name = 'AbortError';
+                    cb.reject(ab);
+                });
+            }
 
             var timer = setTimeout(function () {
                 if (pendingCallbacks[id]) {
@@ -133,8 +159,16 @@ var TorrentsWorker = (function () {
         },
 
         // --- Поиск: фильтрация + сортировка ---
-        applyFiltersAndSort: function (items, filters) {
-            return request('APPLY_FILTERS', { items: items, filters: filters });
+        // token — выдача последнего jacredSearch лежит в воркере: items не
+        // пересылаем, если токен совпал (иначе воркер возьмёт items)
+        applyFiltersAndSort: function (items, filters, token) {
+            return request('APPLY_FILTERS', token ? { token: token, filters: filters } : { items: items, filters: filters });
+        },
+
+        // --- Поиск Jacred целиком в воркере: запрос, разбор, нормализация,
+        // фильтры, первая выдача. Ответ {token, results, filters, filtered} ---
+        jacredSearch: function (url, filters, timeoutMs, signal) {
+            return request('JACRED_SEARCH', { url: url, filters: filters || null }, timeoutMs || 30000, signal);
         },
 
         // --- Поиск: вычисление доступных фильтров ---

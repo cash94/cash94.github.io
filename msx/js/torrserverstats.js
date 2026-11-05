@@ -29,14 +29,16 @@ async function fetchTorrentStatsForBuffer(hash) {
       }
     }
 
-    var response = await fetch(statsUrl, {
+    // Через фоновый поток (poster-prefetch.js: BgFetch) — опрашивается часто
+    var statsInit = {
       method: 'POST',
       headers: headers,
       body: JSON.stringify({
         action: 'get',
         hash: hash.toLowerCase()
       })
-    });
+    };
+    var response = await (window.bgFetch ? window.bgFetch(statsUrl, statsInit) : fetch(statsUrl, statsInit));
 
     if (response.ok) {
       var data = await response.json();
@@ -760,9 +762,10 @@ function runPlaybackPreload(hash, fileId, title) {
     if (typeof abortPendingPreload === 'function') abortPendingPreload();
     if (typeof wasPreloadedRecently === 'function') wasPreloadedRecently(hash, fileId);
     var url = AppState.currentTorrserverUrl + '/stream?link=' + hash + '&index=' + fileId + '&preload=preload';
-    var options = { method: 'GET', headers: getAuthHeaders() };
+    // bgMode 'none': через фоновый поток, тело ответа не нужно — важен сам ответ
+    var options = { method: 'GET', headers: getAuthHeaders(), bgMode: 'none' };
     if (state.controller) options.signal = state.controller.signal;
-    fetch(url, options).then(function (response) {
+    (window.bgFetch ? window.bgFetch(url, options) : fetch(url, options)).then(function (response) {
       if (activePlaybackPreload !== state) return;
       if (response.ok) {
         // TorrServer догрел свой объём — ждать больше нечего

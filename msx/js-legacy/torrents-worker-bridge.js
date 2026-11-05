@@ -55,7 +55,13 @@ var TorrentsWorker = function () {
       var cb = pendingCallbacks[msg.id];
       if (cb) {
         delete pendingCallbacks[msg.id];
-        if (msg.type === 'ERROR') cb.reject(new Error(msg.error));else cb.resolve(msg.data);
+        if (msg.type === 'ERROR') {
+          var err = new Error(msg.error);
+          if (msg.kind === 'abort') err.name = 'AbortError';
+          if (msg.kind) err.workerKind = msg.kind;
+          if (msg.status) err.httpStatus = msg.status;
+          cb.reject(err);
+        } else cb.resolve(msg.data);
       }
     };
     worker.onerror = function (e) {
@@ -63,7 +69,7 @@ var TorrentsWorker = function () {
       markFailed('TorrentsWorker crashed');
     };
   }
-  function request(type, payload, timeout) {
+  function request(type, payload, timeout, signal) {
     timeout = timeout || 8000;
     return new Promise(function (resolve, reject) {
       if (!worker || failed) {
@@ -76,6 +82,29 @@ var TorrentsWorker = function () {
         type: type,
         payload: payload || {}
       };
+      if (signal && typeof signal.addEventListener === 'function') {
+        if (signal.aborted) {
+          var pre = new Error('aborted');
+          pre.name = 'AbortError';
+          reject(pre);
+          return;
+        }
+        signal.addEventListener('abort', function () {
+          var cb = pendingCallbacks[id];
+          if (!cb) return;
+          delete pendingCallbacks[id];
+          if (worker) worker.postMessage({
+            id: 'abort_' + id,
+            type: 'ABORT_REQUEST',
+            payload: {
+              target: id
+            }
+          });
+          var ab = new Error('aborted');
+          ab.name = 'AbortError';
+          cb.reject(ab);
+        });
+      }
       var timer = setTimeout(function () {
         if (pendingCallbacks[id]) {
           delete pendingCallbacks[id];
@@ -109,11 +138,20 @@ var TorrentsWorker = function () {
         items: items
       });
     },
-    applyFiltersAndSort: function (items, filters) {
-      return request('APPLY_FILTERS', {
+    applyFiltersAndSort: function (items, filters, token) {
+      return request('APPLY_FILTERS', token ? {
+        token: token,
+        filters: filters
+      } : {
         items: items,
         filters: filters
       });
+    },
+    jacredSearch: function (url, filters, timeoutMs, signal) {
+      return request('JACRED_SEARCH', {
+        url: url,
+        filters: filters || null
+      }, timeoutMs || 30000, signal);
     },
     computeFilters: function (items) {
       return request('COMPUTE_FILTERS', {

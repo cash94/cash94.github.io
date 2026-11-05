@@ -27,14 +27,15 @@ function _fetchTorrentStatsForBuffer() {
           headers[key] = authHeaders[key];
         }
       }
-      var response = yield fetch(statsUrl, {
+      var statsInit = {
         method: 'POST',
         headers: headers,
         body: JSON.stringify({
           action: 'get',
           hash: hash.toLowerCase()
         })
-      });
+      };
+      var response = yield window.bgFetch ? window.bgFetch(statsUrl, statsInit) : fetch(statsUrl, statsInit);
       if (response.ok) {
         var data = yield response.json();
         var torrent = data.Torrent || data;
@@ -585,10 +586,11 @@ function runPlaybackPreload(hash, fileId, title) {
     var url = AppState.currentTorrserverUrl + '/stream?link=' + hash + '&index=' + fileId + '&preload=preload';
     var options = {
       method: 'GET',
-      headers: getAuthHeaders()
+      headers: getAuthHeaders(),
+      bgMode: 'none'
     };
     if (state.controller) options.signal = state.controller.signal;
-    fetch(url, options).then(function (response) {
+    (window.bgFetch ? window.bgFetch(url, options) : fetch(url, options)).then(function (response) {
       if (activePlaybackPreload !== state) return;
       if (response.ok) {
         state.loaded = Math.max(state.loaded, PRELOAD_TARGET_BYTES);

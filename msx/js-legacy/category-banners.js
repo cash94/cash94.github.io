@@ -32,9 +32,10 @@
           } catch (e) {}
         }
       }, CB.FETCH_TIMEOUT_MS);
-      fetch(url, ctrl ? {
+      var init = ctrl ? {
         signal: ctrl.signal
-      } : {}).then(function (r) {
+      } : {};
+      (window.bgFetch ? window.bgFetch(url, init) : fetch(url, init)).then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
       }).then(function (d) {

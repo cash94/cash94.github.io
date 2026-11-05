@@ -5537,6 +5537,47 @@ html.tizen-avplay #video-player {
   /* Тень у названия убрана — см. #home-hero-title */
 }
 
+/* Логотип названия (torrents.js: renderTorrentTitleLogo) — вместо текста, как
+   в карточке фильма. Рамка жёсткая, картинка вписана и прижата к левому
+   нижнему углу: пустота у широкого или высокого логотипа уходит вверх.
+   Текст названия остаётся в DOM, но не виден (.detail-title-has-logo) */
+#detail-view .detail-title-logo {
+  display: none;
+}
+
+#detail-view.torrent-detail-mode .detail-title-logo {
+  display: block;
+  width: calc(var(--cu, 1.852vh) * 26);
+  height: calc(var(--cu, 1.852vh) * 7);
+  max-width: 70%;
+  -o-object-fit: contain;
+  object-fit: contain;
+  -o-object-position: left bottom;
+  object-position: left bottom;
+  margin: 0 0 calc(var(--cu, 1.852vh) * 0.9);
+}
+
+#detail-view.torrent-detail-mode .detail-title-logo.hidden {
+  display: none;
+}
+
+#detail-view.torrent-detail-mode #detail-title-text.detail-title-has-logo {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Сезоны раздачи в строке меты — «Сезоны 1–17» — чуть ярче соседей: это
+   главное, что отличает одну раздачу сериала от другой */
+#detail-view.torrent-detail-mode .detail-meta-seasons {
+  color: #fff;
+  font-weight: 600;
+}
+
 /* --- ГЕРОЙ: строка метаданных ------------------------------------------ */
 /* display без !important — иначе .hidden перестанет прятать пустую строку */
 #detail-view.torrent-detail-mode #detail-meta-row {

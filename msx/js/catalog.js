@@ -752,7 +752,7 @@ async function fetchRutubeTrailerCached(ref, title, originalTitle, releaseDate) 
         var hit = await rutubeTrailerById(cached.videoId, cached.title || title);
         if (hit) return hit;
         // Ролик удалили или скрыли — забываем и ищем заново
-        fetch(TRAILER_CACHE_URL + query, { method: 'DELETE' })['catch'](function () { });
+        (window.bgFetch || fetch)(TRAILER_CACHE_URL + query, { method: 'DELETE' })['catch'](function () { });
     }
 
     var found = await search(title, originalTitle, releaseDate);
@@ -760,7 +760,7 @@ async function fetchRutubeTrailerCached(ref, title, originalTitle, releaseDate) 
     if (cached) {
         var videoId = found && found.url ? rutubeVideoIdFromUrl(found.url) : null;
         if (!found || videoId) {
-            fetch(TRAILER_CACHE_URL, {
+            (window.bgFetch || fetch)(TRAILER_CACHE_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: id, type: type, videoId: videoId, title: found ? (found.title || title) : null })
@@ -973,7 +973,11 @@ async function safeFetch(url, options, fallback) {
     var controller = new AbortController();
     var timeoutId = setTimeout(function () { controller.abort(); }, timeout);
     try {
-        var resp = await fetch(url, Object.assign({ signal: controller.signal }, options));
+        // Через фоновый поток (BgFetch в poster-prefetch.js): история, детали,
+        // подборки — запрос и разбор JSON в воркере. timeout — не опция fetch
+        var init = Object.assign({ signal: controller.signal }, options);
+        delete init.timeout;
+        var resp = await (window.bgFetch ? window.bgFetch(url, init) : fetch(url, init));
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         return await resp.json();
     } catch (e) {
@@ -3732,6 +3736,60 @@ function prefetchGridPosters(card) {
     window.PosterPrefetch.want(urls);
 }
 
+/**
+ * Кадр и логотип карточки фильма — заранее, пока фокус стоит на карточке
+ * сетки. Ни одна загрузка не идёт через основной поток:
+ *   • деталей в элементе каталога нет (кадра backdrop_path тоже), и их
+ *     спрашивает CatalogWorker (fetchCatalogItemDetails, свой кэш в IndexedDB) —
+ *     заодно открытие карточки не ждёт этот запрос;
+ *   • сами картинки качает фоновый поток в HTTP-кэш (PosterPrefetch).
+ * Карточка фильма потом ставит кадр (_loadBackdropDecoded) и логотип
+ * (renderCinemaLogo) из кэша.
+ *
+ * Только когда фокус постоял DETAIL_ART_DWELL_MS и движения нет: на ходу
+ * фокус проскакивает десятки карточек, а кадр — это ~150 КБ.
+ */
+var DETAIL_ART_DWELL_MS = 450;
+var DETAIL_ART_DONE_MAX = 300;
+var detailArtTimer = null;
+var detailArtDone = {};
+var detailArtDoneOrder = [];
+
+function scheduleDetailArtPrefetch(card) {
+    if (!window.PosterPrefetch || !card || !card.dataset) return;
+    if (detailArtTimer) clearTimeout(detailArtTimer);
+    detailArtTimer = setTimeout(function run() {
+        detailArtTimer = null;
+        if (!card.isConnected || !card.classList.contains('focused')) return;
+        if (isGridNavBusy()) { detailArtTimer = setTimeout(run, DETAIL_ART_DWELL_MS); return; }
+        var idx = parseInt(card.dataset.catalogIndex, 10);
+        if (!isNaN(idx)) prefetchDetailArt(catalogState.items[idx]);
+    }, DETAIL_ART_DWELL_MS);
+}
+
+function prefetchDetailArt(item) {
+    if (!item || !item.id || !window.PosterPrefetch) return;
+    var key = (item.media_type || 'movie') + ':' + item.id;
+    if (detailArtDone[key]) return;
+    detailArtDone[key] = true;
+    detailArtDoneOrder.push(key);
+    if (detailArtDoneOrder.length > DETAIL_ART_DONE_MAX) delete detailArtDone[detailArtDoneOrder.shift()];
+
+    var send = function (src) {
+        var urls = [];
+        var bp = (src && src.backdrop_path) || item.backdrop_path;
+        if (bp) urls.push(getTmdbImageUrl(bp, CATALOG_CONSTANTS.IMG_SIZES.BACKDROP));
+        var logo = cinemaLogoUrl(item, src);
+        if (logo) urls.push(logo);
+        if (urls.length) window.PosterPrefetch.want(urls);
+    };
+    if (item.backdrop_path) { send(item); return; }
+    Promise.resolve(fetchCatalogItemDetails(item)).then(send, function () {
+        // Не вышло — пусть следующая задержка фокуса попробует снова
+        delete detailArtDone[key];
+    });
+}
+
 /** Сетка выброшена — ждущая карточка указывает в никуда */
 function dropGridPosterAhead() {
     if (gridPosterAheadTimer) { clearTimeout(gridPosterAheadTimer); gridPosterAheadTimer = null; }
@@ -4318,7 +4376,8 @@ function loadCinemaKpRating(key, type, id, imdb) {
     if (cinemaKpUnavailable) return;
     var url = '/api/kinopoisk/rating?type=' + encodeURIComponent(type) + '&id=' + encodeURIComponent(id) +
         (imdb ? '&imdb=' + encodeURIComponent(imdb) : '');
-    fetch(url).then(function (resp) {
+    // Через фоновый поток (BgFetch в poster-prefetch.js)
+    (window.bgFetch ? window.bgFetch(url) : fetch(url)).then(function (resp) {
         if (resp.status === 404) { cinemaKpUnavailable = true; return null; }
         return resp.ok ? resp.json() : null;
     }).then(function (data) {
@@ -7447,6 +7506,7 @@ function revealCatalogElement(el) {
         ensureChunksAroundFocus(el);
         prefetchGridPosters(el);
         scheduleGridPosterAhead(el);
+        scheduleDetailArtPrefetch(el);
         return;
     }
 

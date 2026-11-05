@@ -2971,8 +2971,15 @@ function flipContentFor(el) {
 function isFlipScroller(el) {
   return !!flipContentFor(el);
 }
+var FLIP_SETTLE_GRACE_MS = 600;
 function isFlipInFlight(el) {
-  return !!(el && el._flipEl && Date.now() < (el._flipUntil || 0));
+  if (!el || !el._flipEl) return false;
+  var until = el._flipUntil || 0;
+  if (!until) return false;
+  var now = Date.now();
+  if (now < until) return true;
+  if (now > until + FLIP_SETTLE_GRACE_MS) return false;
+  return Math.abs(flipCurrentY(el)) >= 0.5;
 }
 function flipCurrentY(el) {
   var t = window.getComputedStyle(el._flipEl).transform || '';
@@ -3332,7 +3339,7 @@ function scheduleCatalogGridPinCheck(scrollContainer, attempt) {
   attempt = attempt || 0;
   gridPinTimer = setTimeout(function () {
     gridPinTimer = 0;
-    var moving = navHold || typeof Animations !== 'undefined' && typeof Animations.isScrollTweening === 'function' && Animations.isScrollTweening(scrollContainer);
+    var moving = navHold || isFlipInFlight(scrollContainer) || typeof Animations !== 'undefined' && typeof Animations.isScrollTweening === 'function' && Animations.isScrollTweening(scrollContainer);
     if (moving) {
       if (attempt < CATALOG_GRID_PIN_MAX_WAIT) {
         scheduleCatalogGridPinCheck(scrollContainer, attempt + 1);
@@ -3570,6 +3577,9 @@ function focusEl(el, opts) {
   var isRowCard = el.classList && el.classList.contains('catalog-row-card');
   if ((isRowCard || el.classList && el.classList.contains('catalog-card')) && typeof revealCatalogElement === 'function') {
     revealCatalogElement(el);
+  }
+  if (s === 'torrents' && el.dataset && el.dataset.hash && typeof window.scheduleTorrentDetailPrefetch === 'function') {
+    window.scheduleTorrentDetailPrefetch(el);
   }
   if (s === 'search' && el.classList && el.classList.contains('search-result-item') && typeof window.revealSearchResultItem === 'function') {
     window.revealSearchResultItem(el);

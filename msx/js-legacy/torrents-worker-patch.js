@@ -52,12 +52,55 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         controller.abort();
       }, jacredTimeoutMs());
       try {
-        var response;
         try {
           if (typeof window.signJacredSearchUrl === 'function') {
             searchUrl = yield window.signJacredSearchUrl(searchUrl, jacDefault, query);
           }
-          response = yield fetch(searchUrl, {
+        } catch (signError) {
+          if (timedOut) throw makeJacredError(jacDefault, 'нет ответа за ' + jacredTimeoutMs() + ' мс', true);
+          throw signError;
+        }
+        var wr = null;
+        if (typeof TorrentsWorker !== 'undefined' && typeof TorrentsWorker.jacredSearch === 'function') {
+          try {
+            wr = yield TorrentsWorker.jacredSearch(searchUrl, _currentFilters(), jacredTimeoutMs() + 5000, controller.signal);
+          } catch (we) {
+            if (we && we.name === 'AbortError') {
+              if (timedOut) throw makeJacredError(jacDefault, 'нет ответа за ' + jacredTimeoutMs() + ' мс', true);
+              throw we;
+            }
+            if (we && we.workerKind === 'http') throw makeJacredError(jacDefault, 'HTTP ' + we.httpStatus);
+            if (we && we.workerKind === 'net') throw makeJacredError(jacDefault, we.message);
+            console.warn('⚠️ Worker jacredSearch failed, fallback:', we && we.message);
+            wr = null;
+          }
+        }
+        if (wr) {
+          if (searchSequence !== _searchSequence) return 0;
+          searchResults = wr.results || [];
+          searchResults._twToken = wr.token;
+          currentSearchQuery = query;
+          var wInput = getEl('search-query');
+          if (wInput && !(window.AppState && AppState.searchLocked)) wInput.value = '';
+          var before = JSON.stringify(_currentFilters());
+          availableTrackers = wr.filters.trackers;
+          if (availableTrackers.indexOf(currentTrackerFilter) === -1) currentTrackerFilter = 'all';
+          syncSearchFilterButtons();
+          _updateFilterSelectsFromData(wr.filters);
+          if (wr.filtered && JSON.stringify(_currentFilters()) === before) {
+            filteredResults = wr.filtered;
+            renderSearchResults();
+          } else {
+            applyFiltersAndSort();
+          }
+          showSearchResults();
+          return searchResults.length;
+        }
+        var response;
+        try {
+          response = yield window.bgFetch ? window.bgFetch(searchUrl, {
+            signal: controller.signal
+          }) : fetch(searchUrl, {
             signal: controller.signal
           });
         } catch (netError) {
@@ -121,20 +164,23 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       return _ref.apply(this, arguments);
     };
   }();
+  function _currentFilters() {
+    return {
+      quality: currentQualityFilter,
+      tracker: currentTrackerFilter,
+      year: currentYearFilter,
+      season: currentSeasonFilter,
+      voice: currentVoiceFilter,
+      videotype: currentvideotypeFilter,
+      sort: currentSort
+    };
+  }
   window.applyFiltersAndSort = applyFiltersAndSort = function () {
     var _ref2 = _asyncToGenerator(function* () {
       var filterSequence = ++_filterSequence;
-      var filters = {
-        quality: currentQualityFilter,
-        tracker: currentTrackerFilter,
-        year: currentYearFilter,
-        season: currentSeasonFilter,
-        voice: currentVoiceFilter,
-        videotype: currentvideotypeFilter,
-        sort: currentSort
-      };
+      var filters = _currentFilters();
       try {
-        filteredResults = yield TorrentsWorker.applyFiltersAndSort(searchResults, filters);
+        filteredResults = yield TorrentsWorker.applyFiltersAndSort(searchResults, filters, searchResults && searchResults._twToken);
         if (filterSequence !== _filterSequence) return;
         renderSearchResults();
       } catch (e) {
@@ -233,6 +279,14 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         if (!torrent.media_type && known.mediaType) torrent.media_type = known.mediaType;
         if (!torrent.poster && known.poster) torrent.poster = normalizePosterUrl(known.poster);
       }
+      var earlyTmdbId = torrent.tmdbId || torrent.knownTmdbId || (String(torrent.title || '').match(/\[(\d+)\]/) || [])[1] || null;
+      if (elements.titleEl) {
+        if (earlyTmdbId && torrent.media_type && typeof window.renderTorrentTitleLogo === 'function') {
+          window.renderTorrentTitleLogo(torrent, earlyTmdbId, torrent.media_type);
+        } else if (typeof window.holdTorrentTitleForLogo === 'function') {
+          window.holdTorrentTitleForLogo();
+        }
+      }
       try {
         if (typeof getTorrentFilesWithCache === 'function') {
           var files = yield getTorrentFilesWithCache(torrent, false);
@@ -253,6 +307,13 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         if (elements.detailViewDiv && typeof window.isOpenTorrentDetail === 'function' && !window.isOpenTorrentDetail(torrent)) return r;
         if (elements.titleEl && r.cleanTitle) {
           elements.titleEl.textContent = r.cleanTitle;
+        }
+        if (elements.titleEl) {
+          if (r.tmdbId && typeof window.renderTorrentTitleLogo === 'function') {
+            window.renderTorrentTitleLogo(torrent, r.tmdbId, r.mediaType || torrent.media_type || 'movie');
+          } else if (typeof window.releaseTorrentTitleHold === 'function') {
+            window.releaseTorrentTitleHold();
+          }
         }
         AppState.isSerials = r.isTvSeries;
         torrent.media_type = r.mediaType || torrent.media_type;

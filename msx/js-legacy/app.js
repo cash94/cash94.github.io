@@ -310,7 +310,7 @@ function escapeBannerText(s) {
 }
 window.showErrorBanner = showErrorBanner;
 function checkAppVersion() {
-  fetch('/api/version').then(function (response) {
+  bgFetch('/api/version').then(function (response) {
     return response.json();
   }).then(function (data) {
     var serverVersion = data.version;

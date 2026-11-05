@@ -58,17 +58,29 @@ function formatBytes(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+// Одинаковые запросы, пока первый в пути, ждут его ответа. Карточку раздачи
+// готовят заранее (torrents.js: prefetchTorrentDetail — фокус постоял на
+// раздаче), и OK, нажатый до конца этой подготовки, не должен качать те же
+// детали и сезоны второй раз.
+var workerFetchInflight = {};
+
 function workerSafeFetch(url, timeout) {
+    if (workerFetchInflight[url]) return workerFetchInflight[url];
     timeout = timeout || 5000;
     var controller = new AbortController();
     var timer = setTimeout(function () { controller.abort(); }, timeout);
-    return fetch(url, { signal: controller.signal })
+    var p = fetch(url, { signal: controller.signal })
         .then(function (r) {
             if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.json();
         })
         .catch(function () { return null; })
-        .finally(function () { clearTimeout(timer); });
+        .finally(function () {
+            clearTimeout(timer);
+            delete workerFetchInflight[url];
+        });
+    workerFetchInflight[url] = p;
+    return p;
 }
 
 // ==================== normalizeSearchResult ====================
@@ -802,12 +814,79 @@ function workerLoadAllTmdbData(torrent) {
         };
     });
 }
+// ==================== ПОИСК JACRED ЦЕЛИКОМ В ВОРКЕРЕ ====================
+// Ответ Jacred — сотни килобайт и мегабайты (у каждой раздачи info, ffprobe).
+// Раньше его качал и разбирал основной поток, потом пересылал сюда на
+// нормализацию, получал обратно, снова пересылал на подсчёт фильтров и на
+// фильтрацию. Теперь всё здесь: запрос, разбор, нормализация, фильтры и первая
+// выдача; основной поток получает одним сообщением только нормализованное
+// (без сырых info и ffprobe), а filtered — это те же объекты, что results:
+// structured clone сохраняет общие ссылки, второй копии нет.
+// Выдача остаётся здесь (lastSearch) — смена фильтра не пересылает её заново.
+var lastSearch = { token: 0, items: [] };
+var searchControllers = {};
+
+function workerJacredSearch(id, p) {
+    var ctl = null;
+    try { ctl = new AbortController(); } catch (e) { ctl = null; }
+    if (ctl) searchControllers[id] = ctl;
+    var opts = ctl ? { signal: ctl.signal } : {};
+    if (p.headers) opts.headers = p.headers;
+
+    fetch(p.url, opts).then(function (r) {
+        if (!r.ok) {
+            delete searchControllers[id];
+            self.postMessage({ id: id, type: 'ERROR', error: 'HTTP ' + r.status, kind: 'http', status: r.status });
+            return;
+        }
+        return r.json().then(function (data) {
+            delete searchControllers[id];
+            var raw = [];
+            if (data && Array.isArray(data.Results)) raw = data.Results;
+            else if (Array.isArray(data)) raw = data;
+            var items = new Array(raw.length);
+            for (var i = 0; i < raw.length; i++) items[i] = normalizeSearchResult(raw[i]);
+            lastSearch = { token: lastSearch.token + 1, items: items };
+            self.postMessage({
+                id: id, type: 'RESULT', data: {
+                    token: lastSearch.token,
+                    results: items,
+                    filters: computeAvailableFilters(items),
+                    filtered: p.filters ? computeFilteredAndSorted(items, p.filters) : null
+                }
+            });
+        });
+    }).catch(function (err) {
+        delete searchControllers[id];
+        var aborted = err && err.name === 'AbortError';
+        self.postMessage({
+            id: id, type: 'ERROR',
+            error: aborted ? 'aborted' : ((err && err.message) || 'Failed to fetch'),
+            kind: aborted ? 'abort' : 'net'
+        });
+    });
+}
+
 // ==================== ОБРАБОТЧИК СООБЩЕНИЙ ====================
 self.onmessage = function (e) {
     var msg = e.data;
     var id = msg.id;
 
     switch (msg.type) {
+
+        // --- Поиск Jacred: запрос, разбор, нормализация, фильтры ---
+        case 'JACRED_SEARCH':
+            workerJacredSearch(id, msg.payload || {});
+            break;
+
+        // --- Обрыв запроса (таймаут, новый поиск) ---
+        case 'ABORT_REQUEST':
+            var target = msg.payload && msg.payload.target;
+            if (target && searchControllers[target]) {
+                try { searchControllers[target].abort(); } catch (x) { }
+                delete searchControllers[target];
+            }
+            break;
 
         // --- Батч нормализация результатов поиска ---
         case 'NORMALIZE_BATCH':
@@ -821,7 +900,16 @@ self.onmessage = function (e) {
 
         // --- Фильтрация + сортировка ---
         case 'APPLY_FILTERS':
-            var filtered = computeFilteredAndSorted(msg.payload.items || [], msg.payload.filters || {});
+            // token — выдача последнего JACRED_SEARCH уже лежит здесь, её не пересылали
+            if (msg.payload.token && msg.payload.token !== lastSearch.token && !msg.payload.items) {
+                // Выдачи с таким токеном здесь нет — пусть основной поток
+                // отфильтрует сам (запасной путь в torrents-worker-patch.js)
+                self.postMessage({ id: id, type: 'ERROR', error: 'stale search token' });
+                break;
+            }
+            var source = (msg.payload.token && msg.payload.token === lastSearch.token)
+                ? lastSearch.items : (msg.payload.items || []);
+            var filtered = computeFilteredAndSorted(source, msg.payload.filters || {});
             self.postMessage({ id: id, type: 'RESULT', data: filtered });
             break;
 

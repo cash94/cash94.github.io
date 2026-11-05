@@ -116,34 +116,34 @@
       "css/flex-gap-fallback.css": "8acd2bbb",
       "css/inter.css": "2caa5b93",
       "css/legacy.css": "100d5c5a",
-      "css/styles.css": "d67e5415",
+      "css/styles.css": "183e770b",
       "css/uicons-regular-rounded.css": "feee56fb",
       "css/uicons-thin-chubby.css": "1d6159cb",
       "css/uicons-thin-rounded.css": "365fbd61",
       "js-legacy/legacy-polyfills.js": "e0e9de38",
       "js/account.js": "65c22e09",
       "js/animations.js": "538e1ff5",
-      "js/app.js": "31557434",
+      "js/app.js": "30ffe985",
       "js/catalog-idb-patch.js": "7cf849b3",
       "js/catalog-worker-bridge.js": "7f94619a",
       "js/catalog-worker-patch.js": "240192eb",
       "js/catalog-worker-posters-batch-patch.js": "0ba6a595",
       "js/catalog-worker-posters-patch.js": "d7d7dcc3",
       "js/catalog-worker.js": "0e55f2e9",
-      "js/catalog.js": "2892c12f",
-      "js/category-banners.js": "c5b8e743",
-      "js/config.js": "036ac132",
-      "js/control.js": "c232bf39",
+      "js/catalog.js": "1b2615bd",
+      "js/category-banners.js": "46ea538e",
+      "js/config.js": "b3eb0988",
+      "js/control.js": "4251a6b3",
       "js/donate.js": "14adc57a",
       "js/favorites-db.js": "8772a3b7",
-      "js/home.js": "08f11c26",
+      "js/home.js": "84d313ce",
       "js/nav.js": "02a98d5e",
       "js/osk.js": "acd5c812",
       "js/perf-probe.js": "7143cc61",
       "js/player-memory-fix.js": "2fbf8c05",
-      "js/player.js": "60d3223f",
+      "js/player.js": "88d9dc8b",
       "js/poster-db.js": "5133286b",
-      "js/poster-prefetch.js": "31fec0a9",
+      "js/poster-prefetch.js": "b4205e84",
       "js/screensaver.js": "4f7a0dd9",
       "js/smooth-scroll.js": "d5298daa",
       "js/speedtest.js": "8815f616",
@@ -151,11 +151,11 @@
       "js/sync.js": "3b6f95ab",
       "js/tizen-avplay.js": "0e36f4e6",
       "js/tmdb.js": "14f83980",
-      "js/torrents-worker-bridge.js": "5f00d9d0",
-      "js/torrents-worker-patch.js": "a83ccd4a",
-      "js/torrents-worker.js": "8681c310",
-      "js/torrents.js": "f0ba71c3",
-      "js/torrserverstats.js": "93bbc0fa",
+      "js/torrents-worker-bridge.js": "5082b72d",
+      "js/torrents-worker-patch.js": "1bab9f71",
+      "js/torrents-worker.js": "2cd34b76",
+      "js/torrents.js": "252020fa",
+      "js/torrserverstats.js": "2ae6f44b",
       "js/ui-customizer.js": "ab310609"
       // ASSET_V:end
     };
@@ -1519,6 +1519,10 @@
     // Заставка — сразу после config: её слушатели клавиш должны встать на window
     // раньше всех остальных, чтобы нажатие, будящее заставку, не разобрал никто другой
     document.write('<script src="https://cash94.github.io/msx/js/screensaver.js?v=' + assetV('js/screensaver.js') + '"><\/script>');
+    // Фоновый поток: постеры заранее в HTTP-кэш (зовёт catalog.js) и запросы
+    // к серверу и TorrServer (BgFetch). Сразу за config.js: стартовые запросы
+    // config.js ждут его в очереди (bgFetch там — заглушка до этого файла)
+    document.write('<script src="https://cash94.github.io/msx/js/poster-prefetch.js?v=' + assetV('js/poster-prefetch.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/nav.js?v=' + assetV('js/nav.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/tmdb.js?v=' + assetV('js/tmdb.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/torrents.js?v=' + assetV('js/torrents.js') + '"><\/script>');
@@ -1526,8 +1530,6 @@
     document.write('<script src="https://cash94.github.io/msx/js/torrents-worker-patch.js?v=' + assetV('js/torrents-worker-patch.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/poster-db.js?v=' + assetV('js/poster-db.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/favorites-db.js?v=' + assetV('js/favorites-db.js') + '"><\/script>');
-    // Постеры заранее, фоновым потоком в HTTP-кэш (зовёт catalog.js)
-    document.write('<script src="https://cash94.github.io/msx/js/poster-prefetch.js?v=' + assetV('js/poster-prefetch.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/catalog.js?v=' + assetV('js/catalog.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/catalog-worker-bridge.js?v=' + assetV('js/catalog-worker-bridge.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/catalog-worker-patch.js?v=' + assetV('js/catalog-worker-patch.js') + '"><\/script>');

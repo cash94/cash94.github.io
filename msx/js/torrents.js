@@ -322,13 +322,18 @@ window.applySearchFilterDefaults = applySearchFilterDefaults;
 applySearchFilterDefaults();
 
 // === УНИВЕРСАЛЬНЫЙ FETCH ДЛЯ TORRSERVER ===
+// Через фоновый поток (poster-prefetch.js: BgFetch): список раздач, stat,
+// добавление и удаление — запрос и разбор JSON в воркере. Ответ того же вида,
+// что у fetch (ok, status, json()), поэтому вызывающим ничего менять не надо.
 async function torrServerFetch(endpoint, options = {}) {
     if (!AppState.currentTorrserverUrl) throw new Error('Сервер не подключен');
     var headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
-    return fetch(AppState.currentTorrserverUrl + endpoint, {
+    var init = {
         ...options,
         headers: { ...headers, ...(options.headers || {}) }
-    });
+    };
+    var url = AppState.currentTorrserverUrl + endpoint;
+    return window.bgFetch ? window.bgFetch(url, init) : fetch(url, init);
 }
 
 function getTrackerFilterOptions() {
@@ -1896,7 +1901,7 @@ async function loadClientConfig() {
     try {
         var savedClientId = localStorage.getItem('clientId');
         var url = SERVER_URL + '/api/client/config' + (savedClientId ? '?clientId=' + encodeURIComponent(savedClientId) : '');
-        var response = await fetch(url);
+        var response = await bgFetch(url);   // через фоновый поток
         if (response.ok) {
             var data = await response.json();
             AppState.clientId = data.clientId;
@@ -1938,7 +1943,7 @@ async function saveClientConfig() {
     var password = getEl('auth-password').value.trim();
     if (password) config.password = password;
     try {
-        var response = await fetch(SERVER_URL + '/api/client/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
+        var response = await bgFetch(SERVER_URL + '/api/client/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(config) });
         if (response.ok) return true;
     } catch (error) { console.error('Ошибка сохранения конфигурации:', error); }
     return false;
@@ -2122,7 +2127,7 @@ async function detectMonoServer(baseUrl, headers, echoResponse) {
     var probe = new AbortController();
     var timer = setTimeout(function () { probe.abort(); }, 4000);
     try {
-        var r = await fetch(baseUrl + '/api/info', { method: 'GET', headers: headers, signal: probe.signal });
+        var r = await bgFetch(baseUrl + '/api/info', { method: 'GET', headers: headers, signal: probe.signal });
         if (!r.ok) return null;
         var info = await r.json();
         return info && info.name === 'MonoServer' ? info : null;
@@ -2210,7 +2215,8 @@ async function checkServer(shouldLoadTorrents = true) {
         var probeTimer = setTimeout(function () { probe.abort(); }, TORRSERVER_PROBE_TIMEOUT_MS);
         var response;
         try {
-            response = await fetch(testUrl + '/echo', { method: 'GET', headers: headers, signal: probe.signal });
+            // Через фоновый поток; text() и заголовки ответа читает detectMonoServer
+            response = await bgFetch(testUrl + '/echo', { method: 'GET', headers: headers, signal: probe.signal, bgMode: 'text' });
         } finally {
             clearTimeout(probeTimer);
         }
@@ -2666,30 +2672,294 @@ function hideCatalogDetailExtra() {
 }
 window.hideCatalogDetailExtra = hideCatalogDetailExtra;
 
+/**
+ * JSON с нашего сервера — через фоновый поток (PosterPrefetch.json в
+ * poster-prefetch.js): и запрос, и разбор ответа идут там, основному потоку
+ * приходит готовый объект. Одинаковые запросы в пути склеиваются — заранее
+ * запущенная догрузка (prefetchTorrentDetail) и открытие карточки ждут одного
+ * ответа. Нет воркера — обычный fetch. Ответ или null, не отклоняется.
+ */
+function tsServerJson(path) {
+    if (window.PosterPrefetch && typeof window.PosterPrefetch.json === 'function') {
+        return window.PosterPrefetch.json(path);
+    }
+    return fetch(path).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+}
+
 async function getTmdbDetailsWithCache(tmdbId, mediaType) {
     if (!tmdbId) return null;
     if (!mediaType) mediaType = 'movie';
+    var path = '/api/tmdb/details?id=' + tmdbId + '&type=' + mediaType;
     if (window.getFromTmdbCache && window.saveToTmdbCache) {
         var cacheParams = { id: tmdbId, type: mediaType };
         var cachedData = window.getFromTmdbCache('details', cacheParams);
         if (cachedData) return cachedData;
-        try {
-            var response = await fetch('/api/tmdb/details?id=' + tmdbId + '&type=' + mediaType);
-            if (response.ok) { var data = await response.json(); window.saveToTmdbCache('details', cacheParams, data); return data; }
-        } catch (error) { console.error('Ошибка загрузки TMDB данных:', error); }
-    } else {
-        if (!window.tmdbDetailsCache) window.tmdbDetailsCache = new LruCache(200, 24 * 60 * 60 * 1000);
-        var cacheKey = tmdbId + '_' + mediaType;
-        if (window.tmdbDetailsCache.has(cacheKey)) {
-            var cached = window.tmdbDetailsCache.get(cacheKey);
-            if (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) return cached.data;
-        }
-        try {
-            var response = await fetch('/api/tmdb/details?id=' + tmdbId + '&type=' + mediaType);
-            if (response.ok) { var data = await response.json(); window.tmdbDetailsCache.set(cacheKey, { data: data, timestamp: Date.now() }); return data; }
-        } catch (error) { console.error('Ошибка загрузки TMDB данных:', error); }
+        var data = await tsServerJson(path);
+        if (data) window.saveToTmdbCache('details', cacheParams, data);
+        return data || null;
     }
-    return null;
+    if (!window.tmdbDetailsCache) window.tmdbDetailsCache = new LruCache(200, 24 * 60 * 60 * 1000);
+    var cacheKey = tmdbId + '_' + mediaType;
+    if (window.tmdbDetailsCache.has(cacheKey)) {
+        var cached = window.tmdbDetailsCache.get(cacheKey);
+        if (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) return cached.data;
+    }
+    var fresh = await tsServerJson(path);
+    if (fresh) window.tmdbDetailsCache.set(cacheKey, { data: fresh, timestamp: Date.now() });
+    return fresh || null;
+}
+
+/** Кадр фона раздачи — тот же адрес, что у карточки фильма (getTmdbImageUrl):
+ *  один файл в HTTP-кэше на оба экрана, и его можно скачать заранее */
+function torrentBackdropUrl(path) {
+    if (!path) return null;
+    path = String(path);
+    if (path.indexOf('http') === 0) return path;
+    if (window.getTmdbImageUrl) return window.getTmdbImageUrl(path, 'w1280');
+    return getPrimaryImageBase() + 'w1280' + (path.charAt(0) === '/' ? path : '/' + path);
+}
+window.renderTorrentTitleLogo = renderTorrentTitleLogo;
+
+// ==================== ЛОГОТИП НАЗВАНИЯ В КАРТОЧКЕ РАЗДАЧИ ====================
+// Как в карточке фильма (renderCinemaLogo в catalog.js): вместо текста —
+// логотип TMDB w500, тот же файл, что у баннера главной. Откуда адрес:
+//   1. главная (HomeScreen.logoUrl) — она знает логотипы всего, что показывала,
+//      и отдаёт адрес с зеркала, где файл уже скачан;
+//   2. GET /api/tmdb/logo — через фоновый поток (tsServerJson).
+// Пока логотип грузится, текст названия невидим (место держит); не пришёл за
+// TORRENT_LOGO_WAIT_MS или его нет у TMDB — остаётся текст.
+var TORRENT_LOGO_WAIT_MS = 1500;
+var torrentLogoGen = 0;
+var torrentLogoUrls = new LruCache(300, 24 * 60 * 60 * 1000);   // 'tv:94605' → адрес | ''
+
+function torrentLogoUrl(tmdbId, mediaType) {
+    var key = mediaType + ':' + tmdbId;
+    if (torrentLogoUrls.has(key)) return Promise.resolve(torrentLogoUrls.get(key) || null);
+    var url = null;
+    if (window.HomeScreen && typeof window.HomeScreen.logoUrl === 'function') {
+        try { url = window.HomeScreen.logoUrl({ id: Number(tmdbId) || tmdbId, media_type: mediaType }); } catch (e) { url = null; }
+    }
+    if (url) { torrentLogoUrls.set(key, url); return Promise.resolve(url); }
+    return tsServerJson('/api/tmdb/logo?id=' + encodeURIComponent(tmdbId) + '&type=' + mediaType).then(function (d) {
+        if (!d) return null;      // сбой или старый сервер без /api/tmdb/logo — не запоминаем
+        var path = d.logo && d.logo.file_path;
+        var u = (path && window.getTmdbImageUrl) ? window.getTmdbImageUrl(path, 'w500') : '';
+        torrentLogoUrls.set(key, u);
+        return u || null;
+    });
+}
+
+function ensureTorrentTitleLogo() {
+    var img = getEl('detail-title-logo');
+    if (img) return img;
+    var title = getEl('detail-title-text');
+    if (!title || !title.parentNode) return null;
+    img = document.createElement('img');
+    img.id = 'detail-title-logo';
+    img.className = 'detail-title-logo hidden';
+    img.alt = '';
+    img.decoding = 'async';
+    title.parentNode.insertBefore(img, title);
+    return img;
+}
+
+function resetTorrentTitleLogo() {
+    torrentLogoGen++;
+    var img = getEl('detail-title-logo');
+    if (img) {
+        img.onload = img.onerror = null;
+        img.classList.add('hidden');
+        if (img.getAttribute('src')) img.removeAttribute('src');
+    }
+    var title = getEl('detail-title-text');
+    if (title) {
+        title.classList.remove('detail-title-has-logo');
+        title.style.visibility = '';
+    }
+}
+
+/**
+ * Придержать текст названия: id или тип ещё не известны (их уточняет воркер),
+ * а показать текст и через мгновение сменить его логотипом — мелькание.
+ * Не дождались за TORRENT_LOGO_WAIT_MS — текст возвращается сам.
+ */
+function holdTorrentTitleForLogo() {
+    resetTorrentTitleLogo();
+    var title = getEl('detail-title-text');
+    if (!title) return;
+    var mine = torrentLogoGen;
+    title.style.visibility = 'hidden';
+    setTimeout(function () {
+        if (mine === torrentLogoGen) title.style.visibility = '';
+    }, TORRENT_LOGO_WAIT_MS);
+}
+window.holdTorrentTitleForLogo = holdTorrentTitleForLogo;
+
+/** Логотипа не будет (нет id) — вернуть текст, если его придержали */
+function releaseTorrentTitleHold() {
+    resetTorrentTitleLogo();
+}
+window.releaseTorrentTitleHold = releaseTorrentTitleHold;
+
+function renderTorrentTitleLogo(torrent, tmdbId, mediaType) {
+    // Тот же логотип уже стоит или грузится — второй вызов (сперва по известным
+    // id и типу, потом по ответу воркера) ничего не перезапускает
+    var key = mediaType + ':' + tmdbId;
+    var cur = getEl('detail-title-logo');
+    if (cur && cur._logoKey === key && cur._logoGen === torrentLogoGen) return;
+    resetTorrentTitleLogo();
+    var title = getEl('detail-title-text');
+    var img = ensureTorrentTitleLogo();
+    if (!title || !img) return;
+    var mine = torrentLogoGen;
+    img._logoKey = key;
+    img._logoGen = mine;
+    title.style.visibility = 'hidden';
+    var timer = setTimeout(function () {
+        if (mine === torrentLogoGen) title.style.visibility = '';
+    }, TORRENT_LOGO_WAIT_MS);
+    var giveUp = function () {
+        clearTimeout(timer);
+        if (mine === torrentLogoGen) title.style.visibility = '';
+    };
+
+    torrentLogoUrl(tmdbId, mediaType).then(function (url) {
+        if (mine !== torrentLogoGen || !isOpenTorrentDetail(torrent)) return;
+        if (!url) { giveUp(); img._logoKey = ''; return; }
+        // Зеркало может не отдать файл — следующие зеркала того же пути
+        var queue = (typeof window._detailBackdropQueue === 'function') ? window._detailBackdropQueue(url) : [url];
+        var at = 0;
+        var next = function () {
+            if (mine !== torrentLogoGen) return;
+            if (at >= queue.length) { giveUp(); return; }
+            img.src = queue[at++];
+        };
+        img.onload = function () {
+            if (mine !== torrentLogoGen) return;
+            if (!img.naturalWidth) { next(); return; }
+            clearTimeout(timer);
+            img.alt = title.textContent || '';
+            img.classList.remove('hidden');
+            // Текст остаётся в DOM (его читают «Назад», плеер, озвучка) —
+            // прячет его класс, а место занимает логотип
+            title.classList.add('detail-title-has-logo');
+            title.style.visibility = '';
+        };
+        img.onerror = next;
+        next();
+    });
+}
+
+// ==================== ЗАРАНЕЕ: КАРТОЧКА РАЗДАЧИ ====================
+// Фокус постоял на раздаче в «Моих торрентах» — фоном готовим то, чего
+// карточка раздачи (showDetail → loadAllTmdbDataForTorrent) иначе ждала бы
+// по сети уже после нажатия OK:
+//   • детали TMDB (getTmdbDetailsWithCache) — описание, мета, кадр фона;
+//   • сезоны сериала (loadSeasonStills) — названия и кадры серий;
+//   • сами картинки — кадр фона w1280 и превью серий w300 — в HTTP-кэш.
+// Запросы JSON и картинки качает фоновый поток (poster-prefetch.js), ответы
+// ложатся в те же кэши, что читает карточка. Основной поток только
+// раскладывает готовые объекты.
+//
+// Тип и id — тем же путём, что ensureTorrentEpisodeMeta (без файлов раздачи:
+// их список — отдельный запрос к TorrServer, его не трогаем). Ошиблись с
+// сезоном — карточка запросит свой, лишним будет один маленький ответ.
+var TORRENT_PREFETCH_DWELL_MS = 400;
+var TORRENT_PREFETCH_SEASONS_MAX = 3;
+var TORRENT_PREFETCH_STILLS_MAX = 16;
+var torrentPrefetchTimer = null;
+var torrentPrefetchDone = new LruCache(200, 30 * 60 * 1000);
+
+function isTorrentsNavBusy() {
+    if (window.navHold) return true;
+    var mc = getEl('main-container');
+    return !!(mc && typeof Animations !== 'undefined' && typeof Animations.isScrollTweening === 'function' &&
+        Animations.isScrollTweening(mc));
+}
+
+function scheduleTorrentDetailPrefetch(card) {
+    if (torrentPrefetchTimer) clearTimeout(torrentPrefetchTimer);
+    torrentPrefetchTimer = setTimeout(function run() {
+        torrentPrefetchTimer = null;
+        if (!card.isConnected || !card.classList.contains('focused')) return;
+        if (isTorrentsNavBusy()) { torrentPrefetchTimer = setTimeout(run, TORRENT_PREFETCH_DWELL_MS); return; }
+        var hash = String(card.dataset.hash || '').toLowerCase();
+        var list = (window.AppState && AppState.torrents) || [];
+        for (var i = 0; i < list.length; i++) {
+            if (list[i] && String(list[i].hash || '').toLowerCase() === hash) { prefetchTorrentDetail(list[i]); return; }
+        }
+    }, TORRENT_PREFETCH_DWELL_MS);
+}
+window.scheduleTorrentDetailPrefetch = scheduleTorrentDetailPrefetch;
+
+function prefetchTorrentDetail(torrent) {
+    var hash = torrent && torrent.hash ? String(torrent.hash).toLowerCase() : '';
+    if (!hash || torrentPrefetchDone.has(hash)) return;
+
+    var known = knownTorrentMeta.get(hash);
+    var tmdbId = torrent.tmdbId || torrent.knownTmdbId || (known && known.id) || null;
+    if (!tmdbId) {
+        var idMatch = String(torrent.title || '').match(/\[(\d+)\]/);
+        if (idMatch) tmdbId = idMatch[1];
+    }
+    if (!tmdbId) return;     // без id карточка тоже ничего не спросит у TMDB
+    torrentPrefetchDone.set(hash, true);
+
+    var cardType = getTorrentMediaTypeFromCard(torrent);
+    var seasons = getTorrentSeasons(torrent);
+    var isTv = cardType === 'tv' || torrent.media_type === 'tv' || (known && known.mediaType === 'tv');
+    if (!isTv && !torrent.media_type && !(known && known.mediaType) && seasons.length) isTv = true;
+    var mediaType = isTv ? 'tv' : (torrent.media_type || (known && known.mediaType) || 'movie');
+
+    var pf = window.PosterPrefetch;
+    // Картинки карточки: кадр фона и превью серий — по готовым данным
+    var wantArt = function (details, seasonLists) {
+        if (!pf) return;
+        var urls = [];
+        if (details && details.backdrop_path) urls.push(torrentBackdropUrl(details.backdrop_path));
+        for (var s = 0; s < seasonLists.length && urls.length < TORRENT_PREFETCH_STILLS_MAX + 1; s++) {
+            var eps = seasonLists[s] || [];
+            for (var e = 0; e < eps.length && urls.length < TORRENT_PREFETCH_STILLS_MAX + 1; e++) {
+                if (eps[e] && eps[e].stillPath) urls.push(buildTmdbPosterUrl(eps[e].stillPath, 'w300'));
+            }
+        }
+        if (urls.length) pf.want(urls);
+    };
+
+    // Логотип названия — адрес и сам файл
+    torrentLogoUrl(tmdbId, mediaType).then(function (u) { if (u && pf) pf.want([u]); });
+
+    /* Детали и сезоны — тем же путём, каким их возьмёт открытие раздачи.
+     * Открытие идёт через TorrentsWorker.loadAllTmdbData (torrents-worker-patch.js):
+     * воркер сам качает и разбирает детали и сезоны и держит их в СВОЁМ кэше.
+     * Значит, и готовить надо его кэш — тем же вызовом, иначе подготовленное
+     * лежало бы мимо. Копия раздачи — с тем же уточнением типа по category,
+     * что делает открытие перед вызовом воркера. */
+    if (window.TorrentsWorker && typeof TorrentsWorker.loadAllTmdbData === 'function') {
+        var copy = {}, k;
+        for (k in torrent) if (Object.prototype.hasOwnProperty.call(torrent, k)) copy[k] = torrent[k];
+        if (!copy.tmdbId) copy.tmdbId = tmdbId;
+        if (!copy.media_type && known && known.mediaType) copy.media_type = known.mediaType;
+        if (!copy.media_type && /tv|сериал|serial|series/i.test(String(copy.category || ''))) copy.media_type = 'tv';
+        TorrentsWorker.loadAllTmdbData(copy).then(function (r) {
+            if (!r) return;
+            var lists = [];
+            var all = r.allSeasonEpisodes || {};
+            var order = r.seasonNumbers || Object.keys(all);
+            for (var i = 0; i < order.length; i++) if (all[order[i]]) lists.push(all[order[i]]);
+            wantArt(r.details, lists);
+        }, function () { torrentPrefetchDone.delete(hash); });
+        return;
+    }
+
+    // Воркера нет — те же данные основным путём (loadAllTmdbDataForTorrent из
+    // torrents.js читает именно эти кэши)
+    var detailsP = getTmdbDetailsWithCache(tmdbId, mediaType);
+    if (mediaType !== 'tv') { detailsP.then(function (d) { wantArt(d, []); }); return; }
+    if (!seasons.length) seasons = [1];
+    seasons = seasons.slice(0, TORRENT_PREFETCH_SEASONS_MAX);
+    Promise.all([detailsP].concat(seasons.map(function (sn) { return loadSeasonStills(tmdbId, sn); })))
+        .then(function (res) { wantArt(res[0], res.slice(1)); });
 }
 
 function resetDetailBackground() {
@@ -2713,6 +2983,7 @@ function resetDetailBackground() {
     if (filesList) { clearFilesList(); filesList.style.display = ''; filesList.style.flexDirection = ''; }
     var detailPoster = getEl('detail-poster'); if (detailPoster) detailPoster.innerHTML = '';
     var detailTitleText = getEl('detail-title-text'); if (detailTitleText) detailTitleText.textContent = '';
+    resetTorrentTitleLogo();
     var oldProgressBlocks = document.querySelectorAll('#detail-progress');
     for (var i = 0; i < oldProgressBlocks.length; i++) {
         oldProgressBlocks[i].remove();
@@ -2805,10 +3076,12 @@ var seasonCache = new LruCache(200, 24 * 60 * 60 * 1000);
 async function loadSeasonStills(tmdbId, seasonNumber) {
     var cacheKey = tmdbId + 'season' + seasonNumber;
     if (seasonCache.has(cacheKey)) { var cached = seasonCache.get(cacheKey); if (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) return cached.data; }
-    try {
-        var response = await fetch('/api/tmdb/season?id=' + tmdbId + '&seasonNumber=' + seasonNumber);
-        if (response.ok) { var seasonData = await response.json(); var episodes = seasonData.episodes || []; seasonCache.set(cacheKey, { data: episodes, timestamp: Date.now() }); return episodes; }
-    } catch (error) { console.error('Ошибка загрузки кадров сезона:', error); }
+    var seasonData = await tsServerJson('/api/tmdb/season?id=' + tmdbId + '&seasonNumber=' + seasonNumber);
+    if (seasonData) {
+        var episodes = seasonData.episodes || [];
+        seasonCache.set(cacheKey, { data: episodes, timestamp: Date.now() });
+        return episodes;
+    }
     return [];
 }
 
@@ -3065,13 +3338,13 @@ window.updateDetailOverviewForFocus = updateDetailOverviewForFocus;
 async function loadMovieStill(tmdbId) {
     var cacheKey = tmdbId + '_movie_still';
     if (seasonCache.has(cacheKey)) { var cached = seasonCache.get(cacheKey); if (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000) return cached.data; }
-    try {
-        var response = await fetch('/api/tmdb/details?id=' + tmdbId + '&type=movie');
-        if (response.ok) {
-            var data = await response.json();
-            if (data.poster_path) { var stillUrl = buildTmdbPosterUrl(data.poster_path, 'w300'); seasonCache.set(cacheKey, { data: stillUrl, timestamp: Date.now() }); return stillUrl; }
-        }
-    } catch (error) { console.error('Ошибка загрузки постера фильма:', error); }
+    // Те же детали, что у фона карточки, — из общего кэша и через воркер
+    var data = await getTmdbDetailsWithCache(tmdbId, 'movie');
+    if (data && data.poster_path) {
+        var stillUrl = buildTmdbPosterUrl(data.poster_path, 'w300');
+        seasonCache.set(cacheKey, { data: stillUrl, timestamp: Date.now() });
+        return stillUrl;
+    }
     return null;
 }
 
@@ -3313,6 +3586,39 @@ function formatNextEpisodeDate(details, torrentSeasons) {
     return text;
 }
 
+/**
+ * Сезоны раздачи одной короткой подписью: подряд идущие — диапазоном.
+ *   [5]            → «Сезон 5»
+ *   [1, 2]         → «Сезоны 1–2»
+ *   [1 … 17]       → «Сезоны 1–17»
+ *   [1, 2, 3, 5]   → «Сезоны 1–3, 5»
+ * У сериала в TMDB сезонов больше, чем в раздаче, — «из N»: «Сезоны 1–2 из 4».
+ * Раньше в название дописывалось «[сезон 1, 2, 3, … 17]», а в мете стояло
+ * лишь «17 сезонов», без номеров.
+ */
+function formatTorrentSeasonsLabel(seasons, tmdbTotal) {
+    var list = [];
+    for (var i = 0; i < seasons.length; i++) {
+        var n = parseInt(seasons[i], 10);
+        if (!isNaN(n) && list.indexOf(n) === -1) list.push(n);
+    }
+    list.sort(function (a, b) { return a - b; });
+    if (!list.length) return '';
+    var ranges = [];
+    for (var j = 0; j < list.length; j++) {
+        var from = list[j];
+        while (j + 1 < list.length && list[j + 1] === list[j] + 1) j++;
+        ranges.push(from === list[j] ? String(from) : from + '–' + list[j]);
+    }
+    var label = (list.length === 1 ? 'Сезон ' : 'Сезоны ') + ranges.join(', ');
+    var total = parseInt(tmdbTotal, 10) || 0;
+    // Сезон 0 («Спецматериалы») в число сезонов TMDB не входит
+    var real = 0;
+    for (var k = 0; k < list.length; k++) if (list[k] > 0) real++;
+    if (total > real && total > 1) label += ' из ' + total;
+    return label;
+}
+
 // Строка вида «2019 · 8.4 · Сезон 5 · 48 мин · Драма · США · 5/10 серий ·
 // Следующая серия 23 октября · 96 ГБ · [4K]».
 // Данные приходят из двух источников (TMDB и список файлов) в непредсказуемом
@@ -3336,10 +3642,9 @@ function renderDetailMetaRow() {
 
         // Сезоны — те, что в РАЗДАЧЕ, а не сколько их у сериала в TMDB:
         // «8 сезонов» на раздаче одного 5-го сезона сбивало с толку
-        if (torrentSeasons.length > 1) {
-            parts.push(torrentSeasons.length + ' ' + pluralRu(torrentSeasons.length, 'сезон', 'сезона', 'сезонов'));
-        } else if (torrentSeasons.length === 1) {
-            parts.push('Сезон ' + torrentSeasons[0]);
+        if (torrentSeasons.length) {
+            parts.push('<span class="detail-meta-seasons">' +
+                escapeHtml(formatTorrentSeasonsLabel(torrentSeasons, d.number_of_seasons)) + '</span>');
         } else {
             parts.push(detailMetaState.isTvSeries ? 'Сериал' : 'Фильм');
         }
@@ -3993,11 +4298,10 @@ async function showDetail(torrent) {
             // === TMDB-данные применяем когда готовы ===
             tmdbPromise.then(function (tmdbData) {
                 if (!tmdbData || !isOpenTorrentDetail(torrent)) return;
+                // Сезоны раздачи в названии больше не пишем («Аркейн [сезон 1, 2]»,
+                // а у длинных сериалов — семнадцать чисел подряд): их показывает
+                // строка меты — «Сезоны 1–17» (formatTorrentSeasonsLabel)
                 if (tmdbData.cleanTitle && tmdbData.cleanTitle !== 'Без названия') titleEl.textContent = tmdbData.cleanTitle;
-                if (tmdbData.seasonNumbers && tmdbData.seasonNumbers.length > 1) {
-                    var seasonsText = titleEl.textContent;
-                    if (!seasonsText.includes('сезон')) titleEl.textContent = seasonsText + ' [сезон ' + tmdbData.seasonNumbers.join(', ') + ']';
-                }
                 loadStillsAndUpdateFiles(tmdbData.seasonNumbers || [], tmdbData.allSeasonEpisodes || {}, tmdbData.movieStill, videoFiles.length);
             }).catch(function (error) { console.error('Ошибка загрузки TMDB данных:', error); });
         }
@@ -4374,6 +4678,10 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
     // уходил не туда. Теперь тип всегда согласован с бейджем карточки.
     torrent.media_type = mediaType;
 
+    // Логотип названия вместо текста — здесь, до первого await: это ещё задача
+    // открытия, и текст названия не успевает мелькнуть до логотипа
+    if (tmdbId && elements.titleEl) renderTorrentTitleLogo(torrent, tmdbId, mediaType);
+
     var videoFilesCount = 0;
     try {
         if (typeof getVideoFilesFromTorrent === 'function') {
@@ -4396,7 +4704,7 @@ async function loadAllTmdbDataForTorrent(torrent, elements) {
 
     if (details) {
         if (details.backdrop_path && elements.detailViewDiv) {
-            var backdropUrl = normalizePosterUrl(details.backdrop_path, 'w1280');
+            var backdropUrl = torrentBackdropUrl(details.backdrop_path);
 
             elements.detailViewDiv.style.backgroundImage =
                 'linear-gradient(to top, rgba(0, 0, 0, 0.97) 0%, rgba(0, 0, 0, 0.82) 32%, rgba(0, 0, 0, 0.38) 64%, rgba(0, 0, 0, 0.25) 100%), ' +
@@ -4991,7 +5299,7 @@ function getTorrentProgressBatch(hash, files) {
                 clientId: localStorage.getItem('clientId')
             };
             if (mediaKeys) batchBody.mediaKeys = mediaKeys;
-            var response = await fetch(SERVER_URL + '/api/timecode/batch', {
+            var response = await bgFetch(SERVER_URL + '/api/timecode/batch', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(batchBody)
@@ -5672,7 +5980,10 @@ async function searchTorrentsLegacy(query) {
         var response;
         try {
             searchUrl = await signJacredSearchUrl(searchUrl, jacDefault, query);
-            response = await fetch(searchUrl, { signal: timeoutController.signal });
+            // Через фоновый поток (BgFetch), как и в torrents-worker-patch.js
+            response = await (window.bgFetch
+                ? window.bgFetch(searchUrl, { signal: timeoutController.signal })
+                : fetch(searchUrl, { signal: timeoutController.signal }));
         } catch (netError) {
             if (timedOut) throw new JacredUnavailableError(jacDefault, 'нет ответа за ' + JACRED_TIMEOUT_MS + ' мс', true);
             throw new JacredUnavailableError(jacDefault, netError.message);

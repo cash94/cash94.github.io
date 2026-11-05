@@ -12,6 +12,33 @@ function isTsServerUrl(url) {
   if (url.charAt(0) === '/' && url.charAt(1) !== '/') return true;
   return url.indexOf(SERVER_URL + '/') === 0 || url === SERVER_URL;
 }
+var BG_FETCH_STUB_WAIT_MS = 2500;
+var _bgFetchQueue = [];
+window._bgFetchQueue = _bgFetchQueue;
+function _bgNativeInit(init) {
+  var o = {},
+    k;
+  init = init || {};
+  for (k in init) if (k !== 'bgMode' && Object.prototype.hasOwnProperty.call(init, k)) o[k] = init[k];
+  return o;
+}
+function bgFetch(url, init) {
+  if (window.BgFetch && typeof window.BgFetch.fetch === 'function') return window.BgFetch.fetch(url, init);
+  return new Promise(function (resolve) {
+    _bgFetchQueue.push({
+      url: url,
+      init: init,
+      resolve: resolve
+    });
+    if (_bgFetchQueue.length === 1) {
+      setTimeout(function () {
+        if (window.BgFetch) return;
+        var q = _bgFetchQueue.splice(0);
+        for (var i = 0; i < q.length; i++) q[i].resolve(window.fetch(q[i].url, _bgNativeInit(q[i].init)));
+      }, BG_FETCH_STUB_WAIT_MS);
+    }
+  });
+}
 if (window.TS_SERVER) {
   (function () {
     if (window.fetch) {
@@ -141,7 +168,7 @@ function getPrimaryImageBase() {
   return proto + '//' + getPrimaryImageHost() + '/t/p/';
 }
 function loadClientConfig() {
-  return fetch(SERVER_URL + '/api/client-config').then(function (r) {
+  return bgFetch(SERVER_URL + '/api/client-config').then(function (r) {
     return r.ok ? r.json() : null;
   }).then(function (data) {
     if (!data || !data.success) return;
@@ -162,7 +189,7 @@ function getSkipApiBase() {
   return AppState.protocol + '//' + AppState.skipApiHost;
 }
 function loadSkipApiBase() {
-  return fetch(SERVER_URL + '/api/skip/status').then(function (r) {
+  return bgFetch(SERVER_URL + '/api/skip/status').then(function (r) {
     return r.ok ? r.json() : null;
   }).then(function (data) {
     if (!data || !data.ok) return;

@@ -100,6 +100,22 @@
         // эмуляторе ТВ: +25–30 мс к каждому «вниз» против версии без логотипов.
         LOGO_NEAR: 2,
         LOGO_PRELOAD_MAX: 2,
+        // Кадры и логотипы соседних карточек (±ART_NEAR) — фоновым потоком
+        // (PosterPrefetch) в HTTP-кэш, когда фокус постоял ART_PREFETCH_DELAY_MS
+        // и кнопку не держат. Тот же кадр w1280 и логотип w500 берёт и
+        // карточка фильма (catalog.js), так что открывается она тоже из кэша.
+        ART_NEAR: 2,
+        ART_PREFETCH_DELAY_MS: 150,
+        // Под заставкой запуска (prefetchHomeStartup) — всё, что понадобится на
+        // главной дальше первого экрана: картинки STARTUP_ITEMS карточек каждого
+        // ряда, кадры баннера первых STARTUP_BACKDROPS, логотипы, баннеры плиток
+        // категорий (STARTUP_CAT_BANNERS фильмов каждой). Уже скачанное приходит
+        // из HTTP-кэша мгновенно, так что второй запуск почти ничего не качает
+        // Ряд целиком: при переходе на ряд loadRowPosters грузит все его
+        // плитки, и с 12 последние восемь шли по сети (замер: 100–500 мс)
+        STARTUP_ITEMS: 20,
+        STARTUP_BACKDROPS: 2,
+        STARTUP_CAT_BANNERS: 2,
         // Заглушка загрузчика ждёт постеры первого ряда и картинку баннера,
         // но не дольше этого после появления ряда: медленное зеркало не должно
         // держать пользователя перед заставкой. Опрос готовности — с этим шагом
@@ -484,7 +500,10 @@
             var timer = setTimeout(function () {
                 if (ctrl) { try { ctrl.abort(); } catch (e) { } }
             }, HOME.FETCH_TIMEOUT_MS);
-            fetch(url, ctrl ? { signal: ctrl.signal } : {})
+            // История, подборки, детали — через фоновый поток (BgFetch в
+            // poster-prefetch.js): запрос и разбор JSON идут в воркере
+            var init = ctrl ? { signal: ctrl.signal } : {};
+            (window.bgFetch ? window.bgFetch(url, init) : fetch(url, init))
                 .then(function (r) {
                     if (!r.ok) throw new Error('HTTP ' + r.status);
                     return r.json();
@@ -1176,7 +1195,8 @@
         var timeout = new Promise(function (resolve, reject) {
             setTimeout(function () { reject(new Error('timeout')); }, HOME.LOGO_FETCH_TIMEOUT_MS);
         });
-        var p = Promise.race([fetch(url), timeout]).then(function (r) {
+        var req = window.bgFetch ? window.bgFetch(url) : fetch(url);   // через фоновый поток
+        var p = Promise.race([req, timeout]).then(function (r) {
             // 404 — сервер старше этой возможности: больше не спрашиваем
             if (r.status === 404) { homeState.logoUnsupported = true; return null; }
             if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -2768,7 +2788,135 @@
         var idx = parseInt(card.dataset.itemIndex, 10);
         if (!items || isNaN(idx) || !items[idx]) return;
         setHeroItem(items[idx]);
+        prefetchNearArt(items, idx);
         preloadNearLogos(items, idx);
+    }
+
+    /**
+     * Кадры баннера и логотипы соседей — в HTTP-кэш фоновым потоком
+     * (poster-prefetch.js): основной поток не создаёт ни одного Image и не
+     * разбирает ни одного ответа. Шагнул вбок — кадр баннера приходит из
+     * кэша, а не после сотен миллисекунд сети.
+     *
+     * Свою карточку не берём: её кадр сразу грузит сам баннер (applyHero), и
+     * параллельное скачивание того же файла воркером было бы вторым запросом.
+     * Пока кнопку держат — ждём: фокус проскакивает карточки быстрее, чем
+     * качаются кадры по ~150 КБ, и очередь забивалась бы ненужным.
+     */
+    /**
+     * Главная целиком — заранее, пока идёт заставка запуска.
+     *
+     * Без этого под заставкой грузился только первый экран (ряд и баннер), а
+     * всё остальное — при первом же нажатии: «вниз» — пустые плитки ряда и
+     * кадр баннера по сети, плитка категории — десятки запросов за её
+     * фильмами. Теперь, как только данные рядов на месте, фоновый поток
+     * (PosterPrefetch, фоновая очередь) кладёт в HTTP-кэш:
+     *   1. картинки плиток всех рядов (STARTUP_ITEMS первых) — их видно сразу
+     *      при переходе на ряд;
+     *   2. кадры баннера первых STARTUP_BACKDROPS карточек каждого ряда;
+     *   3. логотипы названий;
+     *   4. баннеры плиток категорий: список фильмов (CategoryBanners, он же
+     *      ложится в IndexedDB на сутки) и кадры с логотипами первых.
+     * Показанный ряд пропускаем — его картинки грузит сама страница, а
+     * параллельное скачивание того же файла воркером было бы вторым запросом.
+     * Фоновая очередь идёт после срочной и не больше трёх файлов разом, так
+     * что первый экран и снятие заставки это не задерживает. Один раз за запуск.
+     */
+    var startupPrefetchDone = false;
+
+    function prefetchHomeStartup() {
+        if (startupPrefetchDone || !window.PosterPrefetch) return;
+        startupPrefetchDone = true;
+        var tiles = [], tilesRest = [], backdrops = [], backdropsRest = [], logos = [];
+        var seen = {};
+        var add = function (list, url) { if (url && !seen[url]) { seen[url] = true; list.push(url); } };
+
+        for (var r = 0; r < homeState.rowKeys.length; r++) {
+            var items = homeState.data[homeState.rowKeys[r]] || [];
+            var shown = (r === homeState.activeRow);
+            for (var i = 0; i < items.length && i < HOME.STARTUP_ITEMS; i++) {
+                var it = items[i];
+                if (!it || it.homeCat) continue;
+                // Картинка плитки — как в loadCardPoster: широкий кадр, иначе постер
+                if (!shown) {
+                    var tile = it.backdrop_path
+                        ? tmdbImage(it.backdrop_path, homeState.tileImgSize)
+                        : (it.poster_path ? posterUrlFor(it.poster_path) : '');
+                    add(i < 6 ? tiles : tilesRest, tile);
+                }
+                if (it.backdrop_path && i < HOME.STARTUP_BACKDROPS && !(shown && i === 0)) {
+                    var bd = homeState.goodBackdrops[it.backdrop_path] || backdropUrlFor(it.backdrop_path);
+                    if (!backdropImgs.get(bd)) add(i === 0 ? backdrops : backdropsRest, bd);
+                }
+                var k = heroKey(it);
+                var info = k ? knownLogo(it, k) : null;
+                if (info && info.url && !info.loaded && !info.loading) add(logos, info.url);
+            }
+        }
+        // Порядок — по пользе: то, что видно при первом «вниз», впереди
+        window.PosterPrefetch.want(tiles.concat(backdrops, logos, tilesRest, backdropsRest), { low: true });
+        prefetchCategoryBanners();
+    }
+
+    /** Баннеры плиток категорий — списки по одной категории, картинки первых фильмов */
+    function prefetchCategoryBanners() {
+        if (!window.CategoryBanners || typeof CategoryBanners.get !== 'function') return;
+        var keys = [];
+        for (var r = 0; r < homeState.rows.length; r++) {
+            var cards = homeState.rows[r] || [];
+            for (var c = 0; c < cards.length; c++) {
+                var key = cards[c].dataset && cards[c].dataset.homeCat;
+                if (key && keys.indexOf(key) === -1) keys.push(key);
+            }
+        }
+        // По одной: у каждой категории десятки запросов (CategoryBanners), и
+        // разом они заняли бы соединения к серверу, нужные прямо сейчас
+        var at = 0;
+        (function next() {
+            if (at >= keys.length) return;
+            var key = keys[at++];
+            Promise.resolve(CategoryBanners.get(key)).then(function (list) {
+                var urls = [];
+                for (var i = 0; list && i < list.length && i < HOME.STARTUP_CAT_BANNERS; i++) {
+                    var it = list[i];
+                    if (it && it.backdrop_path) {
+                        var bd = homeState.goodBackdrops[it.backdrop_path] || backdropUrlFor(it.backdrop_path);
+                        if (!backdropImgs.get(bd)) urls.push(bd);
+                    }
+                    var info = logoFromData(it);
+                    if (info && info.url) urls.push(info.url);
+                }
+                if (urls.length) window.PosterPrefetch.want(urls, { low: true });
+            }, function () { }).then(next);
+        })();
+    }
+
+    var artPrefetchTimer = null;
+
+    function prefetchNearArt(items, idx) {
+        if (!window.PosterPrefetch) return;
+        if (artPrefetchTimer) clearTimeout(artPrefetchTimer);
+        artPrefetchTimer = setTimeout(function run() {
+            if (window.navHold) { artPrefetchTimer = setTimeout(run, HOME.ART_PREFETCH_DELAY_MS); return; }
+            artPrefetchTimer = null;
+            var urls = [];
+            for (var d = 1; d <= HOME.ART_NEAR; d++) {
+                var pair = [idx + d, idx - d];
+                for (var j = 0; j < 2; j++) {
+                    var it = items[pair[j]];
+                    var k = it ? heroKey(it) : null;
+                    if (!k) continue;
+                    var path = it.backdrop_path;
+                    if (path) {
+                        var bd = homeState.goodBackdrops[path] || backdropUrlFor(path);
+                        if (!backdropImgs.get(bd)) urls.push(bd);
+                    }
+                    var info = knownLogo(it, k);
+                    if (info && info.url && !info.loaded && !info.loading) urls.push(info.url);
+                }
+            }
+            if (urls.length) window.PosterPrefetch.want(urls);
+        }, HOME.ART_PREFETCH_DELAY_MS);
     }
 
     /** Фокус в показанный ряд, на запомненную для него карточку */
@@ -3381,6 +3529,9 @@
                         // Рядов не будет вовсе — держать заглушку тем более не за чем
                         dismissModuleLoader();
                     }
+                    // Данные всех рядов на месте — остальное для главной фоном,
+                    // пока ещё идёт заставка (prefetchHomeStartup)
+                    if (renderedRows > 0) prefetchHomeStartup();
                     finish(renderedRows > 0);
                     return;
                 }

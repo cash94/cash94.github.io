@@ -428,7 +428,7 @@ window.showErrorBanner = showErrorBanner;
 
 // ==================== ПРОВЕРКА ВЕРСИИ ====================
 function checkAppVersion() {
-  fetch('/api/version')
+  bgFetch('/api/version')   // через фоновый поток
     .then(function (response) { return response.json(); })
     .then(function (data) {
       var serverVersion = data.version;

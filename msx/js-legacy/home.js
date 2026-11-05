@@ -28,6 +28,11 @@
     LOGO_SIZE: 'w500',
     LOGO_NEAR: 2,
     LOGO_PRELOAD_MAX: 2,
+    ART_NEAR: 2,
+    ART_PREFETCH_DELAY_MS: 150,
+    STARTUP_ITEMS: 20,
+    STARTUP_BACKDROPS: 2,
+    STARTUP_CAT_BANNERS: 2,
     LOADER_POSTERS_MAX_MS: 6000,
     LOADER_POLL_MS: 100,
     TRAILER_DELAY_MS: 5000,
@@ -316,9 +321,10 @@
           } catch (e) {}
         }
       }, HOME.FETCH_TIMEOUT_MS);
-      fetch(url, ctrl ? {
+      var init = ctrl ? {
         signal: ctrl.signal
-      } : {}).then(function (r) {
+      } : {};
+      (window.bgFetch ? window.bgFetch(url, init) : fetch(url, init)).then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
       }).then(function (d) {
@@ -845,7 +851,8 @@
         reject(new Error('timeout'));
       }, HOME.LOGO_FETCH_TIMEOUT_MS);
     });
-    var p = Promise.race([fetch(url), timeout]).then(function (r) {
+    var req = window.bgFetch ? window.bgFetch(url) : fetch(url);
+    var p = Promise.race([req, timeout]).then(function (r) {
       if (r.status === 404) {
         homeState.logoUnsupported = true;
         return null;
@@ -2133,7 +2140,108 @@
     var idx = parseInt(card.dataset.itemIndex, 10);
     if (!items || isNaN(idx) || !items[idx]) return;
     setHeroItem(items[idx]);
+    prefetchNearArt(items, idx);
     preloadNearLogos(items, idx);
+  }
+  var startupPrefetchDone = false;
+  function prefetchHomeStartup() {
+    if (startupPrefetchDone || !window.PosterPrefetch) return;
+    startupPrefetchDone = true;
+    var tiles = [],
+      tilesRest = [],
+      backdrops = [],
+      backdropsRest = [],
+      logos = [];
+    var seen = {};
+    var add = function (list, url) {
+      if (url && !seen[url]) {
+        seen[url] = true;
+        list.push(url);
+      }
+    };
+    for (var r = 0; r < homeState.rowKeys.length; r++) {
+      var items = homeState.data[homeState.rowKeys[r]] || [];
+      var shown = r === homeState.activeRow;
+      for (var i = 0; i < items.length && i < HOME.STARTUP_ITEMS; i++) {
+        var it = items[i];
+        if (!it || it.homeCat) continue;
+        if (!shown) {
+          var tile = it.backdrop_path ? tmdbImage(it.backdrop_path, homeState.tileImgSize) : it.poster_path ? posterUrlFor(it.poster_path) : '';
+          add(i < 6 ? tiles : tilesRest, tile);
+        }
+        if (it.backdrop_path && i < HOME.STARTUP_BACKDROPS && !(shown && i === 0)) {
+          var bd = homeState.goodBackdrops[it.backdrop_path] || backdropUrlFor(it.backdrop_path);
+          if (!backdropImgs.get(bd)) add(i === 0 ? backdrops : backdropsRest, bd);
+        }
+        var k = heroKey(it);
+        var info = k ? knownLogo(it, k) : null;
+        if (info && info.url && !info.loaded && !info.loading) add(logos, info.url);
+      }
+    }
+    window.PosterPrefetch.want(tiles.concat(backdrops, logos, tilesRest, backdropsRest), {
+      low: true
+    });
+    prefetchCategoryBanners();
+  }
+  function prefetchCategoryBanners() {
+    if (!window.CategoryBanners || typeof CategoryBanners.get !== 'function') return;
+    var keys = [];
+    for (var r = 0; r < homeState.rows.length; r++) {
+      var cards = homeState.rows[r] || [];
+      for (var c = 0; c < cards.length; c++) {
+        var key = cards[c].dataset && cards[c].dataset.homeCat;
+        if (key && keys.indexOf(key) === -1) keys.push(key);
+      }
+    }
+    var at = 0;
+    (function next() {
+      if (at >= keys.length) return;
+      var key = keys[at++];
+      Promise.resolve(CategoryBanners.get(key)).then(function (list) {
+        var urls = [];
+        for (var i = 0; list && i < list.length && i < HOME.STARTUP_CAT_BANNERS; i++) {
+          var it = list[i];
+          if (it && it.backdrop_path) {
+            var bd = homeState.goodBackdrops[it.backdrop_path] || backdropUrlFor(it.backdrop_path);
+            if (!backdropImgs.get(bd)) urls.push(bd);
+          }
+          var info = logoFromData(it);
+          if (info && info.url) urls.push(info.url);
+        }
+        if (urls.length) window.PosterPrefetch.want(urls, {
+          low: true
+        });
+      }, function () {}).then(next);
+    })();
+  }
+  var artPrefetchTimer = null;
+  function prefetchNearArt(items, idx) {
+    if (!window.PosterPrefetch) return;
+    if (artPrefetchTimer) clearTimeout(artPrefetchTimer);
+    artPrefetchTimer = setTimeout(function run() {
+      if (window.navHold) {
+        artPrefetchTimer = setTimeout(run, HOME.ART_PREFETCH_DELAY_MS);
+        return;
+      }
+      artPrefetchTimer = null;
+      var urls = [];
+      for (var d = 1; d <= HOME.ART_NEAR; d++) {
+        var pair = [idx + d, idx - d];
+        for (var j = 0; j < 2; j++) {
+          var it = items[pair[j]];
+          var k = it ? heroKey(it) : null;
+          if (!k) continue;
+          var path = it.backdrop_path;
+          if (path) {
+            var bd = homeState.goodBackdrops[path] || backdropUrlFor(path);
+            if (!backdropImgs.get(bd)) urls.push(bd);
+          }
+          var info = knownLogo(it, k);
+          if (info && info.url && !info.loaded && !info.loading) urls.push(info.url);
+        }
+      }
+      if (urls.length) window.PosterPrefetch.want(urls);
+    }, HOME.ART_PREFETCH_DELAY_MS);
   }
   function focusActiveRowCard(col) {
     var ri = homeState.activeRow;
@@ -2615,6 +2723,7 @@
             if (isHomeFocusable()) focusTopbar();
             dismissModuleLoader();
           }
+          if (renderedRows > 0) prefetchHomeStartup();
           finish(renderedRows > 0);
           return;
         }

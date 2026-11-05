@@ -45,7 +45,10 @@
             var timer = setTimeout(function () {
                 if (ctrl) { try { ctrl.abort(); } catch (e) { } }
             }, CB.FETCH_TIMEOUT_MS);
-            fetch(url, ctrl ? { signal: ctrl.signal } : {})
+            // Через фоновый поток (BgFetch в poster-prefetch.js): десятки
+            // запросов item/logo на категорию — разбор JSON не в основном потоке
+            var init = ctrl ? { signal: ctrl.signal } : {};
+            (window.bgFetch ? window.bgFetch(url, init) : fetch(url, init))
                 .then(function (r) {
                     if (!r.ok) throw new Error('HTTP ' + r.status);
                     return r.json();

@@ -81,14 +81,74 @@
             // выключенный или неверно указанный хост. Именно это происходит
             // чаще всего, а alert('Failed to fetch') на телевизоре не виден
             // вовсе — поиск просто молча ничего не находил.
-            var response;
+            // Подпись для jac.red (torrents.js: signJacredSearchUrl). Старая
+            // сборка torrents.js с зеркала её не знает — ищем без неё
             try {
-                // Подпись для jac.red (torrents.js: signJacredSearchUrl). Старая
-                // сборка torrents.js с зеркала её не знает — ищем без неё
                 if (typeof window.signJacredSearchUrl === 'function') {
                     searchUrl = await window.signJacredSearchUrl(searchUrl, jacDefault, query);
                 }
-                response = await fetch(searchUrl, { signal: controller.signal });
+            } catch (signError) {
+                if (timedOut) throw makeJacredError(jacDefault, 'нет ответа за ' + jacredTimeoutMs() + ' мс', true);
+                throw signError;
+            }
+
+            // ★ Весь поиск — в TorrentsWorker: запрос, разбор мегабайтного
+            // ответа, нормализация, фильтры и первая выдача. Основной поток
+            // получает только нормализованное, одним сообщением. Воркер
+            // недоступен (не поднялся, упал) — прежний путь ниже.
+            var wr = null;
+            if (typeof TorrentsWorker !== 'undefined' && typeof TorrentsWorker.jacredSearch === 'function') {
+                try {
+                    wr = await TorrentsWorker.jacredSearch(searchUrl, _currentFilters(),
+                        jacredTimeoutMs() + 5000, controller.signal);
+                } catch (we) {
+                    if (we && we.name === 'AbortError') {
+                        if (timedOut) throw makeJacredError(jacDefault, 'нет ответа за ' + jacredTimeoutMs() + ' мс', true);
+                        throw we;
+                    }
+                    if (we && we.workerKind === 'http') throw makeJacredError(jacDefault, 'HTTP ' + we.httpStatus);
+                    if (we && we.workerKind === 'net') throw makeJacredError(jacDefault, we.message);
+                    console.warn('⚠️ Worker jacredSearch failed, fallback:', we && we.message);
+                    wr = null;
+                }
+            }
+            if (wr) {
+                if (searchSequence !== _searchSequence) return 0;
+                searchResults = wr.results || [];
+                // Выдача осталась в воркере — смена фильтра её не пересылает
+                searchResults._twToken = wr.token;
+
+                currentSearchQuery = query;
+                var wInput = getEl('search-query');
+                if (wInput && !(window.AppState && AppState.searchLocked)) wInput.value = '';
+
+                var before = JSON.stringify(_currentFilters());
+                availableTrackers = wr.filters.trackers;
+                if (availableTrackers.indexOf(currentTrackerFilter) === -1) currentTrackerFilter = 'all';
+                syncSearchFilterButtons();
+                _updateFilterSelectsFromData(wr.filters);
+
+                // Первая выдача уже посчитана воркером — если фильтры после
+                // сверки с выдачей не сбросились, рисуем её без второго обмена
+                if (wr.filtered && JSON.stringify(_currentFilters()) === before) {
+                    filteredResults = wr.filtered;
+                    renderSearchResults();
+                } else {
+                    applyFiltersAndSort();
+                }
+                showSearchResults();
+                return searchResults.length;
+            }
+
+            var response;
+            try {
+                // Через фоновый поток (BgFetch в poster-prefetch.js): ответ Jacred
+                // бывает в мегабайты, и его разбор в основном потоке — заметная
+                // пауза на ТВ. Обрыв по таймауту и отмена новым поиском работают
+                // так же — тот же AbortSignal
+                response = await (window.bgFetch
+                    ? window.bgFetch(searchUrl, { signal: controller.signal })
+                    : fetch(searchUrl, { signal: controller.signal }));
             } catch (netError) {
                 if (timedOut) throw makeJacredError(jacDefault, 'нет ответа за ' + jacredTimeoutMs() + ' мс', true);
                 if (netError && netError.name === 'AbortError') throw netError;
@@ -167,9 +227,9 @@
     };
 
     // ==================== applyFiltersAndSort ====================
-    window.applyFiltersAndSort = applyFiltersAndSort = async function () {
-        var filterSequence = ++_filterSequence;
-        var filters = {
+    /** Текущие фильтры и сортировка выдачи — в том виде, что ждёт воркер */
+    function _currentFilters() {
+        return {
             quality: currentQualityFilter,
             tracker: currentTrackerFilter,
             year: currentYearFilter,
@@ -178,9 +238,16 @@
             videotype: currentvideotypeFilter,
             sort: currentSort
         };
+    }
+
+    window.applyFiltersAndSort = applyFiltersAndSort = async function () {
+        var filterSequence = ++_filterSequence;
+        var filters = _currentFilters();
 
         try {
-            filteredResults = await TorrentsWorker.applyFiltersAndSort(searchResults, filters);
+            // Выдача из jacredSearch лежит в воркере (токен) — не пересылаем её
+            filteredResults = await TorrentsWorker.applyFiltersAndSort(searchResults, filters,
+                searchResults && searchResults._twToken);
             if (filterSequence !== _filterSequence) return;
             renderSearchResults();
         } catch (e) {
@@ -317,6 +384,21 @@
             if (!torrent.poster && known.poster) torrent.poster = normalizePosterUrl(known.poster);
         }
 
+        // Логотип названия вместо текста (torrents.js: renderTorrentTitleLogo).
+        // id и тип уже известны (MonoServer присылает оба, или раздачу открывали)
+        // — логотип сразу, ещё в задаче открытия. Нет — текст придерживаем до
+        // ответа воркера, иначе он мелькнул бы перед логотипом.
+        // Старая сборка torrents.js с зеркала этих функций не знает — пропускаем.
+        var earlyTmdbId = torrent.tmdbId || torrent.knownTmdbId ||
+            ((String(torrent.title || '').match(/\[(\d+)\]/) || [])[1]) || null;
+        if (elements.titleEl) {
+            if (earlyTmdbId && torrent.media_type && typeof window.renderTorrentTitleLogo === 'function') {
+                window.renderTorrentTitleLogo(torrent, earlyTmdbId, torrent.media_type);
+            } else if (typeof window.holdTorrentTitleForLogo === 'function') {
+                window.holdTorrentTitleForLogo();
+            }
+        }
+
         // Подтягиваем файлы заранее
         try {
             if (typeof getTorrentFilesWithCache === 'function') {
@@ -362,6 +444,15 @@
 
             if (elements.titleEl && r.cleanTitle) {
                 elements.titleEl.textContent = r.cleanTitle;
+            }
+            // Логотип — по окончательным id и типу (тот же уже стоит — ничего
+            // не перезапустится); id так и не нашёлся — вернуть текст
+            if (elements.titleEl) {
+                if (r.tmdbId && typeof window.renderTorrentTitleLogo === 'function') {
+                    window.renderTorrentTitleLogo(torrent, r.tmdbId, r.mediaType || torrent.media_type || 'movie');
+                } else if (typeof window.releaseTorrentTitleHold === 'function') {
+                    window.releaseTorrentTitleHold();
+                }
             }
 
             AppState.isSerials = r.isTvSeries;

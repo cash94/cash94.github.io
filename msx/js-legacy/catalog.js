@@ -614,7 +614,7 @@ function _fetchRutubeTrailerCached() {
       if (!cached.videoId) return null;
       var hit = yield rutubeTrailerById(cached.videoId, cached.title || title);
       if (hit) return hit;
-      fetch(TRAILER_CACHE_URL + query, {
+      (window.bgFetch || fetch)(TRAILER_CACHE_URL + query, {
         method: 'DELETE'
       })['catch'](function () {});
     }
@@ -622,7 +622,7 @@ function _fetchRutubeTrailerCached() {
     if (cached) {
       var videoId = found && found.url ? rutubeVideoIdFromUrl(found.url) : null;
       if (!found || videoId) {
-        fetch(TRAILER_CACHE_URL, {
+        (window.bgFetch || fetch)(TRAILER_CACHE_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -823,9 +823,11 @@ function _safeFetch() {
       controller.abort();
     }, timeout);
     try {
-      var resp = yield fetch(url, Object.assign({
+      var init = Object.assign({
         signal: controller.signal
-      }, options));
+      }, options);
+      delete init.timeout;
+      var resp = yield window.bgFetch ? window.bgFetch(url, init) : fetch(url, init);
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       return yield resp.json();
     } catch (e) {
@@ -2887,6 +2889,48 @@ function prefetchGridPosters(card) {
   }
   window.PosterPrefetch.want(urls);
 }
+var DETAIL_ART_DWELL_MS = 450;
+var DETAIL_ART_DONE_MAX = 300;
+var detailArtTimer = null;
+var detailArtDone = {};
+var detailArtDoneOrder = [];
+function scheduleDetailArtPrefetch(card) {
+  if (!window.PosterPrefetch || !card || !card.dataset) return;
+  if (detailArtTimer) clearTimeout(detailArtTimer);
+  detailArtTimer = setTimeout(function run() {
+    detailArtTimer = null;
+    if (!card.isConnected || !card.classList.contains('focused')) return;
+    if (isGridNavBusy()) {
+      detailArtTimer = setTimeout(run, DETAIL_ART_DWELL_MS);
+      return;
+    }
+    var idx = parseInt(card.dataset.catalogIndex, 10);
+    if (!isNaN(idx)) prefetchDetailArt(catalogState.items[idx]);
+  }, DETAIL_ART_DWELL_MS);
+}
+function prefetchDetailArt(item) {
+  if (!item || !item.id || !window.PosterPrefetch) return;
+  var key = (item.media_type || 'movie') + ':' + item.id;
+  if (detailArtDone[key]) return;
+  detailArtDone[key] = true;
+  detailArtDoneOrder.push(key);
+  if (detailArtDoneOrder.length > DETAIL_ART_DONE_MAX) delete detailArtDone[detailArtDoneOrder.shift()];
+  var send = function (src) {
+    var urls = [];
+    var bp = src && src.backdrop_path || item.backdrop_path;
+    if (bp) urls.push(getTmdbImageUrl(bp, CATALOG_CONSTANTS.IMG_SIZES.BACKDROP));
+    var logo = cinemaLogoUrl(item, src);
+    if (logo) urls.push(logo);
+    if (urls.length) window.PosterPrefetch.want(urls);
+  };
+  if (item.backdrop_path) {
+    send(item);
+    return;
+  }
+  Promise.resolve(fetchCatalogItemDetails(item)).then(send, function () {
+    delete detailArtDone[key];
+  });
+}
 function dropGridPosterAhead() {
   if (gridPosterAheadTimer) {
     clearTimeout(gridPosterAheadTimer);
@@ -3286,7 +3330,7 @@ function updateCinemaScoreVisibility() {
 function loadCinemaKpRating(key, type, id, imdb) {
   if (cinemaKpUnavailable) return;
   var url = '/api/kinopoisk/rating?type=' + encodeURIComponent(type) + '&id=' + encodeURIComponent(id) + (imdb ? '&imdb=' + encodeURIComponent(imdb) : '');
-  fetch(url).then(function (resp) {
+  (window.bgFetch ? window.bgFetch(url) : fetch(url)).then(function (resp) {
     if (resp.status === 404) {
       cinemaKpUnavailable = true;
       return null;
@@ -5572,6 +5616,7 @@ function revealCatalogElement(el) {
     ensureChunksAroundFocus(el);
     prefetchGridPosters(el);
     scheduleGridPosterAhead(el);
+    scheduleDetailArtPrefetch(el);
     return;
   }
   var row = el.closest ? el.closest('.catalog-row') : null;

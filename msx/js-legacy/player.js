@@ -2136,7 +2136,8 @@ function preloadTorrents(hash, fileId) {
   var done = function () {
     if (pendingPreload && pendingPreload.key === key) pendingPreload = null;
   };
-  return fetch(preloadUrl, options).then(function (response) {
+  options.bgMode = 'none';
+  return (window.bgFetch ? window.bgFetch(preloadUrl, options) : fetch(preloadUrl, options)).then(function (response) {
     done();
     return new Promise(function (resolve) {
       setTimeout(resolve, 4000);
