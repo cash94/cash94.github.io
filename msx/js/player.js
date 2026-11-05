@@ -112,7 +112,9 @@ function fetchWithTimeout(url, options, timeoutMs) {
     else outer.addEventListener('abort', onOuterAbort);
   }
   var opts = Object.assign({}, options, { signal: controller.signal });
-  return fetch(url, opts).finally(function () {
+  // Через фоновый поток (BgFetch в poster-prefetch.js): file/info, prepare,
+  // создание потока, таймкоды, дорожки — запрос и разбор JSON в воркере
+  return (typeof bgFetch === 'function' ? bgFetch(url, opts) : fetch(url, opts)).finally(function () {
     clearTimeout(timer);
     if (outer) outer.removeEventListener('abort', onOuterAbort);
   });
@@ -480,7 +482,7 @@ function startHeartbeat() {
   if (heartbeatInterval) clearInterval(heartbeatInterval);
   heartbeatInterval = setInterval(function () {
     if (AppState.currentStreamId && AppState.currentScreen === 'player') {
-      fetch(SERVER_URL + '/hls/activity/' + AppState.currentStreamId, { method: 'POST' })['catch'](function (e) {
+      bgFetch(SERVER_URL + '/hls/activity/' + AppState.currentStreamId, { method: 'POST' })['catch'](function (e) {
         console.log('⚠️ Heartbeat error:', e);
       });
     }
@@ -1153,7 +1155,7 @@ var ServerSubs = {
 
   poll: function (gen) {
     var self = this;
-    fetch(SERVER_URL + self.url, { cache: 'no-store' })
+    bgFetch(SERVER_URL + self.url, { cache: 'no-store' })
       .then(function (r) { return r.ok ? r.text() : ''; })
       .then(function (text) { if (gen === self.gen && text) self.addCues(text); })
       ['catch'](function () { })
@@ -1201,7 +1203,7 @@ async function checkPlaylistExists(playlistUrl, maxAttempts) {
   if (maxAttempts === undefined) maxAttempts = 40;
   for (var i = 0; i < maxAttempts; i++) {
     try {
-      var response = await fetch(playlistUrl, { method: 'HEAD' });
+      var response = await bgFetch(playlistUrl, { method: 'HEAD' });
       if (response.ok) return true;
     } catch (e) { }
     if (i % 4 === 0) showPlayerLoading('Ожидание плейлиста... ' + ((i + 1) * 0.5).toFixed(0) + 'с', AppState.previewTime);
@@ -1248,7 +1250,7 @@ async function saveTimecodeToServer() {
   if (currentTimecodeData.duration > 0 && currentTimecodeData.timecode > currentTimecodeData.duration - 10) return;
   try {
     var savedClientId = localStorage.getItem('clientId');
-    var response = await fetch(SERVER_URL + '/api/timecode/save', {
+    var response = await bgFetch(SERVER_URL + '/api/timecode/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1426,7 +1428,7 @@ async function seekStream(absoluteSeekTime, source) {
         if (maxRetries === undefined) maxRetries = 2;
         try {
           var savedClientId = localStorage.getItem('clientId');
-          var seekResponse = await fetch(SERVER_URL + '/hls/stream/seek', {
+          var seekResponse = await bgFetch(SERVER_URL + '/hls/stream/seek', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               streamId: AppState.currentStreamId, seekTime: targetTime, multiChannel: AppState.multiChannelEnabled,
@@ -1687,7 +1689,7 @@ async function fetchSkipData(torrent, fileId, onlyIfChanged) {
   if (!target) { skipData = { error: true }; return skipData; }
   var url = getSkipApiBase() + '/v2/media?tmdb_id=' + target.tmdbId + '&season=' + target.season + '&episode=' + target.episode;
   try {
-    var response = await fetch(url);
+    var response = await bgFetch(url);   // через фоновый поток
     var data = await response.json();
     // Пока ждали, переключили серию — её данные уже запрошены
     if (key !== skipDataKey) return skipData;
@@ -1896,7 +1898,7 @@ async function switchToEpisode(index, fileId) {
     var playUrl = AppState.currentTorrserverUrl + '/play/' + currentTorrentHash + '/' + fileId;
     currentEpisodeIndex = index; AppState.videoUrl = playUrl;
     if (AppState.currentStreamId) {
-      await fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' });
+      await bgFetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' });
       AppState.currentStreamId = null;
     }
     var videoPlayer = getEl('video-player');
@@ -3478,7 +3480,7 @@ function attachHlsEventListeners(hls, videoPlayer, signal, initialSeek) {
           var now = Date.now();
           if (!window._lastCleanupTime || (now - window._lastCleanupTime) > 2000) {
             window._lastCleanupTime = now;
-            fetch(SERVER_URL + '/hls/cleanup-segments/' + AppState.currentStreamId, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keepFromSegment: segmentNumber }) })
+            bgFetch(SERVER_URL + '/hls/cleanup-segments/' + AppState.currentStreamId, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keepFromSegment: segmentNumber }) })
               .then(function (r) { return r.json(); })
               .then(function (d) { if (d && typeof d.availableFrom === 'number') AppState.serverAvailableFrom = d.availableFrom; })
               ['catch'](function () { });
@@ -3728,7 +3730,7 @@ function cancelCurrentPlayback() {
   if (AppState._seekTimeout) { clearTimeout(AppState._seekTimeout); AppState._seekTimeout = null; }
   if (AppState.seekTimeout) { clearTimeout(AppState.seekTimeout); AppState.seekTimeout = null; }
   if (AppState.hls) { try { AppState.hls.destroy(); AppState.hls = null; } catch (e) { } }
-  if (AppState.currentStreamId) { fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' })['catch'](function () { }); AppState.currentStreamId = null; }
+  if (AppState.currentStreamId) { bgFetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' })['catch'](function () { }); AppState.currentStreamId = null; }
   hidePlayerLoading();
 }
 
@@ -3747,7 +3749,7 @@ function showDetailView(field = null) {
     if (AppState.isYoutubePlayback) {
       if (typeof window.exitYoutubePlayer === 'function') window.exitYoutubePlayer();
       else {
-        if (AppState.currentStreamId) { fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' })['catch'](function () { }); AppState.currentStreamId = null; }
+        if (AppState.currentStreamId) { bgFetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' })['catch'](function () { }); AppState.currentStreamId = null; }
         if (AppState.hls) { AppState.hls.destroy(); AppState.hls = null; }
         AppState.isYoutubePlayback = false; AppState.currentScreen = 'catalog'; getEl('player-screen').style.display = 'none';
         var detailView = getEl('detail-view');
@@ -3774,7 +3776,7 @@ function showDetailView(field = null) {
     var videoPlayer = getEl('video-player');
     videoPlayer.removeEventListener('ended', handleVideoEnded); videoPlayer.pause(); videoPlayer.removeAttribute('src'); videoPlayer.load();
     destroyHls(); hidePlayerLoading();
-    if (AppState.currentStreamId) { fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' })['catch'](function () { }); AppState.currentStreamId = null; }
+    if (AppState.currentStreamId) { bgFetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' })['catch'](function () { }); AppState.currentStreamId = null; }
     getEl('player-screen').style.display = 'none';
     getEl('config-screen').style.display = 'none';
 
@@ -4115,7 +4117,7 @@ async function switchAudioTrack(trackIndex) {
   try {
     var parsed = AppState.videoUrl.match(/\/play\/([a-fA-F0-9]+)\/(\d+)/); if (!parsed) return;
     var hash = parsed[1]; var fileId = parsed[2]; var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
-    if (AppState.currentStreamId) { await fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' }); AppState.currentStreamId = null; }
+    if (AppState.currentStreamId) { await bgFetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' }); AppState.currentStreamId = null; }
     destroyHls(); await startHLSPlayback(playUrl, currentTime, lastPlaybackFromSearch, currentEpisodeIndex, trackIndex);
     currentAudioTrack = trackIndex; renderAudioTracks();
   } catch (error) { showSwitchFailedBanner('аудиодорожку', error && error.message); }
@@ -5117,7 +5119,7 @@ function setupAudioButton() {
 async function saveAudioPreference(hash, fileId, audioTrack) {
   try {
     var savedClientId = localStorage.getItem('clientId');
-    var response = await fetch(SERVER_URL + '/api/audio/pref/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hash: hash, fileId: fileId, audioTrack: audioTrack, clientId: savedClientId }) });
+    var response = await bgFetch(SERVER_URL + '/api/audio/pref/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hash: hash, fileId: fileId, audioTrack: audioTrack, clientId: savedClientId }) });
   } catch (error) { }
 }
 
@@ -5281,7 +5283,7 @@ async function switchSubtitleTrack(trackIndex) {
   try {
     var parsed = AppState.videoUrl.match(/\/play\/([a-fA-F0-9]+)\/(\d+)/); if (!parsed) return;
     var hash = parsed[1]; var fileId = parsed[2]; var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
-    if (AppState.currentStreamId) { await fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' }); AppState.currentStreamId = null; }
+    if (AppState.currentStreamId) { await bgFetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST' }); AppState.currentStreamId = null; }
     destroyHls(); currentSubtitleTrack = trackIndex;
     await startHLSPlayback(playUrl, currentTime, lastPlaybackFromSearch, currentEpisodeIndex, currentAudioTrack);
     renderSubtitleTracks();
@@ -5403,7 +5405,9 @@ function onlineSubsDirect(url) {
  * отказ (404 «нет такого фильма») просто повторяем напрямую.
  */
 function onlineSubsFetch(url, timeoutMs) {
-  var direct = function () { return fetchWithTimeout(url, {}, timeoutMs); };
+  // bgMode 'buffer': субтитры приходят байтами (бывают в cp1251) — в воркере
+  // их не декодируем, decodeSubtitleBytes разберёт кодировку сам
+  var direct = function () { return fetchWithTimeout(url, { bgMode: 'buffer' }, timeoutMs); };
   var proxied = onlineSubsProxied(url);
   if (!proxied) return direct();
   var proxyFailed = function (e) {
@@ -5411,7 +5415,7 @@ function onlineSubsFetch(url, timeoutMs) {
     console.warn('[онлайн-субтитры] прокси ' + AppState.subsApiHost + ' не ответил — напрямую:', e && e.message);
     return direct();
   };
-  return fetchWithTimeout(proxied, {}, Math.min(timeoutMs, ONLINE_SUBS_PROXY_TIMEOUT_MS)).then(function (r) {
+  return fetchWithTimeout(proxied, { bgMode: 'buffer' }, Math.min(timeoutMs, ONLINE_SUBS_PROXY_TIMEOUT_MS)).then(function (r) {
     if (r.ok) return r;
     if (r.status >= 500) return proxyFailed(new Error('HTTP ' + r.status));
     return direct();
@@ -5890,7 +5894,7 @@ function setupSubtitlesButton() {
 async function saveSubtitlePreference(hash, fileId, subtitleTrack) {
   try {
     var savedClientId = localStorage.getItem('clientId');
-    await fetch(SERVER_URL + '/api/subtitle/pref/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hash: hash, fileId: fileId, subtitleTrack: subtitleTrack, clientId: savedClientId }) });
+    await bgFetch(SERVER_URL + '/api/subtitle/pref/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hash: hash, fileId: fileId, subtitleTrack: subtitleTrack, clientId: savedClientId }) });
   } catch (error) { }
 }
 
@@ -5975,7 +5979,7 @@ function setupPageUnloadHandler() {
     window.addEventListener('beforeunload', function () {
       if (AppState.currentStreamId) {
         navigator.sendBeacon(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, '');
-        fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST', keepalive: true })['catch'](function () { });
+        /* закрытие страницы: воркер может не успеть — основным потоком */ fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, { method: 'POST', keepalive: true })['catch'](function () { });
       }
       if (currentTimecodeData.hash && currentTimecodeData.fileId && currentTimecodeData.timecode > 0) {
         var savedClientId = localStorage.getItem('clientId');
@@ -6036,7 +6040,7 @@ function updatePlayerTimeline(timelineData) {
       var timecodeToSave = isCompleted ? Math.floor(currentTimecodeData.duration) : Math.floor(data.time);
       // Через trackTimecodeSave — иначе updateDetailProgress ниже прочитает батч
       // раньше, чем это сохранение доедет, и покажет предыдущую серию
-      trackTimecodeSave(fetch(SERVER_URL + '/api/timecode/save', {
+      trackTimecodeSave(bgFetch(SERVER_URL + '/api/timecode/save', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clientId: savedClientId, hash: currentTimecodeData.hash, fileId: currentTimecodeData.fileId, timecode: timecodeToSave, duration: currentTimecodeData.duration, completed: isCompleted, mediaKey: currentTimecodeMediaKey() })
       }));

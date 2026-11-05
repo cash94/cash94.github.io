@@ -32,7 +32,7 @@
     var saved = parseInt(localStorage.getItem(storeKey), 10);
     if (saved >= 0 && saved < ACCEPTS.length) acceptIdx = saved;
   } catch (e) {}
-  var WORKER_SRC = 'var q=[],lq=[],active=0,la=0,max=' + PF.CONCURRENCY + ',lmax=' + PF.LOW_CONCURRENCY + ',cap=' + PF.QUEUE_MAX + ',lcap=' + PF.LOW_QUEUE_MAX + ',acc="",ctl={};' + 'onmessage=function(e){var d=e.data;if(d.accept)acc=d.accept;' + 'if(d.rid){if(d.abort){if(ctl[d.rid]){try{ctl[d.rid].abort();}catch(x){}delete ctl[d.rid];}return;}req(d);return;}' + 'if(d.urls&&d.low){for(var a=0;a<d.urls.length;a++){var w=d.urls[a];if(q.indexOf(w)===-1&&lq.indexOf(w)===-1)lq.push(w);}if(lq.length>lcap)lq.length=lcap;}' + 'else if(d.urls){for(var i=d.urls.length-1;i>=0;i--){var u=d.urls[i],j=q.indexOf(u),k=lq.indexOf(u);if(j!==-1)q.splice(j,1);if(k!==-1)lq.splice(k,1);q.unshift(u);}' + 'if(q.length>cap)q.length=cap;}pump();};' + 'function req(d){var c=null;try{c=new AbortController();}catch(x){}if(c)ctl[d.rid]=c;' + 'var o={method:d.method||"GET",headers:d.headers||{}};if(d.body!=null)o.body=d.body;if(c)o.signal=c.signal;if(d.keepalive)o.keepalive=true;' + 'fetch(d.url,o).then(function(r){var m={rid:d.rid,status:r.status,statusText:r.statusText,ok:r.ok,ct:r.headers.get("content-type")||"",url:r.url,h:{}};try{r.headers.forEach(function(v,k){m.h[String(k).toLowerCase()]=v;});}catch(x){}' + 'if(d.mode==="none"){postMessage(m);var fin=function(){delete ctl[d.rid];};r.blob().then(fin,fin);return;}' + 'return r.text().then(function(t){delete ctl[d.rid];' + 'if(d.mode!=="text"){var s=String(t).trim(),f=s.charAt(0);if(f==="{"||f==="["||/json/i.test(m.ct)){try{m.json=JSON.parse(t);m.parsed=1;postMessage(m);return;}catch(x){}}}' + 'm.text=t;postMessage(m);});})' + '.catch(function(e){delete ctl[d.rid];postMessage({rid:d.rid,err:(e&&e.name)||"TypeError",msg:(e&&e.message)||""});});}' + 'function pump(){while(active<max){if(q.length){active++;get(q.shift(),0);}else if(lq.length&&la<lmax){active++;la++;get(lq.shift(),1);}else break;}}' + 'function get(u,low){fetch(u,{mode:"cors",headers:{Accept:acc}})' + '.then(function(r){if(!r.ok)throw 0;return r.blob();})' + '.then(function(){postMessage({ok:u});},function(){postMessage({fail:u});})' + '.then(function(){active--;if(low)la--;pump();});}' + 'postMessage({ready:1});';
+  var WORKER_SRC = 'var q=[],lq=[],active=0,la=0,max=' + PF.CONCURRENCY + ',lmax=' + PF.LOW_CONCURRENCY + ',cap=' + PF.QUEUE_MAX + ',lcap=' + PF.LOW_QUEUE_MAX + ',acc="",ctl={};' + 'onmessage=function(e){var d=e.data;if(d.accept)acc=d.accept;' + 'if(d.rid){if(d.abort){if(ctl[d.rid]){try{ctl[d.rid].abort();}catch(x){}delete ctl[d.rid];}return;}req(d);return;}' + 'if(d.urls&&d.low){for(var a=0;a<d.urls.length;a++){var w=d.urls[a];if(q.indexOf(w)===-1&&lq.indexOf(w)===-1)lq.push(w);}if(lq.length>lcap)lq.length=lcap;}' + 'else if(d.urls){for(var i=d.urls.length-1;i>=0;i--){var u=d.urls[i],j=q.indexOf(u),k=lq.indexOf(u);if(j!==-1)q.splice(j,1);if(k!==-1)lq.splice(k,1);q.unshift(u);}' + 'if(q.length>cap)q.length=cap;}pump();};' + 'function req(d){var c=null;try{c=new AbortController();}catch(x){}if(c)ctl[d.rid]=c;' + 'var o={method:d.method||"GET",headers:d.headers||{}};if(d.body!=null)o.body=d.body;if(c)o.signal=c.signal;if(d.keepalive)o.keepalive=true;if(d.cache)o.cache=d.cache;' + 'fetch(d.url,o).then(function(r){var m={rid:d.rid,status:r.status,statusText:r.statusText,ok:r.ok,ct:r.headers.get("content-type")||"",url:r.url,h:{}};try{r.headers.forEach(function(v,k){m.h[String(k).toLowerCase()]=v;});}catch(x){}' + 'if(d.mode==="none"){postMessage(m);var fin=function(){delete ctl[d.rid];};r.blob().then(fin,fin);return;}' + 'if(d.mode==="buffer"){return r.arrayBuffer().then(function(b){delete ctl[d.rid];m.buf=b;postMessage(m,[b]);});}' + 'return r.text().then(function(t){delete ctl[d.rid];' + 'if(d.mode!=="text"){var s=String(t).trim(),f=s.charAt(0);if(f==="{"||f==="["||/json/i.test(m.ct)){try{m.json=JSON.parse(t);m.parsed=1;postMessage(m);return;}catch(x){}}}' + 'm.text=t;postMessage(m);});})' + '.catch(function(e){delete ctl[d.rid];postMessage({rid:d.rid,err:(e&&e.name)||"TypeError",msg:(e&&e.message)||""});});}' + 'function pump(){while(active<max){if(q.length){active++;get(q.shift(),0);}else if(lq.length&&la<lmax){active++;la++;get(lq.shift(),1);}else break;}}' + 'function get(u,low){fetch(u,{mode:"cors",headers:{Accept:acc}})' + '.then(function(r){if(!r.ok)throw 0;return r.blob();})' + '.then(function(){postMessage({ok:u});},function(){postMessage({fail:u});})' + '.then(function(){active--;if(low)la--;pump();});}' + 'postMessage({ready:1});';
   var worker = null;
   var workerFailed = false;
   function getWorker() {
@@ -152,6 +152,12 @@
   }
   function makeResponse(m) {
     var used = false;
+    var bodyText = function () {
+      if (m.text != null) return m.text;
+      if (m.parsed) return JSON.stringify(m.json);
+      if (m.buf && typeof TextDecoder === 'function') return new TextDecoder('utf-8').decode(m.buf);
+      return '';
+    };
     var take = function () {
       if (used) return Promise.reject(new TypeError('Body has already been consumed.'));
       used = true;
@@ -174,13 +180,21 @@
         if (r) return r;
         if (m.parsed) return Promise.resolve(m.json);
         return Promise.resolve().then(function () {
-          return JSON.parse(m.text || '');
+          return JSON.parse(bodyText());
         });
       },
       text: function () {
         var r = take();
         if (r) return r;
-        return Promise.resolve(m.text != null ? m.text : m.parsed ? JSON.stringify(m.json) : '');
+        return Promise.resolve(bodyText());
+      },
+      arrayBuffer: function () {
+        var r = take();
+        if (r) return r;
+        if (m.buf) return Promise.resolve(m.buf);
+        var t = bodyText();
+        if (typeof TextEncoder === 'function') return Promise.resolve(new TextEncoder().encode(t).buffer);
+        return Promise.reject(new TypeError('arrayBuffer() недоступен'));
       }
     };
   }
@@ -292,6 +306,7 @@
         headers: headers,
         body: body != null ? body : null,
         keepalive: !!init.keepalive,
+        cache: init.cache || null,
         mode: init.bgMode || 'auto'
       });
     });

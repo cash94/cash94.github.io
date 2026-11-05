@@ -64,7 +64,7 @@ function fetchWithTimeout(url, options, timeoutMs) {
   var opts = Object.assign({}, options, {
     signal: controller.signal
   });
-  return fetch(url, opts).finally(function () {
+  return (typeof bgFetch === 'function' ? bgFetch(url, opts) : fetch(url, opts)).finally(function () {
     clearTimeout(timer);
     if (outer) outer.removeEventListener('abort', onOuterAbort);
   });
@@ -343,7 +343,7 @@ function startHeartbeat() {
   if (heartbeatInterval) clearInterval(heartbeatInterval);
   heartbeatInterval = setInterval(function () {
     if (AppState.currentStreamId && AppState.currentScreen === 'player') {
-      fetch(SERVER_URL + '/hls/activity/' + AppState.currentStreamId, {
+      bgFetch(SERVER_URL + '/hls/activity/' + AppState.currentStreamId, {
         method: 'POST'
       })['catch'](function (e) {
         console.log('⚠️ Heartbeat error:', e);
@@ -871,7 +871,7 @@ var ServerSubs = {
   },
   poll: function (gen) {
     var self = this;
-    fetch(SERVER_URL + self.url, {
+    bgFetch(SERVER_URL + self.url, {
       cache: 'no-store'
     }).then(function (r) {
       return r.ok ? r.text() : '';
@@ -924,7 +924,7 @@ function _checkPlaylistExists() {
     if (maxAttempts === undefined) maxAttempts = 40;
     for (var i = 0; i < maxAttempts; i++) {
       try {
-        var response = yield fetch(playlistUrl, {
+        var response = yield bgFetch(playlistUrl, {
           method: 'HEAD'
         });
         if (response.ok) return true;
@@ -986,7 +986,7 @@ function _saveTimecodeToServer() {
     if (currentTimecodeData.duration > 0 && currentTimecodeData.timecode > currentTimecodeData.duration - 10) return;
     try {
       var savedClientId = localStorage.getItem('clientId');
-      var response = yield fetch(SERVER_URL + '/api/timecode/save', {
+      var response = yield bgFetch(SERVER_URL + '/api/timecode/save', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -1199,7 +1199,7 @@ function _seekStream() {
               if (maxRetries === undefined) maxRetries = 2;
               try {
                 var savedClientId = localStorage.getItem('clientId');
-                var seekResponse = yield fetch(SERVER_URL + '/hls/stream/seek', {
+                var seekResponse = yield bgFetch(SERVER_URL + '/hls/stream/seek', {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json'
@@ -1514,7 +1514,7 @@ function _fetchSkipData() {
     }
     var url = getSkipApiBase() + '/v2/media?tmdb_id=' + target.tmdbId + '&season=' + target.season + '&episode=' + target.episode;
     try {
-      var response = yield fetch(url);
+      var response = yield bgFetch(url);
       var data = yield response.json();
       if (key !== skipDataKey) return skipData;
       if (data.error) {
@@ -1697,7 +1697,7 @@ function _switchToEpisode() {
       currentEpisodeIndex = index;
       AppState.videoUrl = playUrl;
       if (AppState.currentStreamId) {
-        yield fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, {
+        yield bgFetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, {
           method: 'POST'
         });
         AppState.currentStreamId = null;
@@ -3081,7 +3081,7 @@ function attachHlsEventListeners(hls, videoPlayer, signal, initialSeek) {
           var now = Date.now();
           if (!window._lastCleanupTime || now - window._lastCleanupTime > 2000) {
             window._lastCleanupTime = now;
-            fetch(SERVER_URL + '/hls/cleanup-segments/' + AppState.currentStreamId, {
+            bgFetch(SERVER_URL + '/hls/cleanup-segments/' + AppState.currentStreamId, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json'
@@ -3337,7 +3337,7 @@ function cancelCurrentPlayback() {
     } catch (e) {}
   }
   if (AppState.currentStreamId) {
-    fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, {
+    bgFetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, {
       method: 'POST'
     })['catch'](function () {});
     AppState.currentStreamId = null;
@@ -3371,7 +3371,7 @@ function showDetailView(field = null) {
     if (AppState.isYoutubePlayback) {
       if (typeof window.exitYoutubePlayer === 'function') window.exitYoutubePlayer();else {
         if (AppState.currentStreamId) {
-          fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, {
+          bgFetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, {
             method: 'POST'
           })['catch'](function () {});
           AppState.currentStreamId = null;
@@ -3424,7 +3424,7 @@ function showDetailView(field = null) {
     destroyHls();
     hidePlayerLoading();
     if (AppState.currentStreamId) {
-      fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, {
+      bgFetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, {
         method: 'POST'
       })['catch'](function () {});
       AppState.currentStreamId = null;
@@ -3723,7 +3723,7 @@ function _switchAudioTrack() {
       var fileId = parsed[2];
       var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
       if (AppState.currentStreamId) {
-        yield fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, {
+        yield bgFetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, {
           method: 'POST'
         });
         AppState.currentStreamId = null;
@@ -4734,7 +4734,7 @@ function _saveAudioPreference() {
   _saveAudioPreference = _asyncToGenerator(function* (hash, fileId, audioTrack) {
     try {
       var savedClientId = localStorage.getItem('clientId');
-      var response = yield fetch(SERVER_URL + '/api/audio/pref/save', {
+      var response = yield bgFetch(SERVER_URL + '/api/audio/pref/save', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -4907,7 +4907,7 @@ function _switchSubtitleTrack() {
       var fileId = parsed[2];
       var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId;
       if (AppState.currentStreamId) {
-        yield fetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, {
+        yield bgFetch(SERVER_URL + '/hls/stop/' + AppState.currentStreamId, {
           method: 'POST'
         });
         AppState.currentStreamId = null;
@@ -5021,7 +5021,9 @@ function onlineSubsDirect(url) {
 }
 function onlineSubsFetch(url, timeoutMs) {
   var direct = function () {
-    return fetchWithTimeout(url, {}, timeoutMs);
+    return fetchWithTimeout(url, {
+      bgMode: 'buffer'
+    }, timeoutMs);
   };
   var proxied = onlineSubsProxied(url);
   if (!proxied) return direct();
@@ -5030,7 +5032,9 @@ function onlineSubsFetch(url, timeoutMs) {
     console.warn('[онлайн-субтитры] прокси ' + AppState.subsApiHost + ' не ответил — напрямую:', e && e.message);
     return direct();
   };
-  return fetchWithTimeout(proxied, {}, Math.min(timeoutMs, ONLINE_SUBS_PROXY_TIMEOUT_MS)).then(function (r) {
+  return fetchWithTimeout(proxied, {
+    bgMode: 'buffer'
+  }, Math.min(timeoutMs, ONLINE_SUBS_PROXY_TIMEOUT_MS)).then(function (r) {
     if (r.ok) return r;
     if (r.status >= 500) return proxyFailed(new Error('HTTP ' + r.status));
     return direct();
@@ -5563,7 +5567,7 @@ function _saveSubtitlePreference() {
   _saveSubtitlePreference = _asyncToGenerator(function* (hash, fileId, subtitleTrack) {
     try {
       var savedClientId = localStorage.getItem('clientId');
-      yield fetch(SERVER_URL + '/api/subtitle/pref/save', {
+      yield bgFetch(SERVER_URL + '/api/subtitle/pref/save', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -5775,7 +5779,7 @@ function updatePlayerTimeline(timelineData) {
     var savedClientId = localStorage.getItem('clientId');
     if (savedClientId && currentTimecodeData.hash && currentTimecodeData.fileId) {
       var timecodeToSave = isCompleted ? Math.floor(currentTimecodeData.duration) : Math.floor(data.time);
-      trackTimecodeSave(fetch(SERVER_URL + '/api/timecode/save', {
+      trackTimecodeSave(bgFetch(SERVER_URL + '/api/timecode/save', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
