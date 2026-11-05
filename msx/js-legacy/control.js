@@ -712,6 +712,74 @@ function cinemaVerticalStep(f, dir) {
   });
   return true;
 }
+var CINEMA_WHEEL_STEP_PX = 40;
+var CINEMA_WHEEL_IDLE_MS = 400;
+var cinemaWheelAccum = 0;
+var cinemaWheelAt = 0;
+var cinemaWheelLockUntil = 0;
+function cinemaPageStops(dv) {
+  var stops = [0];
+  for (var n = 0; n < CINEMA_LANE_IDS.length; n++) {
+    var grid = getEl(CINEMA_LANE_IDS[n]);
+    var w = grid && grid.parentNode;
+    if (!w || w.classList.contains('hidden') || w.style.display === 'none') continue;
+    if (!w.getBoundingClientRect().height) continue;
+    var s = cinemaLaneScrollTarget(w, dv);
+    if (stops.indexOf(s) === -1) stops.push(s);
+  }
+  stops.sort(function (a, b) {
+    return a - b;
+  });
+  return stops;
+}
+function hasOwnVerticalScroll(target, root) {
+  for (var el = target; el && el !== root && el.nodeType === 1; el = el.parentNode) {
+    if (el.scrollHeight <= el.clientHeight + 1) continue;
+    var oy = getComputedStyle(el).overflowY;
+    if (oy === 'auto' || oy === 'scroll') return true;
+  }
+  return false;
+}
+document.addEventListener('wheel', function (e) {
+  if (e.defaultPrevented || e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
+  if (!isCinemaDetail() || currentScreen() !== 'detail') return;
+  var dv = getEl('detail-view');
+  if (!dv || !dv.contains(e.target)) return;
+  var dy = e.deltaY || e.wheelDeltaY || (e.wheelDelta ? -e.wheelDelta / 40 : 0) || e.detail || 0;
+  var dx = e.deltaX || e.wheelDeltaX || 0;
+  if (!dy || Math.abs(dx) > Math.abs(dy)) return;
+  if (hasOwnVerticalScroll(e.target, dv)) return;
+  e.preventDefault();
+  var now = Date.now();
+  if (now - cinemaWheelAt > CINEMA_WHEEL_IDLE_MS || cinemaWheelAccum > 0 !== dy > 0) cinemaWheelAccum = 0;
+  cinemaWheelAt = now;
+  cinemaWheelAccum += dy;
+  if (Math.abs(cinemaWheelAccum) < CINEMA_WHEEL_STEP_PX) return;
+  if (now < cinemaWheelLockUntil) return;
+  cinemaWheelAccum = 0;
+  var down = dy > 0;
+  var rest = scrollRestTop(dv),
+    stops = cinemaPageStops(dv),
+    to = null;
+  if (down) {
+    for (var i = 0; i < stops.length; i++) if (stops[i] > rest + 4) {
+      to = stops[i];
+      break;
+    }
+  } else {
+    for (var j = stops.length - 1; j >= 0; j--) if (stops[j] < rest - 4) {
+      to = stops[j];
+      break;
+    }
+  }
+  if (to === null) return;
+  cinemaWheelLockUntil = now + CINEMA_SCROLL_S * 1000 * 0.9;
+  applyScroll(dv, {
+    scrollTop: to
+  }, true, CINEMA_SCROLL_S, CINEMA_SCROLL_EASE);
+}, {
+  passive: false
+});
 function getDetailFileEntry(fi) {
   var list = getEl('files-list');
   var last = list && list._lastFocusedTile;
