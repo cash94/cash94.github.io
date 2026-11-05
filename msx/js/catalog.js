@@ -4329,6 +4329,7 @@ function ensureCinemaBlocks(panel) {
             '<div id="detail-cinema-ratings" class="detail-cinema-ratings"></div>' +
             '<div id="detail-cinema-badges" class="detail-cinema-badges"></div>';
         panel.parentElement.insertBefore(score, panel.nextSibling);
+        watchCinemaScorePlace();
     }
     var below = getEl('detail-cinema-below');
     if (!below) {
@@ -4445,11 +4446,36 @@ var CINEMA_STATUS = {
         'Planned': 'Анонсирован', 'Rumored': 'Анонсирован', 'Canceled': 'Отменён'
     }
 };
-// Тот же медиазапрос, что прячет .detail-cinema-score в styles.css
-var CINEMA_SCORE_HIDDEN_MQ = '(max-width: 600px) and (orientation: portrait), (max-aspect-ratio: 155/100)';
+/*
+ * Где стоит блок оценки. На ТВ, ПК и телефоне боком — справа внизу сцены,
+ * прямым потомком #detail-view (position: absolute от него). На телефоне
+ * книжно — строкой под жанрами, внутри шапки колонки: там он в потоке и
+ * сдвигает кнопки вниз. Абсолютный блок внутри шапки считался бы от неё,
+ * поэтому узел переносим, а не только перекрашиваем. Медиазапрос тот же,
+ * что у правил книжного телефона в styles.css.
+ */
+var CINEMA_SCORE_INLINE_MQ = '(max-width: 600px) and (orientation: portrait)';
+var cinemaScoreMql = null;
 
-function isCinemaScoreShown() {
-    return !(window.matchMedia && window.matchMedia(CINEMA_SCORE_HIDDEN_MQ).matches);
+function placeCinemaScore() {
+    var box = getEl('detail-cinema-score'), chips = getEl('detail-cinema-chips');
+    var panel = getEl('detail-cinema-head') && getEl('detail-cinema-head').parentElement;
+    if (!box || !chips || !panel || !panel.parentElement) return;
+    var inline = !!(cinemaScoreMql && cinemaScoreMql.matches);
+    if (inline) {
+        if (box.previousSibling !== chips) chips.parentNode.insertBefore(box, chips.nextSibling);
+    } else if (box.parentNode !== panel.parentElement) {
+        panel.parentElement.insertBefore(box, panel.nextSibling);
+    }
+}
+
+function watchCinemaScorePlace() {
+    if (cinemaScoreMql || !window.matchMedia) return;
+    cinemaScoreMql = window.matchMedia(CINEMA_SCORE_INLINE_MQ);
+    // addListener, а не addEventListener('change'): в Chrome 66 у MediaQueryList
+    // его ещё нет
+    if (cinemaScoreMql.addListener) cinemaScoreMql.addListener(placeCinemaScore);
+    placeCinemaScore();
 }
 
 function formatCinemaVotes(n) {
@@ -4559,11 +4585,18 @@ function renderCinemaHead(item, src) {
         var rt = formatCinemaRuntime(src.runtime);
         if (rt) parts.push(rt);
     }
-    // Оценку показывает кругляш справа (renderCinemaScore); звезда — только на телефоне
+    // Оценку показывает блок с кругляшом (renderCinemaScore). Звезда в строке —
+    // запасная, для экранов, где блока нет (уже 16:10): пишем её всегда, а
+    // видимость решает CSS (.detail-cinema-meta-star) — тогда и поворот экрана
+    // переключает её сам, без перерисовки
     var rating = getSafeCatalogRating(src) || getSafeCatalogRating(item);
-    if (rating && !isCinemaScoreShown()) parts.push('<span class="detail-cinema-star">★</span> ' + rating.toFixed(1));
     var meta = getEl('detail-cinema-meta');
-    if (meta) meta.innerHTML = parts.join('<span class="detail-cinema-dot">·</span>');
+    if (meta) {
+        meta.innerHTML = parts.join('<span class="detail-cinema-dot">·</span>') + (rating
+            ? '<span class="detail-cinema-meta-star">' + (parts.length ? '<span class="detail-cinema-dot">·</span>' : '') +
+              '<span class="detail-cinema-star">★</span> ' + rating.toFixed(1) + '</span>'
+            : '');
+    }
 
     var chips = [];
     var genres = getNormalizedCatalogGenres(src);

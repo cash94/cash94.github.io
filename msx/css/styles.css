@@ -11956,6 +11956,12 @@ html.apple-device {
   color: #f5c518;
 }
 
+/* Звезда с оценкой в строке меты — запасная: видна только там, где нет блока
+   оценки (медиазапрос «блока оценки нет» ниже по файлу) */
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-meta-star {
+  display: none;
+}
+
 /* Плашки: flex-wrap и отступы margin'ом — flex-gap в Chrome 66 нет */
 #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-chips {
   display: -webkit-box;
@@ -12723,15 +12729,95 @@ html.apple-device {
   }
 }
 
-/* --- ТЕЛЕФОН книжно и экраны уже 16:10: блока оценки нет — на телефоне
-   колонка во всю ширину, на узком экране блок лёг бы на колонку. Оценка тогда
-   звездой в строке меты (isCinemaScoreShown в catalog.js, тот же медиазапрос).
-   Телефон боком — с блоком: колонка там 70vw, а описания в сцене больше нет,
-   справа внизу место свободно ------------------------------------------- */
-@media screen and (max-width: 600px) and (orientation: portrait),
-  screen and (max-aspect-ratio: 155/100) {
+/* --- Экраны уже 16:10 (кроме телефона книжно): блока оценки нет — справа
+   внизу он лёг бы на колонку. Оценка тогда звездой в строке меты
+   (.detail-cinema-meta-star). Телефон книжно — блок строкой под жанрами
+   (правила ниже, перенос узла — placeCinemaScore в catalog.js); телефон
+   боком — справа внизу, как на ТВ: колонка там 70vw ------------------- */
+@media screen and (min-width: 601px) and (max-aspect-ratio: 155/100),
+  screen and (orientation: landscape) and (max-aspect-ratio: 155/100) {
   #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-score {
     display: none !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-meta-star {
+    display: inline;
+  }
+}
+
+/* --- ТЕЛЕФОН книжно: блок оценки — строкой между жанрами и кнопками ------
+   Узел переносит в шапку колонки placeCinemaScore (catalog.js), здесь он в
+   потоке: слева кругляш TMDB с голосами, за ним КП и IMDb, справа плашки
+   возраста и статуса. Не влезло в ширину — плашки уходят на вторую строку,
+   тоже вправо. Отступы margin'ом: flex-gap в Chrome 66 нет */
+@media screen and (max-width: 600px) and (orientation: portrait) {
+  #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head .detail-cinema-score {
+    display: -webkit-box;
+    display: -webkit-flex;
+    display: flex;
+    -webkit-align-items: center;
+    align-items: center;
+    -webkit-flex-wrap: wrap;
+    flex-wrap: wrap;
+    position: static;
+    top: auto;
+    right: auto;
+    -webkit-transform: none;
+    transform: none;
+    /* Снизу 1,4 + 0,5 у элементов строки — кнопки не вплотную к оценкам */
+    margin: calc(var(--cu) * 1.1) 0 calc(var(--cu) * 1.4);
+    text-align: left;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head .detail-cinema-score > div {
+    margin-bottom: calc(var(--cu) * 0.5);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head .detail-cinema-vote {
+    -webkit-justify-content: flex-start;
+    justify-content: flex-start;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head .detail-cinema-ring {
+    width: calc(var(--cu) * 2.7);
+    height: calc(var(--cu) * 2.7);
+    box-shadow: 0 0 0 calc(var(--cu) * 0.15) #081c22;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head .detail-cinema-ring-value {
+    font-size: calc(var(--cu) * 0.9);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head .detail-cinema-vote-text {
+    margin-left: calc(var(--cu) * 0.55);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head .detail-cinema-vote-label {
+    font-size: calc(var(--cu) * 0.78);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head .detail-cinema-vote-count {
+    font-size: calc(var(--cu) * 0.66);
+    margin-top: 0;
+  }
+
+  /* КП и IMDb — сразу за кругляшом, в той же строке */
+  #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head .detail-cinema-ratings {
+    margin: 0 0 calc(var(--cu) * 0.5) calc(var(--cu) * 0.3);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head .detail-cinema-rating {
+    font-size: calc(var(--cu) * 0.95);
+    margin-left: calc(var(--cu) * 0.9);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head .detail-cinema-badges {
+    margin: 0 0 calc(var(--cu) * 0.5) auto;
+    padding-left: calc(var(--cu) * 0.6);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head .detail-cinema-badge {
+    font-size: calc(var(--cu) * 0.75);
   }
 }
 

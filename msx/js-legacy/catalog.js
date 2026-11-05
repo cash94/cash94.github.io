@@ -3285,6 +3285,7 @@ function ensureCinemaBlocks(panel) {
     score.className = 'detail-cinema-score';
     score.innerHTML = '<div id="detail-cinema-vote" class="detail-cinema-vote">' + '<div class="detail-cinema-ring">' + '<svg viewBox="0 0 36 36"><circle class="detail-cinema-ring-track" cx="18" cy="18" r="15.9155"></circle>' + '<circle id="detail-cinema-ring-bar" class="detail-cinema-ring-bar" cx="18" cy="18" r="15.9155"></circle></svg>' + '<span id="detail-cinema-ring-value" class="detail-cinema-ring-value"></span>' + '</div>' + '<div class="detail-cinema-vote-text">' + '<div class="detail-cinema-vote-label">Рейтинг<br>TMDB</div>' + '<div id="detail-cinema-vote-count" class="detail-cinema-vote-count"></div>' + '</div>' + '</div>' + '<div id="detail-cinema-ratings" class="detail-cinema-ratings"></div>' + '<div id="detail-cinema-badges" class="detail-cinema-badges"></div>';
     panel.parentElement.insertBefore(score, panel.nextSibling);
+    watchCinemaScorePlace();
   }
   var below = getEl('detail-cinema-below');
   if (!below) {
@@ -3384,9 +3385,25 @@ var CINEMA_STATUS = {
     'Canceled': 'Отменён'
   }
 };
-var CINEMA_SCORE_HIDDEN_MQ = '(max-width: 600px) and (orientation: portrait), (max-aspect-ratio: 155/100)';
-function isCinemaScoreShown() {
-  return !(window.matchMedia && window.matchMedia(CINEMA_SCORE_HIDDEN_MQ).matches);
+var CINEMA_SCORE_INLINE_MQ = '(max-width: 600px) and (orientation: portrait)';
+var cinemaScoreMql = null;
+function placeCinemaScore() {
+  var box = getEl('detail-cinema-score'),
+    chips = getEl('detail-cinema-chips');
+  var panel = getEl('detail-cinema-head') && getEl('detail-cinema-head').parentElement;
+  if (!box || !chips || !panel || !panel.parentElement) return;
+  var inline = !!(cinemaScoreMql && cinemaScoreMql.matches);
+  if (inline) {
+    if (box.previousSibling !== chips) chips.parentNode.insertBefore(box, chips.nextSibling);
+  } else if (box.parentNode !== panel.parentElement) {
+    panel.parentElement.insertBefore(box, panel.nextSibling);
+  }
+}
+function watchCinemaScorePlace() {
+  if (cinemaScoreMql || !window.matchMedia) return;
+  cinemaScoreMql = window.matchMedia(CINEMA_SCORE_INLINE_MQ);
+  if (cinemaScoreMql.addListener) cinemaScoreMql.addListener(placeCinemaScore);
+  placeCinemaScore();
 }
 function formatCinemaVotes(n) {
   return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0') + ' ' + pluralRu(n, 'голос', 'голоса', 'голосов');
@@ -3488,9 +3505,10 @@ function renderCinemaHead(item, src) {
     if (rt) parts.push(rt);
   }
   var rating = getSafeCatalogRating(src) || getSafeCatalogRating(item);
-  if (rating && !isCinemaScoreShown()) parts.push('<span class="detail-cinema-star">★</span> ' + rating.toFixed(1));
   var meta = getEl('detail-cinema-meta');
-  if (meta) meta.innerHTML = parts.join('<span class="detail-cinema-dot">·</span>');
+  if (meta) {
+    meta.innerHTML = parts.join('<span class="detail-cinema-dot">·</span>') + (rating ? '<span class="detail-cinema-meta-star">' + (parts.length ? '<span class="detail-cinema-dot">·</span>' : '') + '<span class="detail-cinema-star">★</span> ' + rating.toFixed(1) + '</span>' : '');
+  }
   var chips = [];
   var genres = getNormalizedCatalogGenres(src);
   for (var i = 0; i < genres.length && i < 3; i++) {
