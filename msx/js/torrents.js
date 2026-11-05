@@ -6894,8 +6894,8 @@ function mediaChip(text, extraClass) {
  * разрешении именно он отличает хорошую раздачу от сжатой), звук, дорожки,
  * субтитры.
  *
- * Отдельным рядом, а не в существующей строке мета-данных: цвета тех чипов
- * заданы через nth-child, и любая вставка перекрасила бы весь ряд.
+ * Отдельным рядом, а не в строке мета-данных: там чипы о раздаче (трекер,
+ * размер, сиды), здесь — о самом файле.
  */
 function buildMediaRow(result) {
     var media = result.media;
@@ -6943,13 +6943,21 @@ function buildSearchResultMarkup(result, index) {
         '<div class="search-result-info">' +
         '<div class="search-result-title">' + (pickedAt ? buildPickedBadge(pickedAt) : '') + escapeHtml(result.title || 'Без названия') + '</div>' +
         buildMediaRow(result) +
+        // Две группы: слева «что за раздача» (трекер, год, тип), справа «стоит ли
+        // качать» (размер, сиды, пиры). Правая прижата к краю и не рвётся
+        // посередине: не влезает в строку — уходит целиком на свою, тоже вправо,
+        // поэтому на телефоне в любом положении цифры не уезжают за экран
         '<div class="search-result-meta">' +
-        '<div class="search-result-meta-item">' + escapeHtml(trackerDisplay) + '</div>' +
-        '<div class="search-result-meta-item">' + escapeHtml(result.sizeName || formatBytes(result.size)) + '</div>' +
-        '<div class="search-result-meta-item">' + (result.released || 'N/A') + ' (' + (result.createTime ? new Date(result.createTime).toLocaleDateString() : 'N/A') + ')</div>' +
-        '<div class="search-result-meta-item">' + ((result.types && result.types.indexOf('tv') !== -1) ? 'Сериал' : 'Фильм') + ' / ' + (result.quality || 'N/A') + 'p</div>' +
-        '<div class="search-result-meta-item">сиды: ' + (result.sid !== undefined ? result.sid : 0) + '</div>' +
-        '<div class="search-result-meta-item">пиры: ' + (result.pir !== undefined ? result.pir : 0) + '</div>' +
+        '<div class="search-result-meta-group search-result-meta-main">' +
+        '<div class="search-result-meta-item search-result-meta-tracker">' + escapeHtml(trackerDisplay) + '</div>' +
+        '<div class="search-result-meta-item search-result-meta-year">' + (result.released || 'N/A') + ' (' + (result.createTime ? new Date(result.createTime).toLocaleDateString() : 'N/A') + ')</div>' +
+        '<div class="search-result-meta-item search-result-meta-type">' + ((result.types && result.types.indexOf('tv') !== -1) ? 'Сериал' : 'Фильм') + ' / ' + (result.quality || 'N/A') + 'p</div>' +
+        '</div>' +
+        '<div class="search-result-meta-group search-result-meta-stats">' +
+        '<div class="search-result-meta-item search-result-meta-size">' + escapeHtml(result.sizeName || formatBytes(result.size)) + '</div>' +
+        '<div class="search-result-meta-item search-result-meta-sid">сиды: ' + (result.sid !== undefined ? result.sid : 0) + '</div>' +
+        '<div class="search-result-meta-item search-result-meta-pir">пиры: ' + (result.pir !== undefined ? result.pir : 0) + '</div>' +
+        '</div>' +
         '</div>' +
         (voices.length > 0 && !hasAudioTracks ? '<div class="search-result-voices">' + voices.map(function (voice) { return '<span class="search-result-voice">' + escapeHtml(voice) + '</span>'; }).join('') + '</div>' : '') +
         '</div>' +

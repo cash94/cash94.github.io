@@ -495,6 +495,13 @@ function initCatalogDetailButtons() {
             // подзаголовке (там оно и остаётся, отдельный блок не показываем).
             // Обрезку задаёт CSS: -webkit-line-clamp, снимает класс .expanded.
             var dv = getEl('detail-view');
+            // В «сцене» описание не разворачиваем на месте: длинный текст
+            // выталкивал кнопки и ленты за нижний край экрана. Полный текст —
+            // во всплывающем окне поверх кадра
+            if (isCinemaCatalogDetail(dv)) {
+                openDetailOverviewPopup();
+                return;
+            }
             var torrentMode = !!(dv && dv.classList.contains('torrent-detail-mode'));
             var target = torrentMode ? getEl('detail-subtitle') : getEl('catalog-detail-overview');
             if (!target) return;
@@ -503,6 +510,15 @@ function initCatalogDetailButtons() {
             // Подпись под круглой кнопкой сцены (detail-cinema в styles.css)
             togBtn.setAttribute('data-label', togBtn.textContent);
         };
+    }
+
+    // Мышь и тач: в «сцене» клик по обрезанному описанию открывает его целиком
+    var ovEl = getEl('catalog-detail-overview');
+    if (ovEl && !ovEl._popupInit) {
+        ovEl._popupInit = true;
+        ovEl.addEventListener('click', function () {
+            if (isCinemaCatalogDetail()) openDetailOverviewPopup();
+        });
     }
 
     // --- Кнопка «Трейлер» ---
@@ -539,6 +555,104 @@ function initCatalogDetailButtons() {
         });
     }
 }
+
+function isCinemaCatalogDetail(dv) {
+    dv = dv || getEl('detail-view');
+    return !!(dv && dv.classList.contains('detail-cinema') &&
+        dv.classList.contains('catalog-detail-mode') &&
+        !dv.classList.contains('torrent-detail-mode'));
+}
+
+/* ===== ОПИСАНИЕ «СЦЕНЫ» ВО ВСПЛЫВАЮЩЕМ ОКНЕ =====
+ * В карточке-«сцене» описание обрезано до нескольких строк; «Подробнее» (или
+ * клик по тексту) открывает его целиком в окне поверх карточки.
+ *
+ * Окно живёт в <body>, а не в #detail-view: у карточки бывают transform'ы
+ * (анимация входа), и position: fixed внутри них считался бы от карточки.
+ *
+ * Клавиши окно разбирает само — слушателем window в фазе перехвата, раньше
+ * control.js (тот на document). Пока окно открыто: вверх/вниз листают текст,
+ * OK и «Назад» закрывают, остальные стрелки глушатся — иначе фокус карточки
+ * гулял бы под окном. «Назад» с аппаратной кнопки Android приходит из
+ * popstate синтетическим Escape на document — его ловит тот же перехват. */
+var detailOverviewPopup = { el: null, text: null, open: false, openedAt: 0, returnFocus: null };
+
+function ensureDetailOverviewPopup() {
+    if (detailOverviewPopup.el) return detailOverviewPopup.el;
+    var el = document.createElement('div');
+    el.id = 'detail-overview-popup';
+    el.className = 'detail-overview-popup hidden';
+    el.innerHTML =
+        '<div class="detail-overview-popup-box">' +
+        '<div class="detail-overview-popup-title"></div>' +
+        '<div class="detail-overview-popup-text"></div>' +
+        '<div class="detail-overview-popup-hint">▲▼ — листать · OK или «Назад» — закрыть</div>' +
+        '</div>';
+    // Клик мимо окна закрывает; по самому окну — нет (там листают пальцем)
+    el.addEventListener('click', function (e) {
+        if (e.target === el) closeDetailOverviewPopup();
+    });
+    document.body.appendChild(el);
+    detailOverviewPopup.el = el;
+    detailOverviewPopup.text = el.querySelector('.detail-overview-popup-text');
+    window.addEventListener('keydown', onDetailOverviewPopupKey, true);
+    return el;
+}
+
+function openDetailOverviewPopup() {
+    var ov = getEl('catalog-detail-overview');
+    var text = ov ? (ov.textContent || '').trim() : '';
+    if (!text) return;
+    var el = ensureDetailOverviewPopup();
+    var item = AppState.currentDetailItem;
+    var titleEl = el.querySelector('.detail-overview-popup-title');
+    titleEl.textContent = item ? getCatalogItemTitle(item) : '';
+    detailOverviewPopup.text.textContent = text;
+    detailOverviewPopup.returnFocus = document.querySelector('.focused');
+    detailOverviewPopup.open = true;
+    detailOverviewPopup.openedAt = Date.now();
+    el.classList.remove('hidden');
+    // После показа: у display:none прокрутка не сбрасывается, и окно
+    // открывалось бы там, где его пролистали в прошлый раз
+    detailOverviewPopup.text.scrollTop = 0;
+}
+
+function closeDetailOverviewPopup() {
+    if (!detailOverviewPopup.open) return false;
+    detailOverviewPopup.open = false;
+    detailOverviewPopup.el.classList.add('hidden');
+    var rf = detailOverviewPopup.returnFocus;
+    detailOverviewPopup.returnFocus = null;
+    if (rf && rf.isConnected !== false && typeof window.focusEl === 'function') window.focusEl(rf);
+    return true;
+}
+
+function onDetailOverviewPopupKey(e) {
+    if (!detailOverviewPopup.open) return;
+    var kc = e.keyCode;
+    var back = typeof isBackKey === 'function' && isBackKey(kc);
+    var ok = !back && typeof isOkKey === 'function' && isOkKey(kc);
+    var dir = (!back && !ok && typeof arrowDir === 'function') ? arrowDir(kc) : null;
+    if (!back && !ok && !dir) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (back) { closeDetailOverviewPopup(); return; }
+    if (ok) {
+        // Автоповтор того же OK, которым окно открыли, закрыл бы его сразу
+        if (e.repeat || Date.now() - detailOverviewPopup.openedAt < 400) return;
+        closeDetailOverviewPopup();
+        return;
+    }
+    if (dir === 'up' || dir === 'down') {
+        var t = detailOverviewPopup.text;
+        // Шаг — треть окна: строка-две остаются на виду и держат место чтения
+        var step = Math.max(40, Math.round(t.clientHeight / 3));
+        t.scrollTop += dir === 'down' ? step : -step;
+    }
+}
+
+window.isDetailOverviewPopupOpen = function () { return detailOverviewPopup.open; };
+window.closeDetailOverviewPopup = closeDetailOverviewPopup;
 
 /**
  * Сброс состояния кнопок при открытии новой карточки

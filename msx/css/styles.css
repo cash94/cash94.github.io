@@ -517,11 +517,10 @@ textarea {
 }
 
 /* ===== СПИСОК РЕЗУЛЬТАТОВ ПОИСКА ПО ТРЕКЕРАМ (legacy-режим) =====
-   Разметку строит buildSearchResultMarkup() в js/torrents.js, и она не
-   меняется: заголовок, шесть метаданных строго в одном порядке (трекер,
-   размер, год с датой раздачи, тип и качество, сиды, пиры) и чипы озвучек.
-   Порядок фиксирован разметкой, поэтому смысловые цвета навешиваются через
-   :nth-child — без единой правки в JS.
+   Разметку строит buildSearchResultMarkup() в js/torrents.js: заголовок,
+   строка ffprobe, метаданные двумя группами (слева трекер, год с датой
+   раздачи, тип и качество; справа размер, сиды, пиры) и чипы озвучек.
+   Цвет каждому чипу — по его классу.
 
    Отступы внутри карточки заданы margin'ами, а не gap: на Smart TV
    (Chrome 66) flex-gap не работает, и на каждый gap пришлось бы держать
@@ -612,10 +611,33 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  /* Левая группа слева, правая (размер, сиды, пиры) — у правого края */
+  justify-content: space-between;
   font-size: calc(12.5px * var(--search-scale, 1));
   color: #98a1b0;
   /* Гасим нижний отступ последней строки чипов */
   margin-bottom: calc(-5px * var(--search-scale, 1));
+}
+
+.search-result-meta-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  /* Не шире карточки: иначе длинный список трекеров на телефоне уезжал за край */
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* margin-left: auto держит группу у правого края и тогда, когда она перенеслась
+   на свою строку (узкий экран, телефон вертикально). Последнему чипу правый
+   отступ не нужен — иначе группа не доходила бы до края карточки. */
+.search-result-meta-stats {
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
+.search-result-meta-stats .search-result-meta-item:last-child {
+  margin-right: 0;
 }
 
 .search-result-meta-item {
@@ -630,32 +652,43 @@ textarea {
   white-space: nowrap;
 }
 
-/* Порядок чипов задан разметкой: 1 — трекер, 2 — размер, 3 — год и дата,
-   4 — тип и качество, 5 — сиды, 6 — пиры. Первые четыре — в цвете фокуса,
-   как кнопка «Поиск» и корешок карточки; сиды и пиры сохраняют смысловые
-   зелёный и красный. */
-.search-result-meta-item:nth-child(-n+4) {
+/* Трекер, год, тип и размер — в цвете фокуса, как кнопка «Поиск» и корешок
+   карточки; сиды и пиры сохраняют смысловые зелёный и красный. Классы, а не
+   nth-child: чипы разнесены по двум группам. */
+.search-result-meta-tracker,
+.search-result-meta-year,
+.search-result-meta-type,
+.search-result-meta-size {
   color: var(--focus-color-text, #ffb459);
   background: var(--focus-color-bg, rgba(255, 140, 0, 0.14));
 }
 
-.search-result-meta-item:nth-child(1) {
+/* Трекеров бывает пять через запятую — им одним разрешён перенос строки */
+.search-result-meta-tracker {
+  white-space: normal;
+  word-break: break-word;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
 
-.search-result-meta-item:nth-child(2),
-.search-result-meta-item:nth-child(4) {
+.search-result-meta-type {
   font-weight: 600;
 }
 
-.search-result-meta-item:nth-child(5) {
+/* Размер, сиды и пиры — то, по чему выбирают раздачу: жирнее остальных */
+.search-result-meta-size,
+.search-result-meta-sid,
+.search-result-meta-pir {
+  font-weight: 700;
+}
+
+.search-result-meta-sid {
   color: #6fe3a1;
   background: rgba(60, 220, 130, 0.11);
 }
 
-.search-result-meta-item:nth-child(6) {
+.search-result-meta-pir {
   color: #ff9d9d;
   background: rgba(255, 90, 90, 0.11);
 }
@@ -665,8 +698,7 @@ textarea {
 }
 
 /* Строка характеристик файла по данным ffprobe — между названием и серой
-   строкой с трекером. Свой ряд, а не чипы в .search-result-meta: там цвета
-   заданы через nth-child, и вставка сдвинула бы всю раскраску. */
+   строкой с трекером. Свой ряд: там чипы о раздаче, здесь — о файле. */
 .search-result-media-row {
   display: flex;
   flex-wrap: wrap;
@@ -2245,6 +2277,27 @@ body.detail-open {
   opacity: 1;
 }
 
+/* Задержка онлайн-субтитров (player.js, OnlineSubs.render): справа на строках
+   «раньше / позже» — набранный сдвиг в эту сторону. Не ноль — в цвете фокуса */
+.online-subs-delay {
+  -webkit-flex-shrink: 0;
+  flex-shrink: 0;
+  margin-left: 10px;
+  padding: 3px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #98a1b0;
+  /* Между подписью (18,5px) и названием пункта (24px): число видно издалека */
+  font-size: 22px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.online-subs-delay.is-set {
+  color: var(--focus-color-text, #ffb459);
+  background: var(--focus-color-bg, rgba(255, 140, 0, 0.14));
+}
+
 .episode-play {
   background: var(--focus-color-bg, rgba(255, 140, 0, 0.14));
   color: #fff;
@@ -2466,7 +2519,10 @@ body.detail-open {
     align-items: flex-start;
   }
 
+  /* В колонку info сжимается по содержимому — растягиваем, иначе группа
+     с размером, сидами и пирами не дойдёт до правого края карточки */
   .search-result-info {
+    width: 100%;
     margin-right: 0;
   }
 
@@ -9117,6 +9173,11 @@ html.kbd-540 .voice-search-btn {
     font-size: 20.5px;
   }
 
+  .online-subs-delay {
+    padding: 2px 9px;
+    font-size: 16px;
+  }
+
   .episode-play {
     width: 33.5px;
     height: 33.5px;
@@ -12241,6 +12302,130 @@ html.apple-device {
   margin: 0 !important;
   -webkit-line-clamp: 5;
   color: rgba(255, 255, 255, 0.82) !important;
+  /* Клик по тексту открывает окно с полным описанием (catalog.js) */
+  cursor: pointer;
+}
+
+/* Окно с полным описанием «сцены» — openDetailOverviewPopup() в catalog.js.
+   Лежит в <body>, поэтому --cu карточки здесь не действует: размеры в vh
+   (1.852vh = --cu на альбомном экране), на портретном телефоне — в vw.
+   Flex-gap не используем (Chrome 66) — отступы margin'ами. */
+.detail-overview-popup {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1500;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.detail-overview-popup.hidden {
+  display: none;
+}
+
+.detail-overview-popup-box {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-direction: column;
+  flex-direction: column;
+  width: 62%;
+  max-width: calc(1.852vh * 70);
+  max-height: 78vh;
+  padding: calc(1.852vh * 2) calc(1.852vh * 2.4);
+  box-sizing: border-box;
+  border-radius: calc(1.852vh * 1.1);
+  background: #15151d;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 3px solid var(--focus-color, #ff8c00);
+  box-shadow: 0 1.5vh 5vh rgba(0, 0, 0, 0.6);
+}
+
+.detail-overview-popup-title {
+  -webkit-flex: none;
+  flex: none;
+  margin-bottom: calc(1.852vh * 1);
+  font-size: calc(1.852vh * 1.45 * var(--detail-text-scale, 1));
+  font-weight: 700;
+  line-height: 1.25;
+  color: #fff;
+}
+
+.detail-overview-popup-title:empty {
+  display: none;
+}
+
+/* Листается вверх/вниз с пульта и пальцем; min-height: 0 — иначе flex-элемент
+   не сожмётся меньше текста и прокрутки не будет */
+.detail-overview-popup-text {
+  -webkit-flex: 1 1 auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: calc(1.852vh * 0.6);
+  font-size: calc(1.852vh * 1.05 * var(--detail-text-scale, 1));
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.88);
+  white-space: pre-line;
+}
+
+.detail-overview-popup-hint {
+  -webkit-flex: none;
+  flex: none;
+  margin-top: calc(1.852vh * 1.2);
+  font-size: calc(1.852vh * 0.75);
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* Подсказка про пульт на сенсорном экране ни к чему */
+@media (hover: none) and (pointer: coarse) {
+  .detail-overview-popup-hint {
+    display: none;
+  }
+}
+
+@media (orientation: portrait) {
+  .detail-overview-popup-box {
+    width: 90%;
+    max-width: none;
+    max-height: 80vh;
+    padding: 5vw 5vw;
+    border-radius: 3vw;
+  }
+
+  .detail-overview-popup-title {
+    margin-bottom: 2.5vw;
+    font-size: calc(5vw * var(--detail-text-scale, 1));
+  }
+
+  .detail-overview-popup-text {
+    font-size: calc(4vw * var(--detail-text-scale, 1));
+  }
+}
+
+/* Телефон боком: высоты мало, окно почти во весь экран */
+@media (orientation: landscape) and (max-height: 500px) {
+  .detail-overview-popup-box {
+    width: 84%;
+    max-width: none;
+    max-height: 90vh;
+    padding: 3.5vh 4vh;
+  }
+
+  .detail-overview-popup-title {
+    font-size: calc(5vh * var(--detail-text-scale, 1));
+  }
+
+  .detail-overview-popup-text {
+    font-size: calc(4.2vh * var(--detail-text-scale, 1));
+  }
 }
 
 /* --- НИЖНИЕ БЛОКИ: тёмная подложка поверх неподвижного кадра ------------ */

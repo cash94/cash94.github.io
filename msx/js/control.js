@@ -2578,6 +2578,12 @@ function onBack() {
         UICustomizer.close();
         return true;
     }
+    // Окно описания «сцены» (catalog.js) клавиши ловит само; это запасной путь,
+    // чтобы «назад» мимо него не закрыл карточку из-под открытого окна
+    if (typeof window.isDetailOverviewPopupOpen === 'function' && window.isDetailOverviewPopupOpen()) {
+        window.closeDetailOverviewPopup();
+        return true;
+    }
 
     /* Донат — до карточки, а не после.
      *
@@ -2982,6 +2988,17 @@ function setupKeyboardHandlers() {
                     return;
                 } else {
                     navigate(keyToDirection(k));
+                    return;
+                }
+            }
+            // «Скрывать интерфейс вручную»: таймера бездействия нет, и с ползунка
+            // перемотки (он верхний в панели) «вверх» убирает её одним нажатием
+            if (cv && AppState.playerManualHide && isKeyPressed('UP', k)) {
+                var sf = document.querySelector('.focused');
+                if (sf && sf.id === 'seek-slider' &&
+                    !(typeof window.getOpenPlayerPanel === 'function' && window.getOpenPlayerPanel())) {
+                    e.preventDefault();
+                    hidePlayerUi();
                     return;
                 }
             }

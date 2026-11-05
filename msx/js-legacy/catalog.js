@@ -408,6 +408,10 @@ function initCatalogDetailButtons() {
     togBtn._initialized = true;
     togBtn.onclick = function () {
       var dv = getEl('detail-view');
+      if (isCinemaCatalogDetail(dv)) {
+        openDetailOverviewPopup();
+        return;
+      }
       var torrentMode = !!(dv && dv.classList.contains('torrent-detail-mode'));
       var target = torrentMode ? getEl('detail-subtitle') : getEl('catalog-detail-overview');
       if (!target) return;
@@ -415,6 +419,13 @@ function initCatalogDetailButtons() {
       togBtn.textContent = exp ? 'Свернуть' : 'Подробнее';
       togBtn.setAttribute('data-label', togBtn.textContent);
     };
+  }
+  var ovEl = getEl('catalog-detail-overview');
+  if (ovEl && !ovEl._popupInit) {
+    ovEl._popupInit = true;
+    ovEl.addEventListener('click', function () {
+      if (isCinemaCatalogDetail()) openDetailOverviewPopup();
+    });
   }
   var trailerBtn = getEl('catalog-trailer-btn');
   if (trailerBtn && !trailerBtn._initialized) {
@@ -445,6 +456,84 @@ function initCatalogDetailButtons() {
     });
   }
 }
+function isCinemaCatalogDetail(dv) {
+  dv = dv || getEl('detail-view');
+  return !!(dv && dv.classList.contains('detail-cinema') && dv.classList.contains('catalog-detail-mode') && !dv.classList.contains('torrent-detail-mode'));
+}
+var detailOverviewPopup = {
+  el: null,
+  text: null,
+  open: false,
+  openedAt: 0,
+  returnFocus: null
+};
+function ensureDetailOverviewPopup() {
+  if (detailOverviewPopup.el) return detailOverviewPopup.el;
+  var el = document.createElement('div');
+  el.id = 'detail-overview-popup';
+  el.className = 'detail-overview-popup hidden';
+  el.innerHTML = '<div class="detail-overview-popup-box">' + '<div class="detail-overview-popup-title"></div>' + '<div class="detail-overview-popup-text"></div>' + '<div class="detail-overview-popup-hint">▲▼ — листать · OK или «Назад» — закрыть</div>' + '</div>';
+  el.addEventListener('click', function (e) {
+    if (e.target === el) closeDetailOverviewPopup();
+  });
+  document.body.appendChild(el);
+  detailOverviewPopup.el = el;
+  detailOverviewPopup.text = el.querySelector('.detail-overview-popup-text');
+  window.addEventListener('keydown', onDetailOverviewPopupKey, true);
+  return el;
+}
+function openDetailOverviewPopup() {
+  var ov = getEl('catalog-detail-overview');
+  var text = ov ? (ov.textContent || '').trim() : '';
+  if (!text) return;
+  var el = ensureDetailOverviewPopup();
+  var item = AppState.currentDetailItem;
+  var titleEl = el.querySelector('.detail-overview-popup-title');
+  titleEl.textContent = item ? getCatalogItemTitle(item) : '';
+  detailOverviewPopup.text.textContent = text;
+  detailOverviewPopup.returnFocus = document.querySelector('.focused');
+  detailOverviewPopup.open = true;
+  detailOverviewPopup.openedAt = Date.now();
+  el.classList.remove('hidden');
+  detailOverviewPopup.text.scrollTop = 0;
+}
+function closeDetailOverviewPopup() {
+  if (!detailOverviewPopup.open) return false;
+  detailOverviewPopup.open = false;
+  detailOverviewPopup.el.classList.add('hidden');
+  var rf = detailOverviewPopup.returnFocus;
+  detailOverviewPopup.returnFocus = null;
+  if (rf && rf.isConnected !== false && typeof window.focusEl === 'function') window.focusEl(rf);
+  return true;
+}
+function onDetailOverviewPopupKey(e) {
+  if (!detailOverviewPopup.open) return;
+  var kc = e.keyCode;
+  var back = typeof isBackKey === 'function' && isBackKey(kc);
+  var ok = !back && typeof isOkKey === 'function' && isOkKey(kc);
+  var dir = !back && !ok && typeof arrowDir === 'function' ? arrowDir(kc) : null;
+  if (!back && !ok && !dir) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  if (back) {
+    closeDetailOverviewPopup();
+    return;
+  }
+  if (ok) {
+    if (e.repeat || Date.now() - detailOverviewPopup.openedAt < 400) return;
+    closeDetailOverviewPopup();
+    return;
+  }
+  if (dir === 'up' || dir === 'down') {
+    var t = detailOverviewPopup.text;
+    var step = Math.max(40, Math.round(t.clientHeight / 3));
+    t.scrollTop += dir === 'down' ? step : -step;
+  }
+}
+window.isDetailOverviewPopupOpen = function () {
+  return detailOverviewPopup.open;
+};
+window.closeDetailOverviewPopup = closeDetailOverviewPopup;
 function resetDetailButtons() {
   if (typeof syncFavoriteButton === 'function') syncFavoriteButton(AppState.currentDetailItem);
   var togBtn = getEl('catalog-toggle-overview-btn');

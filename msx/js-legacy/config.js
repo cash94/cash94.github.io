@@ -108,6 +108,7 @@ var AppState = {
   videoUrl: '',
   bufferHidden: false,
   autoSkipIntro: false,
+  playerManualHide: false,
   preloadBeforePlay: true,
   builtinKeyboard: false,
   detailUnderSearch: false,

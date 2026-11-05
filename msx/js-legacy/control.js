@@ -2400,6 +2400,10 @@ function onBack() {
     UICustomizer.close();
     return true;
   }
+  if (typeof window.isDetailOverviewPopupOpen === 'function' && window.isDetailOverviewPopupOpen()) {
+    window.closeDetailOverviewPopup();
+    return true;
+  }
   var donateScreen = getEl('donate-overlay');
   if (donateScreen && _isScreenVisible(donateScreen)) {
     if (typeof window.closeDonateOverlay === 'function') window.closeDonateOverlay();
@@ -2778,6 +2782,14 @@ function setupKeyboardHandlers() {
           return;
         } else {
           navigate(keyToDirection(k));
+          return;
+        }
+      }
+      if (cv && AppState.playerManualHide && isKeyPressed('UP', k)) {
+        var sf = document.querySelector('.focused');
+        if (sf && sf.id === 'seek-slider' && !(typeof window.getOpenPlayerPanel === 'function' && window.getOpenPlayerPanel())) {
+          e.preventDefault();
+          hidePlayerUi();
           return;
         }
       }

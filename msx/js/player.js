@@ -694,8 +694,15 @@ function resetMouseIdleTimer() {
   if (!controls || controls.classList.contains('idle-hidden')) setPlayerControlsIdle(false);
 
   if (mouseIdleTimer) clearTimeout(mouseIdleTimer);
+  mouseIdleTimer = null;
+  // «Скрывать вручную»: таймера нет, HUD убирают «Назад» или «вверх» с
+  // ползунка (control.js). Боковые панели тоже остаются — их закрывает «Назад»
+  if (AppState.playerManualHide) return;
   mouseIdleTimer = setTimeout(function () {
     if (playerScreen.style.display !== 'block') return;
+    // Подбирают задержку онлайн-субтитров: смотрят на реплики и жмут
+    // «раньше/позже» — панель не гасим, закроют «Назад»
+    if (isPlayerPanelOpen('onlinesubs')) { mouseIdleTimer = null; return; }
     if (playerOverlay) playerOverlay.classList.remove('touch-active');
     closePlayerPanelsOnIdle();
     setPlayerControlsIdle(true);
@@ -2148,6 +2155,8 @@ function updatePlayerSettingsMenu() {
   if (buffer) buffer.classList.toggle('is-on', !AppState.bufferHidden);
   var autoSkip = getEl('psetting-autoskip');
   if (autoSkip) autoSkip.classList.toggle('is-on', !!AppState.autoSkipIntro);
+  var manualHide = getEl('psetting-manualhide');
+  if (manualHide) manualHide.classList.toggle('is-on', !!AppState.playerManualHide);
   var subSize = getEl('psetting-subsize-value');
   if (subSize) subSize.textContent = SUBTITLE_SIZES[getSubtitleSize()].label;
 }
@@ -2161,6 +2170,9 @@ function setupPlayerSettingsButton() {
   // ...и кнопки пропуска там тоже нет
   var autoSkipItem = getEl('psetting-autoskip');
   if (autoSkipItem && window.AndroidJS) autoSkipItem.style.display = 'none';
+  // ...и HUD там свой, нативный
+  var manualHideItem = getEl('psetting-manualhide');
+  if (manualHideItem && window.AndroidJS) manualHideItem.style.display = 'none';
   var btn = getEl('player-settings-btn');
   var panel = getEl('player-settings-panel');
   if (!btn || !panel) return;
@@ -2178,6 +2190,8 @@ function setupPlayerSettingsButton() {
       toggleBufferVisibility();
     } else if (item && item.id === 'psetting-autoskip' && typeof setAutoSkip === 'function') {
       setAutoSkip(!AppState.autoSkipIntro);
+    } else if (item && item.id === 'psetting-manualhide' && typeof setPlayerManualHide === 'function') {
+      setPlayerManualHide(!AppState.playerManualHide);
     } else if (item && item.id === 'psetting-subsize') {
       // ОК — следующий размер, после самого крупного — снова самый мелкий
       setSubtitleSize((getSubtitleSize() + 1) % SUBTITLE_SIZES.length);
@@ -2248,6 +2262,13 @@ function setupPlayerPanelsOutsideClick() {
   setupPlayerPanelsOutsideClick._bound = true;
   document.addEventListener('click', function (e) {
     var inPlayer = AppState && AppState.currentScreen === 'player';
+    // Пункт панели, перерисовавший её на своём же клике (онлайн-субтитры:
+    // «раньше/позже», выбор файла), к document доходит уже оторванным — и
+    // panel.contains его не находит. Это клик внутри, а не мимо
+    if (e.target && e.target.isConnected === false) {
+      if (inPlayer) resetMouseIdleTimer();
+      return;
+    }
     for (var name in PLAYER_PANELS) {
       if (!isPlayerPanelOpen(name)) continue;
       var cfg = PLAYER_PANELS[name];
@@ -5691,7 +5712,8 @@ var OnlineSubs = {
         self.startTicker();
         self.refreshPanel();
         updateTracksMenu();
-        if (!quiet && isPlayerPanelOpen('onlinesubs')) togglePlayerPanel('onlinesubs');
+        // Панель после выбора не закрываем: сразу под рукой «раньше/позже» —
+        // задержку подгоняют, глядя на первые реплики
       })
       ['catch'](function (err) {
         if (gen !== self.searchGen || self.loadingUrl !== item.url) return;
@@ -5706,6 +5728,8 @@ var OnlineSubs = {
   off: function (byUser) {
     if (!this.active && !this.loadingUrl) return;
     this.active = null; this.loadingUrl = null;
+    // Задержка подбиралась под этот файл субтитров — к другим она не относится
+    this.offset = 0;
     this.stopTicker();
     if (byUser) this.remember();
     else if (this.fileKey) {
@@ -5774,9 +5798,12 @@ var OnlineSubs = {
       (this.offset ? ' · ' + this.offsetLabel() : '');
   },
 
-  offsetLabel: function () {
-    var o = this.offset;
-    return (o > 0 ? '+' : o < 0 ? '−' : '') + Math.abs(o).toFixed(1).replace('.', ',') + ' с';
+  /** «+1,5 с», «−1 с», «0 с» — без «,0» у целых: 2 нажатия по 0,5 = «1 с» */
+  offsetLabel: function (o) {
+    if (o === undefined) o = this.offset;
+    var abs = Math.abs(o);
+    var num = abs % 1 ? abs.toFixed(1).replace('.', ',') : String(abs);
+    return (o > 0 ? '+' : o < 0 ? '−' : '') + num + ' с';
   },
 
   open: function () {
@@ -5811,10 +5838,20 @@ var OnlineSubs = {
         (details ? '<div class="subtitle-details">' + details + '</div>' : '') +
         '</div><div class="subtitle-check">✓</div></div>';
     };
+    // Строка задержки: справа — сколько набрано в эту сторону (каждое нажатие
+    // ±ONLINE_SUBS_STEP_SEC: раз — 0,5 с, два — 1 с, три — 1,5 с…)
+    var self = this;
+    var delayRow = function (key, icon, title, sign) {
+      var o = self.offset, on = sign > 0 ? o > 0 : o < 0;
+      return '<div class="subtitle-item online-subs-delay-item" data-online="' + key + '"><div class="subtitle-icon">' + icon + '</div>' +
+        '<div class="subtitle-info"><div class="subtitle-title">' + title + '</div>' +
+        '<div class="subtitle-details"><span class="subtitle-format">шаг ' + escapeHtml(self.offsetLabel(sign * ONLINE_SUBS_STEP_SEC)) + '</span></div>' +
+        '</div><div class="online-subs-delay' + (on ? ' is-set' : '') + '">' + escapeHtml(on ? self.offsetLabel() : '0 с') + '</div></div>';
+    };
     html += row('off', '🚫', 'Выключить онлайн субтитры', '', !this.active && !this.loadingUrl);
     if (this.active) {
-      html += row('earlier', '⏪', 'Показывать раньше', '<span class="subtitle-format">Сдвиг ' + escapeHtml(this.offsetLabel()) + '</span>', false);
-      html += row('later', '⏩', 'Показывать позже', '<span class="subtitle-format">шаг ' + String(ONLINE_SUBS_STEP_SEC).replace('.', ',') + ' с</span>', false);
+      html += delayRow('earlier', '⏪', 'Показывать раньше', -1);
+      html += delayRow('later', '⏩', 'Показывать позже', 1);
     }
     if (this.searching || (!this.list && this.fileKey)) html += '<div class="search-result-empty">Поиск субтитров…</div>';
     else if (!this.target && this.list) html += '<div class="search-result-empty">Не удалось определить фильм или серию</div>';
@@ -5843,7 +5880,9 @@ var OnlineSubs = {
     else {
       var s = this.list && this.list[parseInt(key, 10)];
       if (!s) return;
-      if (this.active && this.active.item.url === s.url) { togglePlayerPanel('onlinesubs'); return; }
+      // Уже включены — панель оставляем открытой (задержка под рукой)
+      if (this.active && this.active.item.url === s.url) return;
+      // Другие субтитры — задержка с нуля
       this.offset = 0;
       this.load(s, false);
     }

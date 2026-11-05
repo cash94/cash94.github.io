@@ -1723,6 +1723,18 @@ function setupCheckboxes() {
       setAutoSkip(e.target.checked);
     });
   }
+  var manualHideCheckbox = getEl('player-manual-hide');
+  if (manualHideCheckbox) {
+    if (window.AndroidJS) {
+      var manualHideContainer = manualHideCheckbox.closest('.checkbox-container');
+      if (manualHideContainer) manualHideContainer.classList.add('hidden');
+    }
+    AppState.playerManualHide = localStorage.getItem('playerManualHide') === 'true';
+    manualHideCheckbox.checked = AppState.playerManualHide;
+    manualHideCheckbox.addEventListener('change', function (e) {
+      setPlayerManualHide(e.target.checked);
+    });
+  }
   var builtinKeyboardCheckbox = getEl('builtin-keyboard');
   if (builtinKeyboardCheckbox) {
     AppState.builtinKeyboard = localStorage.getItem('builtinKeyboard') === 'true';
@@ -2041,6 +2053,18 @@ function setAutoSkip(on) {
   console.log('⏩ Автопропуск заставки и титров:', AppState.autoSkipIntro ? 'включён' : 'выключен');
 }
 window.setAutoSkip = setAutoSkip;
+function setPlayerManualHide(on) {
+  AppState.playerManualHide = !!on;
+  try {
+    localStorage.setItem('playerManualHide', AppState.playerManualHide);
+  } catch (e) {}
+  var cb = getEl('player-manual-hide');
+  if (cb) cb.checked = AppState.playerManualHide;
+  if (AppState.currentScreen === 'player' && typeof window.resetMouseIdleTimer === 'function') {
+    window.resetMouseIdleTimer();
+  }
+}
+window.setPlayerManualHide = setPlayerManualHide;
 function setupClockVisibility() {
   var clockDisplay = getEl('clock-display');
   if (clockDisplay) {

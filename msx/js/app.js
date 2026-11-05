@@ -2219,6 +2219,21 @@ function setupCheckboxes() {
     });
   }
 
+  // Ручное скрытие интерфейса плеера. В Android-приложении панель рисует
+  // нативный плеер — галка там ни на что бы не влияла, прячем.
+  var manualHideCheckbox = getEl('player-manual-hide');
+  if (manualHideCheckbox) {
+    if (window.AndroidJS) {
+      var manualHideContainer = manualHideCheckbox.closest('.checkbox-container');
+      if (manualHideContainer) manualHideContainer.classList.add('hidden');
+    }
+    AppState.playerManualHide = localStorage.getItem('playerManualHide') === 'true';
+    manualHideCheckbox.checked = AppState.playerManualHide;
+    manualHideCheckbox.addEventListener('change', function (e) {
+      setPlayerManualHide(e.target.checked);
+    });
+  }
+
   // Встроенная экранная клавиатура (раздел «Прочее»). Сама клавиатура — в
   // js/osk.js, флаг она читает из AppState на каждом открытии поля.
   var builtinKeyboardCheckbox = getEl('builtin-keyboard');
@@ -2596,6 +2611,20 @@ function setAutoSkip(on) {
   console.log('⏩ Автопропуск заставки и титров:', AppState.autoSkipIntro ? 'включён' : 'выключен');
 }
 window.setAutoSkip = setAutoSkip;
+
+/** Ручное скрытие интерфейса плеера: галка в разделе «Плеер» и пункт в шестерёнке */
+function setPlayerManualHide(on) {
+  AppState.playerManualHide = !!on;
+  try { localStorage.setItem('playerManualHide', AppState.playerManualHide); } catch (e) { }
+  var cb = getEl('player-manual-hide');
+  if (cb) cb.checked = AppState.playerManualHide;
+  // Таймер бездействия перезапускаем по новому правилу: включили — он
+  // снимается, выключили — HUD снова погаснет сам через IDLE_TIMEOUT
+  if (AppState.currentScreen === 'player' && typeof window.resetMouseIdleTimer === 'function') {
+    window.resetMouseIdleTimer();
+  }
+}
+window.setPlayerManualHide = setPlayerManualHide;
 
 function setupClockVisibility() {
   var clockDisplay = getEl('clock-display');

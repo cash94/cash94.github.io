@@ -147,6 +147,10 @@ var AppState = {
   // Настройка «Автопропуск заставки»: кнопка пропуска отсчитывает и
   // пропускает сама (player.js, startAutoSkipCountdown). Из localStorage.
   autoSkipIntro: false,
+  // Настройка «Скрывать интерфейс плеера вручную»: HUD не гаснет по таймеру
+  // бездействия (player.js, resetMouseIdleTimer), его убирают «Назад» или
+  // «вверх» на ползунке перемотки (control.js). Из localStorage.
+  playerManualHide: false,
   // Настройка «Предзагрузка» (TorrServer): перед стартом плеера набрать буфер
   // в окне со статистикой раздачи (torrserverstats.js, runPlaybackPreload).
   // Из localStorage; по умолчанию включена.
