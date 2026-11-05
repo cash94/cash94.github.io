@@ -3594,6 +3594,12 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   // дорожками берёт ту, что помечена default (initServerProxyPlayback)
   var audioExplicit = audioTrack !== undefined && audioTrack !== null;
   if (audioTrack === undefined) audioTrack = currentAudioTrack !== undefined ? currentAudioTrack : null;
+  // Раздачу TorrServer мог забыть (остановили без базы, перезапуск, удалили), и
+  // по хешу он поднял бы её без трекеров. Сохранённый полный magnet — вернуть
+  // им до любых запросов по хешу: предзагрузки, внешнего плеера, потока
+  // (magnet-store.js; без записи — сразу дальше)
+  var ensureRef = window.MagnetStore ? parseStreamRef(originalUrl) : null;
+  if (ensureRef) await MagnetStore.ensure(ensureRef.hash);
   // Настройка «Предзагрузка»: до плеера — окно с буфером и статистикой раздачи
   // (torrserverstats.js). Только при запуске из интерфейса: смена серии,
   // дорожки и перезапуск потока идут изнутри плеера, и там окно ни к чему.

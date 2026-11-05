@@ -539,6 +539,7 @@ function _removeTorrentByHash() {
         yield response.json();
       } catch (e) {}
       clearTorrentFilesCache(hash);
+      if (window.MagnetStore) MagnetStore.forget(hash);
       if (AppState.currentDetailItem && (AppState.currentDetailItem.hash || '').toLowerCase() === String(hash).toLowerCase()) {
         if (typeof Animations !== 'undefined' && typeof Animations.animateDetailHide === 'function') {
           Animations.animateDetailHide();
@@ -2885,6 +2886,7 @@ function _getTorrentFilesWithCache() {
         files = torrent.file_stats;
       }
       if (!files.length && AppState.currentTorrserverUrl) {
+        if (window.MagnetStore) yield MagnetStore.ensure(hash);
         try {
           var response = yield torrServerFetch('/stream?link=' + hash + '&index=1&stat=stat', {
             method: 'GET',
@@ -5176,6 +5178,7 @@ function _dropTorrentToServer() {
   _dropTorrentToServer = _asyncToGenerator(function* (hash) {
     if (!(yield ensureTorrserverOnline())) return null;
     try {
+      if (window.MagnetStore) MagnetStore.forget(hash);
       var response = yield torrServerFetch('/torrents', {
         method: 'POST',
         body: JSON.stringify({
@@ -5198,6 +5201,7 @@ function dropOpenTorrentDetail() {
   var dv = getEl('detail-view');
   if (!it || !it.hash || dv && dv.classList.contains('catalog-detail-mode')) return;
   var hash = it.hash;
+  if (window.MagnetStore) MagnetStore.forget(hash);
   if (typeof abortPendingPreload === 'function') abortPendingPreload();
   torrServerFetch('/torrents', {
     method: 'POST',
@@ -5289,6 +5293,10 @@ function _addTorrentToServer() {
         throw new Error('Ошибка добавления: ' + response.status);
       }
       var hashLower = hash ? String(hash).toLowerCase() : null;
+      if (hashLower && window.MagnetStore) {
+        MagnetStore.remember(hashLower, magnet, requestBody);
+        MagnetStore.forget(hashLower);
+      }
       if (hashLower) {
         knownTorrentMeta.set(hashLower, {
           id: tmdbId,

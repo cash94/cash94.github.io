@@ -3200,6 +3200,8 @@ function _startHLSPlayback() {
     if (episodeIndex === undefined) episodeIndex = null;
     var audioExplicit = audioTrack !== undefined && audioTrack !== null;
     if (audioTrack === undefined) audioTrack = currentAudioTrack !== undefined ? currentAudioTrack : null;
+    var ensureRef = window.MagnetStore ? parseStreamRef(originalUrl) : null;
+    if (ensureRef) yield MagnetStore.ensure(ensureRef.hash);
     if (AppState.preloadBeforePlay && AppState.currentScreen !== 'player' && typeof runPlaybackPreload === 'function') {
       var preloadRef = parseStreamRef(originalUrl);
       if (preloadRef) {

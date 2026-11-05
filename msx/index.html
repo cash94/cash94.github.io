@@ -137,11 +137,12 @@
       "js/donate.js": "14adc57a",
       "js/favorites-db.js": "8772a3b7",
       "js/home.js": "84d313ce",
+      "js/magnet-store.js": "773f87d4",
       "js/nav.js": "02a98d5e",
       "js/osk.js": "acd5c812",
       "js/perf-probe.js": "7143cc61",
       "js/player-memory-fix.js": "2fbf8c05",
-      "js/player.js": "2e9f0fc6",
+      "js/player.js": "be53813a",
       "js/poster-db.js": "5133286b",
       "js/poster-prefetch.js": "a3173518",
       "js/screensaver.js": "84d4e30e",
@@ -154,7 +155,7 @@
       "js/torrents-worker-bridge.js": "5082b72d",
       "js/torrents-worker-patch.js": "1bab9f71",
       "js/torrents-worker.js": "2cd34b76",
-      "js/torrents.js": "759c3ae8",
+      "js/torrents.js": "91f2053d",
       "js/torrserverstats.js": "2ae6f44b",
       "js/ui-customizer.js": "ab310609"
       // ASSET_V:end
@@ -1559,6 +1560,9 @@
     document.write('<script src="https://cash94.github.io/msx/js/torrents-worker-patch.js?v=' + assetV('js/torrents-worker-patch.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/poster-db.js?v=' + assetV('js/poster-db.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/favorites-db.js?v=' + assetV('js/favorites-db.js') + '"><\/script>');
+    // Полные magnet раздач (с трекерами) — своя IndexedDB; ensure() зовут
+    // torrents.js и player.js перед открытием раздачи по хешу
+    document.write('<script src="https://cash94.github.io/msx/js/magnet-store.js?v=' + assetV('js/magnet-store.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/catalog.js?v=' + assetV('js/catalog.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/catalog-worker-bridge.js?v=' + assetV('js/catalog-worker-bridge.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/catalog-worker-patch.js?v=' + assetV('js/catalog-worker-patch.js') + '"><\/script>');

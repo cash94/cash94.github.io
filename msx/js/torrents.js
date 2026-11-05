@@ -602,6 +602,9 @@ async function removeTorrentByHash(hash, options = {}) {
         try { await response.json(); } catch (e) { }
 
         clearTorrentFilesCache(hash);
+        // Сохранённый magnet не стираем: раздачу откроют снова из истории или
+        // «Продолжить» — тогда её и поднимут им. Сбрасываем только «на месте»
+        if (window.MagnetStore) MagnetStore.forget(hash);
         if (AppState.currentDetailItem && (AppState.currentDetailItem.hash || '').toLowerCase() === String(hash).toLowerCase()) {
             // Раздачи больше нет — закрываем карточку тем же плавным затуханием,
             // что и по кнопке «назад»
@@ -3369,6 +3372,10 @@ async function getTorrentFilesWithCache(torrent, forceRefresh = false) {
             files = torrent.file_stats;
         }
         if (!files.length && AppState.currentTorrserverUrl) {
+            // /stream?link=<хеш> сам добавит раздачу, если TorrServer её не
+            // знает, — но голым хешем, без трекеров. Есть сохранённый magnet —
+            // сначала вернём раздачу им (magnet-store.js)
+            if (window.MagnetStore) await MagnetStore.ensure(hash);
             try {
                 var response = await torrServerFetch('/stream?link=' + hash + '&index=1&stat=stat', {
                     method: 'GET', headers: { accept: 'application/octet-stream' }
@@ -6467,6 +6474,7 @@ function resetFilters() {
 async function dropTorrentToServer(hash) {
     if (!(await ensureTorrserverOnline())) return null;
     try {
+        if (window.MagnetStore) MagnetStore.forget(hash);
         var response = await torrServerFetch('/torrents', { method: 'POST', body: JSON.stringify({ action: 'drop', hash: hash }) });
         if (!response.ok) throw new Error('Ошибка остановки: ' + response.status);
         return true;
@@ -6492,6 +6500,7 @@ function dropOpenTorrentDetail() {
     // Каталожная карточка (TMDB) раздачи не держит
     if (!it || !it.hash || (dv && dv.classList.contains('catalog-detail-mode'))) return;
     var hash = it.hash;
+    if (window.MagnetStore) MagnetStore.forget(hash);
     if (typeof abortPendingPreload === 'function') abortPendingPreload();
     // Мимо dropTorrentToServer: тот при недоступном TorrServer показывает
     // баннер ошибки, а на выходе из карточки он ни к чему
@@ -6597,6 +6606,13 @@ async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
         }
 
         var hashLower = hash ? String(hash).toLowerCase() : null;
+        // Полный magnet (с трекерами) — в свою базу на устройстве: если
+        // TorrServer потом забудет раздачу, её поднимут им, а не голым хешем
+        // (раздачи LostFilm без своих ретрекеров не находят пиров). magnet-store.js
+        if (hashLower && window.MagnetStore) {
+            MagnetStore.remember(hashLower, magnet, requestBody);
+            MagnetStore.forget(hashLower);
+        }
         if (hashLower) {
             knownTorrentMeta.set(hashLower, {
                 id: tmdbId,
