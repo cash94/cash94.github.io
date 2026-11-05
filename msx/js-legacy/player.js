@@ -2852,7 +2852,7 @@ function _initTranscodingOffPlayback() {
         var lateAudio = applyNativeAudioPref(videoPlayer);
         if (lateAudio >= 0) {
           var lateTracks = collectNativeAudioTracks(videoPlayer);
-          if (lateTracks.length) currentAudioTracks = lateTracks;
+          if (lateTracks.length && !probeAudio.on) currentAudioTracks = lateTracks;
           currentAudioTrack = lateAudio;
           renderAudioTracks();
         }
@@ -2890,7 +2890,7 @@ function _initTranscodingOffPlayback() {
       AppState.expectedDuration = videoPlayer.duration;
       AppState.originalDuration = videoPlayer.duration;
       forceUpdateDuration(videoPlayer.duration, videoPlayer.duration, 0);
-      var nativeTracks = webosAudio.mode ? [] : collectNativeAudioTracks(videoPlayer);
+      var nativeTracks = webosAudio.mode || probeAudio.on ? [] : collectNativeAudioTracks(videoPlayer);
       if (nativeTracks.length) {
         currentAudioTracks = nativeTracks;
         var enabled = applyNativeAudioPref(videoPlayer);
@@ -3676,6 +3676,7 @@ var nativeAudioPref = -1;
 function applyNativeAudioPref(videoPlayer) {
   var list = videoPlayer && videoPlayer.audioTracks;
   if (nativeAudioPref < 0 || !list || list.length === 0) return -1;
+  if (AppState.tizenAvplayActive && !probeAudio.gaveUp) return -1;
   var index = nativeAudioPref;
   if (!(AppState.platform === 'webos' && lunaAvailable())) nativeAudioPref = -1;
   if (index >= list.length) return -1;
@@ -3760,8 +3761,10 @@ function switchNativeAudioTrack(videoPlayer, index) {
   }
   if (!videoPlayer) return;
   if (AppState.transcodingFullOnOff && videoPlayer.audioTracks && videoPlayer.audioTracks.length > 0) {
+    var tv = probeAudio.on ? probeAudio.map[index] : index;
+    if (tv === undefined || tv < 0) return;
     for (var i = 0; i < videoPlayer.audioTracks.length; i++) {
-      videoPlayer.audioTracks[i].enabled = i === index;
+      videoPlayer.audioTracks[i].enabled = i === tv;
     }
     currentAudioTrack = index;
     if (currentTimecodeData.hash && currentTimecodeData.fileId) {
@@ -3952,6 +3955,11 @@ var directProbe = {
   count: '',
   serverInfo: null
 };
+var probeAudio = {
+  on: false,
+  map: [],
+  gaveUp: false
+};
 var LANG_NAMES = {
   rus: 'Русский',
   ru: 'Русский',
@@ -4096,7 +4104,9 @@ function applyDirectProbe() {
     if (streams[i].codec_type === 'audio') audio.push(streams[i]);else if (streams[i].codec_type === 'subtitle') subs.push(streams[i]);
   }
   var diag = [];
-  if (currentAudioTracks.length && !currentAudioTracks[0].probed) {
+  if (applyProbeAudioList(audio)) {
+    diag.push('звук из файла ' + audio.length + ', у AVPlay ' + getEl('video-player').audioTracks.length);
+  } else if (currentAudioTracks.length && !currentAudioTracks[0].probed) {
     var a = alignProbeStreams(currentAudioTracks, audio, function (s) {
       return HIDDEN_AUDIO_CODECS[s.codec_name];
     });
@@ -4135,6 +4145,77 @@ function applyDirectProbe() {
     diag.push('субтитры ' + currentSubTracks.length + '/' + subs.length + (s ? ' ✓' : ' ✗'));
   }
   if (diag.length) webosSubsDiag.probe = directProbe.count + ' · ' + diag.join(', ');
+}
+function applyProbeAudioList(streams) {
+  var vp = getEl('video-player'),
+    at = vp && vp.audioTracks;
+  if (!AppState.tizenAvplayActive || !at || !at.length || !streams.length) return false;
+  var native = [];
+  for (var i = 0; i < at.length; i++) native.push(at[i]);
+  probeAudio.map = tizenAudioMap(native, streams);
+  probeAudio.on = true;
+  currentAudioTracks = streams.map(function (s, k) {
+    return {
+      title: probeTitle(s, 'audio', k),
+      language: probeLang(s) || 'und',
+      channels: s.channels || null,
+      codec: (s.codec_name || '').toUpperCase(),
+      probed: true
+    };
+  });
+  if (nativeAudioPref >= 0 && nativeAudioPref < streams.length) {
+    var tv = probeAudio.map[nativeAudioPref];
+    nativeAudioPref = -1;
+    if (tv >= 0) for (var j = 0; j < at.length; j++) at[j].enabled = j === tv;
+  }
+  currentAudioTrack = 0;
+  for (var k = 0; k < at.length; k++) {
+    if (!at[k].enabled) continue;
+    var item = probeAudio.map.indexOf(k);
+    if (item >= 0) currentAudioTrack = item;
+    break;
+  }
+  renderAudioTracks();
+  return true;
+}
+function tizenAudioMap(native, streams) {
+  var map = [],
+    used = [];
+  var codec = function (c) {
+    c = String(c || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    return c === 'ec3' ? 'eac3' : c === 'mp4a' ? 'aac' : c;
+  };
+  var tests = [function (t, s) {
+    return codec(t.codec) === codec(s.codec_name) && (parseInt(t.channels, 10) || 0) === (parseInt(s.channels, 10) || 0);
+  }, function (t, s) {
+    return codec(t.codec) === codec(s.codec_name);
+  }, function () {
+    return true;
+  }];
+  for (var p = 0; p < tests.length; p++) {
+    for (var k = 0; k < streams.length; k++) {
+      if (map[k] !== undefined) continue;
+      var want = langKey(probeLang(streams[k]));
+      for (var i = 0; i < native.length; i++) {
+        var have = langKey(native[i].language);
+        if (used[i] || want && have && want !== have || !tests[p](native[i], streams[k])) continue;
+        map[k] = i;
+        used[i] = true;
+        break;
+      }
+    }
+  }
+  for (var n = 0; n < streams.length; n++) if (map[n] === undefined) map[n] = -1;
+  return map;
+}
+function directProbeGaveUp() {
+  if (!AppState.tizenAvplayActive || probeAudio.on) return;
+  probeAudio.gaveUp = true;
+  var vp = getEl('video-player');
+  var index = applyNativeAudioPref(vp);
+  if (index < 0) return;
+  currentAudioTrack = index;
+  renderAudioTracks();
 }
 var DIRECT_PROBE_WS = 'ws://185.204.0.61:8080/';
 var DIRECT_PROBE_TIMEOUT_MS = 15000;
@@ -4250,6 +4331,9 @@ function serverInfoStreams(entry, hash, fileId) {
 function directProbeStart() {
   directProbe.streams = null;
   directProbe.count = '';
+  probeAudio.on = false;
+  probeAudio.map = [];
+  probeAudio.gaveUp = false;
   var gen = ++directProbe.gen;
   var hash = currentTimecodeData.hash,
     fileId = currentTimecodeData.fileId;
@@ -4269,7 +4353,7 @@ function directProbeStart() {
     return;
   }
   var serverFallback = function () {
-    if (fromServer.length) done(fromServer, 'сервер');
+    if (fromServer.length) done(fromServer, 'сервер');else if (gen === directProbe.gen && !directProbe.streams) directProbeGaveUp();
   };
   var cubStarted = false;
   var startCub = function () {
@@ -4994,7 +5078,7 @@ function searchOnlineSubs(t) {
             if (!s.url || onlineSubsLang(s.lang) !== lang) continue;
             add({
               lang: lang.code,
-              url: s.url,
+              url: osUrl,
               format: 'srt',
               encoding: 'utf-8',
               name: String(s.subtitleFileName || s.movieReleaseName || '').trim(),

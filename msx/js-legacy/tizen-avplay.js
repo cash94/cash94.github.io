@@ -261,7 +261,9 @@ var TizenAVPlay = function () {
           id: String(t.index),
           kind: 'main',
           label: audioLabel(t.extra),
-          language: trimLang(t.extra.language)
+          language: trimLang(t.extra.language),
+          codec: String(t.extra.fourCC || ''),
+          channels: parseInt(t.extra.channels, 10) || 0
         };
         Object.defineProperty(item, 'enabled', {
           get: function () {

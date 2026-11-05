@@ -3264,7 +3264,7 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
       var lateAudio = applyNativeAudioPref(videoPlayer);
       if (lateAudio >= 0) {
         var lateTracks = collectNativeAudioTracks(videoPlayer);
-        if (lateTracks.length) currentAudioTracks = lateTracks;
+        if (lateTracks.length && !probeAudio.on) currentAudioTracks = lateTracks;
         currentAudioTrack = lateAudio;
         renderAudioTracks();
       }
@@ -3311,7 +3311,7 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
     // переключение (switchNativeAudioTrack) уже было написано.
     // На webOS список звука ведёт конвейер (webosSubsApply) — если он уже
     // пришёл, не перетираем его дорожками <video>
-    var nativeTracks = webosAudio.mode ? [] : collectNativeAudioTracks(videoPlayer);
+    var nativeTracks = webosAudio.mode || probeAudio.on ? [] : collectNativeAudioTracks(videoPlayer);
     if (nativeTracks.length) {
       currentAudioTracks = nativeTracks;
       // Раньше бралась включённая — то есть дорожка по умолчанию, и выбор
@@ -4070,6 +4070,10 @@ var nativeAudioPref = -1;
 function applyNativeAudioPref(videoPlayer) {
   var list = videoPlayer && videoPlayer.audioTracks;
   if (nativeAudioPref < 0 || !list || list.length === 0) return -1;
+  // Tizen (AVPlay): номер сохранён по списку из разбора файла, а у AVPlay
+  // порядок свой — ждём список (applyProbeAudioList включит её сам), по
+  // номеру AVPlay — только если разбор не ответил никто (directProbeGaveUp)
+  if (AppState.tizenAvplayActive && !probeAudio.gaveUp) return -1;
   var index = nativeAudioPref;
   // На webOS выбор ещё передаём конвейеру (webosSubsApply) — там и сбросим
   if (!(AppState.platform === 'webos' && lunaAvailable())) nativeAudioPref = -1;
@@ -4133,8 +4137,11 @@ function switchNativeAudioTrack(videoPlayer, index) {
   }
   if (!videoPlayer) return;
   if (AppState.transcodingFullOnOff && videoPlayer.audioTracks && videoPlayer.audioTracks.length > 0) {
+    // Список из разбора файла (Tizen) — дорожка AVPlay этого пункта
+    var tv = probeAudio.on ? probeAudio.map[index] : index;
+    if (tv === undefined || tv < 0) return;
     for (var i = 0; i < videoPlayer.audioTracks.length; i++) {
-      videoPlayer.audioTracks[i].enabled = (i === index);
+      videoPlayer.audioTracks[i].enabled = (i === tv);
     }
     currentAudioTrack = index;
     if (currentTimecodeData.hash && currentTimecodeData.fileId) {
@@ -4295,6 +4302,12 @@ function webosSubsApply(info) {
 // Сопоставляем по порядку (alignProbeStreams): webOS показывает не все потоки
 // файла, но порядок сохраняет.
 var directProbe = { gen: 0, streams: null, count: '', serverInfo: null };
+// Tizen (AVPlay): список звука — потоки файла как есть, в порядке файла, с
+// названиями студий (служба на ТВ, запасной — CUB). AVPlay своих названий не
+// знает, а нумерует дорожки не в порядке файла — map: пункт списка → его
+// дорожка в audioTracks (-1 — у AVPlay такой нет). gaveUp — разбор не ответил
+// никто, сохранённую дорожку включаем по номеру AVPlay
+var probeAudio = { on: false, map: [], gaveUp: false };
 var LANG_NAMES = {
   rus: 'Русский', ru: 'Русский', eng: 'English', en: 'English', ukr: 'Українська', uk: 'Українська',
   bel: 'Беларуская', kaz: 'Қазақша', jpn: '日本語', ja: '日本語', kor: '한국어', chi: '中文', zho: '中文',
@@ -4414,7 +4427,9 @@ function applyDirectProbe() {
     else if (streams[i].codec_type === 'subtitle') subs.push(streams[i]);
   }
   var diag = [];
-  if (currentAudioTracks.length && !currentAudioTracks[0].probed) {
+  if (applyProbeAudioList(audio)) {
+    diag.push('звук из файла ' + audio.length + ', у AVPlay ' + getEl('video-player').audioTracks.length);
+  } else if (currentAudioTracks.length && !currentAudioTracks[0].probed) {
     var a = alignProbeStreams(currentAudioTracks, audio, function (s) { return HIDDEN_AUDIO_CODECS[s.codec_name]; });
     if (a) {
       currentAudioTracks = currentAudioTracks.map(function (t, k) {
@@ -4438,6 +4453,81 @@ function applyDirectProbe() {
   }
   // В «Об устройстве»: сколько дорожек у плеера / в файле и сошлось ли
   if (diag.length) webosSubsDiag.probe = directProbe.count + ' · ' + diag.join(', ');
+}
+
+/**
+ * Tizen (AVPlay): звук — списком потоков файла как есть (probeAudio). false —
+ * не AVPlay, его дорожек ещё нет или в разборе нет звука: тогда как раньше.
+ */
+function applyProbeAudioList(streams) {
+  var vp = getEl('video-player'), at = vp && vp.audioTracks;
+  if (!AppState.tizenAvplayActive || !at || !at.length || !streams.length) return false;
+  var native = [];
+  for (var i = 0; i < at.length; i++) native.push(at[i]);
+  probeAudio.map = tizenAudioMap(native, streams);
+  probeAudio.on = true;
+  currentAudioTracks = streams.map(function (s, k) {
+    return { title: probeTitle(s, 'audio', k), language: probeLang(s) || 'und', channels: s.channels || null, codec: (s.codec_name || '').toUpperCase(), probed: true };
+  });
+  // Сохранённая дорожка ждала этот список (applyNativeAudioPref) — номер в нём
+  if (nativeAudioPref >= 0 && nativeAudioPref < streams.length) {
+    var tv = probeAudio.map[nativeAudioPref];
+    nativeAudioPref = -1;
+    if (tv >= 0) for (var j = 0; j < at.length; j++) at[j].enabled = (j === tv);
+  }
+  currentAudioTrack = 0;
+  for (var k = 0; k < at.length; k++) {
+    if (!at[k].enabled) continue;
+    var item = probeAudio.map.indexOf(k);
+    if (item >= 0) currentAudioTrack = item;
+    break;
+  }
+  renderAudioTracks();
+  return true;
+}
+
+/**
+ * Какая дорожка AVPlay за каждым потоком файла. Язык у AVPlay свой («ru»),
+ * а кодек и каналы он знает — сначала совпадение всего, потом язык и кодек,
+ * потом один язык. Внутри одинаковых — по порядку.
+ */
+function tizenAudioMap(native, streams) {
+  var map = [], used = [];
+  var codec = function (c) {
+    c = String(c || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    return c === 'ec3' ? 'eac3' : c === 'mp4a' ? 'aac' : c;
+  };
+  var tests = [
+    function (t, s) { return codec(t.codec) === codec(s.codec_name) && (parseInt(t.channels, 10) || 0) === (parseInt(s.channels, 10) || 0); },
+    function (t, s) { return codec(t.codec) === codec(s.codec_name); },
+    function () { return true; }
+  ];
+  for (var p = 0; p < tests.length; p++) {
+    for (var k = 0; k < streams.length; k++) {
+      if (map[k] !== undefined) continue;
+      var want = langKey(probeLang(streams[k]));
+      for (var i = 0; i < native.length; i++) {
+        var have = langKey(native[i].language);
+        if (used[i] || (want && have && want !== have) || !tests[p](native[i], streams[k])) continue;
+        map[k] = i;
+        used[i] = true;
+        break;
+      }
+    }
+  }
+  for (var n = 0; n < streams.length; n++) if (map[n] === undefined) map[n] = -1;
+  return map;
+}
+
+/** Разбор файла не ответил никто — сохранённую дорожку включаем по номеру AVPlay */
+function directProbeGaveUp() {
+  if (!AppState.tizenAvplayActive || probeAudio.on) return;
+  probeAudio.gaveUp = true;
+  var vp = getEl('video-player');
+  var index = applyNativeAudioPref(vp);
+  if (index < 0) return;
+  currentAudioTrack = index;
+  renderAudioTracks();
 }
 
 /**
@@ -4564,6 +4654,7 @@ function serverInfoStreams(entry, hash, fileId) {
 function directProbeStart() {
   directProbe.streams = null;
   directProbe.count = '';
+  probeAudio.on = false; probeAudio.map = []; probeAudio.gaveUp = false;
   var gen = ++directProbe.gen;
   var hash = currentTimecodeData.hash, fileId = currentTimecodeData.fileId;
   var done = function (streams, via) {
@@ -4583,14 +4674,17 @@ function directProbeStart() {
   // всех, приходит с /api/playback/prepare) — названия могут прийти оттуда:
   // Full, Forced, SDH и т. п. — это теги title внутри файла, AVPlay на Tizen
   // и <video> их не знают. Где брать сначала:
-  //  - Tizen — CUB (просьба пользователя: он разбирает тот же файл раздачи,
-  //    что играет телевизор, а база сервера бывает от чужого TorrServer),
-  //    сервер — только если CUB не ответил или ответил пусто;
+  //  - Tizen — свои службы на телевизоре (ниже), запасной — CUB (он разбирает
+  //    тот же файл раздачи, что играет телевизор, а база сервера бывает от
+  //    чужого TorrServer), сервер — только если и CUB не ответил;
   //  - остальные — сервер, CUB тогда не нужен.
   var fromServer = serverInfoStreams(directProbe.serverInfo, hash, fileId);
   var cubFirst = AppState.platform === 'tizen';
   if (fromServer.length && !cubFirst) { done(fromServer, 'сервер'); return; }
-  var serverFallback = function () { if (fromServer.length) done(fromServer, 'сервер'); };
+  var serverFallback = function () {
+    if (fromServer.length) done(fromServer, 'сервер');
+    else if (gen === directProbe.gen && !directProbe.streams) directProbeGaveUp();
+  };
 
   // Сервис CUB: на webOS — запасной (после своей службы), иначе — сразу
   var cubStarted = false;
@@ -5328,7 +5422,7 @@ function searchOnlineSubs(t) {
             var s = subs[c];
             if (!s.url || onlineSubsLang(s.lang) !== lang) continue;
             // strem.io сам перекодирует в UTF-8 (subencoding-stremio-utf8 в адресе)
-            add({ lang: lang.code, url: s.url, format: 'srt', encoding: 'utf-8', name: String(s.subtitleFileName || s.movieReleaseName || '').trim(), hi: false, source: 'OpenSubtitles' });
+            add({ lang: lang.code, url: osUrl, format: 'srt', encoding: 'utf-8', name: String(s.subtitleFileName || s.movieReleaseName || '').trim(), hi: false, source: 'OpenSubtitles' });
             count++;
           }
         }

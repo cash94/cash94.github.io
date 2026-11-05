@@ -282,7 +282,10 @@ var TizenAVPlay = (function () {
         var tracks = tracksOf('AUDIO'), cur = currentIndex('AUDIO'), items = [];
         for (var i = 0; i < tracks.length; i++) {
             (function (i, t) {
-                var item = { id: String(t.index), kind: 'main', label: audioLabel(t.extra), language: trimLang(t.extra.language) };
+                // codec и channels — player.js по ним находит дорожку AVPlay для
+                // потока файла (tizenAudioMap): порядок у AVPlay не как в файле
+                var item = { id: String(t.index), kind: 'main', label: audioLabel(t.extra), language: trimLang(t.extra.language),
+                    codec: String(t.extra.fourCC || ''), channels: parseInt(t.extra.channels, 10) || 0 };
                 Object.defineProperty(item, 'enabled', {
                     get: function () { var c = currentIndex('AUDIO'); return c >= 0 ? c === t.index : i === 0; },
                     set: function (v) { if (v) selectAudio(i); }
