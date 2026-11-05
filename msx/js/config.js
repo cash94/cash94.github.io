@@ -84,7 +84,7 @@ var AppState = {
   // у страницы из пакета Tizen location.protocol — «file:»
   protocol: window.TS_SERVER ? window.TS_SERVER.split('//')[0] : window.location.protocol,
   currentTorrserverUrl: '',
-  currentVersion: 'TorrStream.1.0.58',
+  currentVersion: 'TorrStream.1.0.59',
   authEnabled: false,
   serverOnline: false,
   // Ответ /api/info, если торрент-сервер — MonoServer (checkServer в torrents.js),
@@ -212,7 +212,10 @@ var AppState = {
   // Если на сервере стоит модуль skip-intro, сюда встаёт его адрес: он делает
   // то же самое, но при отсутствии данных спрашивает запасной источник
   // (см. getSkipApiBase ниже и loadSkipApiBase).
-  skipApiBase: ''
+  skipApiBase: '',
+  // Прокси онлайн-субтитров (apiproxy.json, поле subsApi): хост без схемы.
+  // Пусто — плеер ходит к TheSubtitleDB и OpenSubtitles напрямую
+  subsApiHost: ''
 };
 
 /**
@@ -255,7 +258,9 @@ function loadClientConfig() {
         }
       }
       if (data.skipApi) AppState.skipApiHost = String(data.skipApi);
-      console.log('🌐 Зеркала картинок: ' + AppState.imageMirrors.join(', ') + '; заставки: ' + AppState.skipApiHost);
+      if (data.subsApi !== undefined) AppState.subsApiHost = String(data.subsApi || '');
+      console.log('🌐 Зеркала картинок: ' + AppState.imageMirrors.join(', ') + '; заставки: ' + AppState.skipApiHost +
+        '; субтитры: ' + (AppState.subsApiHost || 'напрямую'));
     })
     ['catch'](function () { });
 }

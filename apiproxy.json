@@ -14,5 +14,6 @@
     "proxy.vokino.pro/image",
     "nmtmdb.duckdns.org"
   ],
-  "skipApi": "tsskip.torrstream.online"
+  "skipApi": "tsskip.torrstream.online",
+  "subsApi": "tssubs.torrstream.online"
 }

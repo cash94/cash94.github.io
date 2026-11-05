@@ -2271,7 +2271,8 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       poster: getCurrentItemPoster(),
       id: item && (item.tmdbId || item.id) || null,
       type: item && item.media_type || (AppState.isCatalogSerials ? 'tv' : 'movie'),
-      online_subs: onlineSubsPayload(torrentHash, fileId)
+      online_subs: onlineSubsPayload(torrentHash, fileId),
+      online_subs_proxy: AppState.subsApiHost ? AppState.protocol + '//' + AppState.subsApiHost : ''
     };
     if (AppState.autoSwitchEpisodes) {
       var playlist = buildEpisodesPlaylist(currentEpisodeIndex, seekTime);
@@ -5000,8 +5001,42 @@ function onlineSubsPayload(hash, fileId) {
     episode: t.episode
   } : null;
 }
+var ONLINE_SUBS_PROXY_TIMEOUT_MS = 8000;
+var ONLINE_SUBS_PROXY_REST_MS = 5 * 60 * 1000;
+var onlineSubsProxyDownUntil = 0;
+function onlineSubsProxied(url) {
+  var host = AppState.subsApiHost;
+  if (!host || Date.now() < onlineSubsProxyDownUntil) return null;
+  var m = String(url).match(/^https:\/\/(api\.thesubtitledb\.org|opensubtitles-v3\.strem\.io|subs\d*\.strem\.io)\/(.*)$/);
+  if (!m) return null;
+  var prefix = m[1] === 'api.thesubtitledb.org' ? '/tsdb/' : m[1] === 'opensubtitles-v3.strem.io' ? '/os/' : '/strem/' + m[1] + '/';
+  return AppState.protocol + '//' + host + prefix + m[2];
+}
+function onlineSubsDirect(url) {
+  var m = String(url || '').match(/^https?:\/\/([^\/]+)\/(tsdb|os|strem\/(subs\d*\.strem\.io))\/(.*)$/);
+  if (!m || !AppState.subsApiHost || m[1].split(':')[0] !== AppState.subsApiHost.split(/[\/:]/)[0]) return url;
+  var host = m[2] === 'tsdb' ? 'api.thesubtitledb.org' : m[2] === 'os' ? 'opensubtitles-v3.strem.io' : m[3];
+  return 'https://' + host + '/' + m[4];
+}
+function onlineSubsFetch(url, timeoutMs) {
+  var direct = function () {
+    return fetchWithTimeout(url, {}, timeoutMs);
+  };
+  var proxied = onlineSubsProxied(url);
+  if (!proxied) return direct();
+  var proxyFailed = function (e) {
+    onlineSubsProxyDownUntil = Date.now() + ONLINE_SUBS_PROXY_REST_MS;
+    console.warn('[онлайн-субтитры] прокси ' + AppState.subsApiHost + ' не ответил — напрямую:', e && e.message);
+    return direct();
+  };
+  return fetchWithTimeout(proxied, {}, Math.min(timeoutMs, ONLINE_SUBS_PROXY_TIMEOUT_MS)).then(function (r) {
+    if (r.ok) return r;
+    if (r.status >= 500) return proxyFailed(new Error('HTTP ' + r.status));
+    return direct();
+  }, proxyFailed);
+}
 function onlineSubsFetchJson(url) {
-  return fetchWithTimeout(url, {}, ONLINE_SUBS_FETCH_MS).then(function (r) {
+  return onlineSubsFetch(url, ONLINE_SUBS_FETCH_MS).then(function (r) {
     return r.ok ? r.json() : null;
   })['catch'](function () {
     return null;
@@ -5016,7 +5051,7 @@ function tsdbItems(data, lang) {
     if (!s.download_url || !ONLINE_SUBS_FORMATS[fmt]) continue;
     out.push({
       lang: lang,
-      url: s.download_url,
+      url: onlineSubsDirect(s.download_url),
       format: fmt,
       encoding: s.encoding || '',
       name: String(s.release_name || '').trim(),
@@ -5076,6 +5111,7 @@ function searchOnlineSubs(t) {
           for (var c = 0; c < subs.length && count < ONLINE_SUBS_PER_LANG; c++) {
             var s = subs[c];
             if (!s.url || onlineSubsLang(s.lang) !== lang) continue;
+            var osUrl = onlineSubsDirect(s.url);
             add({
               lang: lang.code,
               url: osUrl,
@@ -5318,7 +5354,7 @@ var OnlineSubs = {
     this.loadingUrl = item.url;
     this.failedUrl = null;
     this.refreshPanel();
-    return fetchWithTimeout(item.url, {}, ONLINE_SUBS_FETCH_MS * 2).then(function (r) {
+    return onlineSubsFetch(item.url, ONLINE_SUBS_FETCH_MS * 2).then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return typeof TextDecoder === 'function' ? r.arrayBuffer().then(function (buf) {
         return decodeSubtitleBytes(buf, item.encoding);

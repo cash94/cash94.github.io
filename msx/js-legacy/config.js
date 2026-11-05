@@ -64,7 +64,7 @@ function readHomeRowTransformFlag() {
 var AppState = {
   protocol: window.TS_SERVER ? window.TS_SERVER.split('//')[0] : window.location.protocol,
   currentTorrserverUrl: '',
-  currentVersion: 'TorrStream.1.0.58',
+  currentVersion: 'TorrStream.1.0.59',
   authEnabled: false,
   serverOnline: false,
   monoServer: null,
@@ -130,7 +130,8 @@ var AppState = {
   openInRow: false,
   imageMirrors: ['tsimg.torrstream.online', 'nl.imagetmdb.com', 'mocha.stull.xyz', 'proxy.vokino.pro/image', 'nmtmdb.duckdns.org'],
   skipApiHost: 'tsskip.torrstream.online',
-  skipApiBase: ''
+  skipApiBase: '',
+  subsApiHost: ''
 };
 function getPrimaryImageHost() {
   return AppState.imageMirrors && AppState.imageMirrors[0] || 'tsimg.torrstream.online';
@@ -152,7 +153,8 @@ function loadClientConfig() {
       }
     }
     if (data.skipApi) AppState.skipApiHost = String(data.skipApi);
-    console.log('🌐 Зеркала картинок: ' + AppState.imageMirrors.join(', ') + '; заставки: ' + AppState.skipApiHost);
+    if (data.subsApi !== undefined) AppState.subsApiHost = String(data.subsApi || '');
+    console.log('🌐 Зеркала картинок: ' + AppState.imageMirrors.join(', ') + '; заставки: ' + AppState.skipApiHost + '; субтитры: ' + (AppState.subsApiHost || 'напрямую'));
   })['catch'](function () {});
 }
 function getSkipApiBase() {
