@@ -546,7 +546,7 @@ function playbackPreloadTick(state) {
     }
     if (state.loaded >= PRELOAD_PROBE_AFTER_BYTES) startPreloadProbe(state);
     renderPlaybackPreload(state);
-    if (state.loaded >= PRELOAD_TARGET_BYTES) { finishPlaybackPreload(state, true); return; }
+    if (state.loaded >= PRELOAD_TARGET_BYTES && !state.waiting) { finishPlaybackPreload(state, true); return; }
     schedulePlaybackPreloadTick(state, PRELOAD_POLL_MS);
   });
 }
@@ -558,6 +558,8 @@ function playbackPreloadTick(state) {
  */
 function finishPlaybackPreload(state, play) {
   if (activePlaybackPreload !== state) return;
+  // «Смотреть сейчас» в окне ожидания: смотреть пока нечего
+  if (play && state.waiting) return;
   activePlaybackPreload = null;
   if (state.timer) { clearTimeout(state.timer); state.timer = null; }
   if (play && preloadHoldsUntilPlaying()) holdPreloadScreen();
@@ -727,12 +729,28 @@ window.addEventListener('keyup', onPlaybackPreloadKeyUp, true);
 /**
  * Показать окно предзагрузки и ждать буфер. Промис: true — запускать
  * воспроизведение, false — пользователь отменил.
+ *
+ * fileId null — окно ожидания: файл ещё неизвестен, потому что у новой раздачи
+ * нет метаданных. Греть нечего, но пиры уже видно: по ним понятно, живая ли
+ * раздача, а «Назад» отменяет запуск. Следующий вызов с той же раздачей и файлом
+ * продолжает в этом же окне: кадр, логотип и шкала остаются, начинается только
+ * прогрев. Открой мы окно заново, на экране мелькнул бы второй экран.
  */
 function runPlaybackPreload(hash, fileId, title) {
+  var open = activePlaybackPreload;
+  if (open && open.waiting && fileId !== null && open.hash === String(hash).toLowerCase()) {
+    return new Promise(function (resolve) {
+      open.waiting = false;
+      open.fileId = fileId;
+      open.key = open.hash + ':' + fileId;
+      open.resolve = resolve;
+      startPreloadRequest(open);
+    });
+  }
   if (activePlaybackPreload) finishPlaybackPreload(activePlaybackPreload, false);
   return new Promise(function (resolve) {
     var state = {
-      hash: hash,
+      hash: String(hash).toLowerCase(),
       fileId: fileId,
       key: String(hash).toLowerCase() + ':' + fileId,
       resolve: resolve,
@@ -741,6 +759,7 @@ function runPlaybackPreload(hash, fileId, title) {
       stats: null,
       loaded: 0,
       error: '',
+      waiting: fileId === null,
       probeStarted: false
     };
     activePlaybackPreload = state;
@@ -760,30 +779,39 @@ function runPlaybackPreload(hash, fileId, title) {
     // бы соединение к TorrServer впустую. Отметка в player.js — чтобы
     // preparePlaybackMetadata не повторил прогрев этого же файла
     if (typeof abortPendingPreload === 'function') abortPendingPreload();
-    if (typeof wasPreloadedRecently === 'function') wasPreloadedRecently(hash, fileId);
-    var url = AppState.currentTorrserverUrl + '/stream?link=' + hash + '&index=' + fileId + '&preload=preload';
-    // bgMode 'none': через фоновый поток, тело ответа не нужно — важен сам ответ
-    var options = { method: 'GET', headers: getAuthHeaders(), bgMode: 'none' };
-    if (state.controller) options.signal = state.controller.signal;
-    (window.bgFetch ? window.bgFetch(url, options) : fetch(url, options)).then(function (response) {
-      if (activePlaybackPreload !== state) return;
-      if (response.ok) {
-        // TorrServer догрел свой объём — ждать больше нечего
-        state.loaded = Math.max(state.loaded, PRELOAD_TARGET_BYTES);
-        renderPlaybackPreload(state);
-        finishPlaybackPreload(state, true);
-      } else {
-        state.error = 'TorrServer ответил ' + response.status;
-        renderPlaybackPreload(state);
-      }
-    }, function (error) {
-      if (activePlaybackPreload !== state || (error && error.name === 'AbortError')) return;
-      state.error = 'Нет ответа от TorrServer';
-      renderPlaybackPreload(state);
-    });
-
+    if (!state.waiting) startPreloadRequest(state);
     schedulePlaybackPreloadTick(state, 0);
   });
+}
+
+function startPreloadRequest(state) {
+  if (typeof wasPreloadedRecently === 'function') wasPreloadedRecently(state.hash, state.fileId);
+  var url = AppState.currentTorrserverUrl + '/stream?link=' + state.hash + '&index=' + state.fileId + '&preload=preload';
+  // bgMode 'none': через фоновый поток, тело ответа не нужно — важен сам ответ
+  var options = { method: 'GET', headers: getAuthHeaders(), bgMode: 'none' };
+  if (state.controller) options.signal = state.controller.signal;
+  (window.bgFetch ? window.bgFetch(url, options) : fetch(url, options)).then(function (response) {
+    if (activePlaybackPreload !== state) return;
+    if (response.ok) {
+      // TorrServer догрел свой объём — ждать больше нечего
+      state.loaded = Math.max(state.loaded, PRELOAD_TARGET_BYTES);
+      renderPlaybackPreload(state);
+      finishPlaybackPreload(state, true);
+    } else {
+      state.error = 'TorrServer ответил ' + response.status;
+      renderPlaybackPreload(state);
+    }
+  }, function (error) {
+    if (activePlaybackPreload !== state || (error && error.name === 'AbortError')) return;
+    state.error = 'Нет ответа от TorrServer';
+    renderPlaybackPreload(state);
+  });
+}
+
+/** Закрыть окно ожидания, если оно ещё ждёт файл: отказ, как «Назад» */
+function endPlaybackPreloadWait() {
+  var state = activePlaybackPreload;
+  if (state && state.waiting) finishPlaybackPreload(state, false);
 }
 
 function isPlaybackPreloadActive() {
@@ -805,5 +833,6 @@ window.stopTorrentStatsUpdates = stopTorrentStatsUpdates;
 window.torrentStatsCache = torrentStatsCache;
 window.refreshTorrentStatsCadence = refreshTorrentStatsCadence;
 window.runPlaybackPreload = runPlaybackPreload;
+window.endPlaybackPreloadWait = endPlaybackPreloadWait;
 window.isPlaybackPreloadActive = isPlaybackPreloadActive;
 window.isPreloadScreenShown = isPreloadScreenShown;

@@ -7867,6 +7867,7 @@ html.season-halloween #home-topbar #home-clock::before {
 #detail-view #catalog-toggle-overview-btn,
 #detail-view #detail-open-card-btn,
 #detail-view #catalog-favorite-btn,
+#detail-view #catalog-best-btn,
 #detail-view #catalog-trailer-btn {
   background: rgba(109, 109, 110, 0.7) !important;
   color: #ffffff !important;
@@ -7879,8 +7880,158 @@ html.season-halloween #home-topbar #home-clock::before {
 #detail-view #catalog-toggle-overview-btn:hover,
 #detail-view #detail-open-card-btn:hover,
 #detail-view #catalog-favorite-btn:hover,
+#detail-view #catalog-best-btn:hover,
 #detail-view #catalog-trailer-btn:hover {
   background: rgba(109, 109, 110, 0.9) !important;
+}
+
+/* --- «Лучшие»: кнопка и выпадающий список (js/best-torrents.js) --- */
+#detail-view.torrent-detail-mode #catalog-best-btn {
+  display: none !important;
+}
+
+#catalog-detail-actions {
+  position: relative;
+}
+
+/* Значок рамкой, а не символом: ▾ есть не в каждом шрифте телевизора */
+.catalog-best-caret {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-left: 10px;
+  vertical-align: middle;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 7px solid currentColor;
+}
+
+#catalog-best-btn.is-loading .catalog-best-caret {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: catalog-best-spin 0.8s linear infinite;
+}
+
+@keyframes catalog-best-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Открывается вверх: ряд кнопок стоит внизу сцены, а ниже идут ленты */
+.catalog-best-menu {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  z-index: 30;
+  width: calc(var(--cs, 20px) * 30);
+  max-width: 92vw;
+  margin-bottom: calc(var(--cs, 20px) * 0.7);
+  padding: calc(var(--cs, 20px) * 0.5);
+  box-sizing: border-box;
+  border-radius: 10px;
+  background: rgba(20, 20, 26, 0.97);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6);
+  color: #ffffff;
+  text-align: left;
+}
+
+.catalog-best-menu.hidden {
+  display: none;
+}
+
+.catalog-best-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+}
+
+.catalog-best-title {
+  font-size: calc(var(--cs, 20px) * 1);
+  font-weight: 700;
+}
+
+.catalog-best-arrow {
+  width: calc(var(--cs, 20px) * 2);
+  font-size: calc(var(--cs, 20px) * 1.4);
+  line-height: 1;
+  text-align: center;
+  cursor: pointer;
+}
+
+.catalog-best-arrow.is-off {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.catalog-best-note {
+  display: block;
+  padding: 0 10px 6px;
+  font-size: calc(var(--cs, 20px) * 0.8);
+  text-align: center;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.catalog-best-row {
+  display: flex;
+  align-items: center;
+  padding: calc(var(--cs, 20px) * 0.5);
+  border-radius: 6px;
+  font-size: calc(var(--cs, 20px) * 0.85);
+  cursor: pointer;
+}
+
+.catalog-best-row.active {
+  background: #ffffff;
+  color: #000000;
+  box-shadow: 0 0 0 2px var(--focus-color, #ff8c00);
+}
+
+.catalog-best-row.is-new {
+  animation: catalog-best-row-in 0.22s ease-out;
+}
+
+@keyframes catalog-best-row-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.catalog-best-label {
+  flex: 0 0 calc(var(--cs, 20px) * 4.6);
+  font-weight: 700;
+}
+
+.catalog-best-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  opacity: 0.8;
+}
+
+.catalog-best-episodes {
+  flex: 0 0 auto;
+  margin-left: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.catalog-best-status {
+  display: flex;
+  align-items: center;
+  padding: calc(var(--cs, 20px) * 0.5);
+  font-size: calc(var(--cs, 20px) * 0.8);
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.catalog-best-spinner {
+  width: 14px;
+  height: 14px;
+  margin-right: 10px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: catalog-best-spin 0.8s linear infinite;
 }
 
 /* Иконка ▶ внутри «Трейлера»: у кнопки gap обнулён, отступ даёт она сама */
@@ -12256,6 +12407,7 @@ html.apple-device {
 
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-best-btn,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn {
   width: calc(var(--cs) * 2.9);
@@ -12270,6 +12422,7 @@ html.apple-device {
    проигрывает фону круглой кнопки по специфичности) */
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn.focused,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn.focused,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-best-btn.focused,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn.focused,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn.focused {
   background: #fff !important;
@@ -12281,8 +12434,35 @@ html.apple-device {
   content: "\ec79" !important;
 }
 
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-best-btn::before {
+  content: "\f48f" !important;
+  font-family: "uicons-regular-rounded";
+  font-weight: normal;
+  line-height: 1;
+}
+
+/* Круглая кнопка: значка раскрытия нет, индикатор поиска — кольцом по краю */
+#detail-view.catalog-detail-mode.detail-cinema #catalog-best-btn .catalog-best-caret {
+  display: none;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-best-btn.is-loading .catalog-best-caret {
+  display: block;
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  right: -3px;
+  bottom: -3px;
+  width: auto;
+  height: auto;
+  margin: 0;
+  box-sizing: border-box;
+  border-width: 3px;
+}
+
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn::before,
-#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn::before {
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn::before,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-best-btn::before {
   margin: 0;
   font-size: calc(var(--cs) * 1.15);
   vertical-align: middle;
@@ -12305,6 +12485,7 @@ html.apple-device {
    а значок без слов на ТВ не всегда понятен */
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn::after,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn::after,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-best-btn::after,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn::after,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn::after {
   content: attr(data-label);
@@ -12326,6 +12507,7 @@ html.apple-device {
 
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn.focused::after,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn.focused::after,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-best-btn.focused::after,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn.focused::after,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn.focused::after {
   opacity: 1;

@@ -171,6 +171,12 @@ var TorrentsWorker = (function () {
             return request('JACRED_SEARCH', { url: url, filters: filters || null }, timeoutMs || 30000, signal);
         },
 
+        // --- Лучшие раздачи карточки: запрос к Jacred и подбор в воркере.
+        // Ответ — {serial, groups}, см. best-torrents-pick.js ---
+        jacredBest: function (url, ctx, pickUrl, timeoutMs, signal) {
+            return request('JACRED_BEST', { url: url, ctx: ctx, pickUrl: pickUrl }, timeoutMs || 30000, signal);
+        },
+
         // --- Поиск: вычисление доступных фильтров ---
         computeFilters: function (items) {
             return request('COMPUTE_FILTERS', { items: items });

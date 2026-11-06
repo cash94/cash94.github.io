@@ -6214,6 +6214,7 @@ async function showCatalogDetail(item, index, posterUrl) {
     // «Продолжить» — тоже: место просмотра уже есть в ряду главной. Серии
     // ходят в TorrServer и TMDB, поэтому запрос сразу, параллельно с деталями
     var episodesPromise = setupDetailResume(item);
+    if (window.BestTorrents) BestTorrents.beginCard(item);
     if (aw) aw.classList.add('hidden');
     if (rw) rw.classList.add('hidden');
     if (wb) {
@@ -6377,6 +6378,7 @@ async function showCatalogDetail(item, index, posterUrl) {
         if (typeof Animations !== 'undefined' && typeof Animations.detailContentReady === 'function') {
             Animations.detailContentReady();
         }
+        if (window.BestTorrents) BestTorrents.cardReady(item, (wb && wb.dataset.searchTitle) || title, details);
     });
 }
 
@@ -6594,6 +6596,7 @@ function hideCatalogDetailView() {
     if (!dv) return;
 
     stopTrailerBackground();
+    if (window.BestTorrents) BestTorrents.leave();
 
     dv.classList.remove('catalog-detail-mode');
     dv.style.backgroundImage = '';

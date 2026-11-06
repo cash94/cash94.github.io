@@ -826,7 +826,8 @@ function workerLoadAllTmdbData(torrent) {
 var lastSearch = { token: 0, items: [] };
 var searchControllers = {};
 
-function workerJacredSearch(id, p) {
+/** Запрос к Jacred, разбор и нормализация; done получает всю выдачу */
+function fetchJacredItems(id, p, done) {
     var ctl = null;
     try { ctl = new AbortController(); } catch (e) { ctl = null; }
     if (ctl) searchControllers[id] = ctl;
@@ -846,15 +847,7 @@ function workerJacredSearch(id, p) {
             else if (Array.isArray(data)) raw = data;
             var items = new Array(raw.length);
             for (var i = 0; i < raw.length; i++) items[i] = normalizeSearchResult(raw[i]);
-            lastSearch = { token: lastSearch.token + 1, items: items };
-            self.postMessage({
-                id: id, type: 'RESULT', data: {
-                    token: lastSearch.token,
-                    results: items,
-                    filters: computeAvailableFilters(items),
-                    filtered: p.filters ? computeFilteredAndSorted(items, p.filters) : null
-                }
-            });
+            done(items);
         });
     }).catch(function (err) {
         delete searchControllers[id];
@@ -864,6 +857,42 @@ function workerJacredSearch(id, p) {
             error: aborted ? 'aborted' : ((err && err.message) || 'Failed to fetch'),
             kind: aborted ? 'abort' : 'net'
         });
+    });
+}
+
+function workerJacredSearch(id, p) {
+    fetchJacredItems(id, p, function (items) {
+        lastSearch = { token: lastSearch.token + 1, items: items };
+        self.postMessage({
+            id: id, type: 'RESULT', data: {
+                token: lastSearch.token,
+                results: items,
+                filters: computeAvailableFilters(items),
+                filtered: p.filters ? computeFilteredAndSorted(items, p.filters) : null
+            }
+        });
+    });
+}
+
+/*
+ * Список «Лучшие» (best-torrents.js): обратно уходит несколько строк, а не сотни
+ * раздач. lastSearch не трогаем — это фоновый запрос карточки, а там лежит
+ * выдача, которую человек, может быть, сейчас фильтрует.
+ *
+ * Подбор живёт в отдельном файле, общем с основным потоком; адрес присылает
+ * страница, у неё он уже с нужной версией. Не загрузился — отвечаем ошибкой без
+ * kind, и страница считает всё сама.
+ */
+function workerJacredBest(id, p) {
+    if (!self.BestTorrentsPick) {
+        try { importScripts(p.pickUrl); } catch (e) { }
+    }
+    if (!self.BestTorrentsPick) {
+        self.postMessage({ id: id, type: 'ERROR', error: 'best-torrents-pick.js не загрузился' });
+        return;
+    }
+    fetchJacredItems(id, p, function (items) {
+        self.postMessage({ id: id, type: 'RESULT', data: self.BestTorrentsPick.pick(items, p.ctx) });
     });
 }
 
@@ -877,6 +906,11 @@ self.onmessage = function (e) {
         // --- Поиск Jacred: запрос, разбор, нормализация, фильтры ---
         case 'JACRED_SEARCH':
             workerJacredSearch(id, msg.payload || {});
+            break;
+
+        // --- Лучшие раздачи для карточки: запрос и подбор ---
+        case 'JACRED_BEST':
+            workerJacredBest(id, msg.payload || {});
             break;
 
         // --- Обрыв запроса (таймаут, новый поиск) ---

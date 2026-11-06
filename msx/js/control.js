@@ -952,7 +952,7 @@ function getDetailItems() {
     // '#detail-view .home-nav-btn' — кнопки шапки разделов, поднятой поверх
     // карточки (js/home.js: DetailTopbar). Селектор намеренно привязан к
     // #detail-view: пока шапка на своём месте, он не совпадает ни с чем.
-    var s = ['#detail-view .home-nav-btn', '.detail-progress-btn', '.file-item', '#catalog-resume-btn', '#catalog-watch-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-favorite-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-episode-card', '.catalog-actor-card', '.catalog-recommendation-card'];
+    var s = ['#detail-view .home-nav-btn', '.detail-progress-btn', '.file-item', '#catalog-resume-btn', '#catalog-watch-btn', '#catalog-best-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-favorite-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-episode-card', '.catalog-actor-card', '.catalog-recommendation-card'];
     // Сборный селектор → порядок обхода совпадает с порядком в DOM, а не с
     // порядком селекторов. Важно для торрентного detail: там ряд актёров идёт
     // ПЕРЕД файлами, и «вверх» от плитки должно попадать в него.
@@ -2608,6 +2608,8 @@ function isHomeUnderneath() {
 }
 
 function onBack() {
+    // Сюда же приходит аппаратный «Назад» Android (сторож popstate), мимо keydown
+    if (isBestTorrentsOpen()) { BestTorrents.close(); return true; }
     var s = getEl('search-overlay'), d = getEl('detail-view'), c = getEl('config-screen');
     var cat = currentScreen() === 'catalog', dn = currentScreen() === 'donate';
     var hm = currentScreen() === 'home';
@@ -4932,6 +4934,7 @@ function closeCustomFilterMenu() { var m = getEl('custom-filter-menu'); if (m) m
 function scrollToActiveFilterOption() { var ao = document.querySelector('.custom-filter-option.active'), oc = getEl('custom-filter-menu-options'); if (!ao || !oc) return; var cr = oc.getBoundingClientRect(), or = ao.getBoundingClientRect(), st = oc.scrollTop, ot = or.top - cr.top; if (ot < 0) oc.scrollTop = st + ot - 10; else if (ot + or.height > cr.height) oc.scrollTop = st + (ot + or.height - cr.height) + 10; }
 function moveCustomFilterMenu(d) { if (!customFilterMenuState || !customFilterMenuState.options.length) return true; var l = customFilterMenuState.options.length, n = customFilterMenuState.index + d; if (n < 0 || n >= l) return true; customFilterMenuState.index = n; renderCustomFilterMenu(); setTimeout(scrollToActiveFilterOption, 10); return true; }
 function applyCustomFilterMenuSelection() { if (!customFilterMenuState || !customFilterMenuState.selectEl) return false; var s = customFilterMenuState.selectEl, o = customFilterMenuState.options, i = customFilterMenuState.index, c = o[i]; if (!c) return false; s.value = String(c.value); try { var e = document.createEvent('Event'); e.initEvent('change', true, true); s.dispatchEvent(e); } catch (e) { } if (typeof window.getCurrentSearchMode === 'function') window.getCurrentSearchMode(); closeCustomFilterMenu(); try { focusEl(s); } catch (e) { } return true; }
+function isBestTorrentsOpen() { return !!(window.BestTorrents && BestTorrents.isOpen()); }
 function isCustomFilterMenuOpen() { var m = getEl('custom-filter-menu'); return !!(m && !m.classList.contains('hidden') && customFilterMenuState); }
 function openNativeSearchControl(el) {
     if (!VISIBLE(el)) return false;
@@ -4972,6 +4975,7 @@ function setupFocusRescue() {
             var po = getEl('playback-overlay'), ip = po && po.classList.contains('active');
             if (ip) { cancelCurrentPlayback(); if (typeof window.releasePreloadScreen === 'function') window.releasePreloadScreen(true); return; }
             if (isCustomFilterMenuOpen()) { closeCustomFilterMenu(); return; }
+            if (isBestTorrentsOpen()) { BestTorrents.close(); return; }
             if (s === 'catalog' && window.catalogState && window.catalogState.currentCatalog) { window.catalogState.lastSelectedIndex = 0; window.catalogState.lastSelectedId = null; localStorage.removeItem('lastCatalogCardIndex'); }
             onBack();
             return;
@@ -4981,6 +4985,7 @@ function setupFocusRescue() {
             e.stopImmediatePropagation();
             var d = arrowDir(e.keyCode);
             if (isCustomFilterMenuOpen()) { if (d === 'up') moveCustomFilterMenu(-1); else if (d === 'down') moveCustomFilterMenu(1); return; }
+            if (isBestTorrentsOpen()) { BestTorrents.handleArrow(d); return; }
             // Ряды каталога и главной идут сюда, а не через navigate(), поэтому
             // флаг удержания взводим здесь: на нём висит откладывание постеров
             // в catalog.js (вставка карточки посреди твина = фриз).
@@ -5001,6 +5006,7 @@ function setupFocusRescue() {
             okKeyHeld = true;
             okKeyLastDown = okNow;
             if (isCustomFilterMenuOpen()) { applyCustomFilterMenuSelection(); return; }
+            if (isBestTorrentsOpen()) { if (!okRepeat) BestTorrents.handleOk(); return; }
             if (s === 'torrents') {
                 var f = document.querySelector('.focused');
                 if (f && f.classList.contains('torrent-card')) {

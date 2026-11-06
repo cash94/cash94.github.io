@@ -1770,7 +1770,7 @@ function _addProgressToDetail() {
             if (detailView) detailView.style.pointerEvents = 'auto';
           });
         });
-        return function (_x39) {
+        return function (_x42) {
           return _ref3.apply(this, arguments);
         };
       }());
@@ -5795,6 +5795,46 @@ var SearchPicks = function () {
   };
 }();
 window.SearchPicks = SearchPicks;
+function addBestPickToServer(_x35, _x36, _x37) {
+  return _addBestPickToServer.apply(this, arguments);
+}
+function _addBestPickToServer() {
+  _addBestPickToServer = _asyncToGenerator(function* (item, row, poster) {
+    var hash = extractHashFromMagnet(row.magnet);
+    if (!hash) return null;
+    var pending = AppState.pendingDetailItem;
+    var mediaType = item.media_type || AppState.mediaType || 'movie';
+    AppState.pendingDetailItem = item;
+    AppState.isCatalogSerials = false;
+    SearchPicks.add(hash, row);
+    var added;
+    try {
+      added = yield addTorrentToServer(row.magnet, hash, row, {
+        poster: poster,
+        tmdbId: item.id,
+        mediaType: mediaType
+      });
+    } finally {
+      AppState.pendingDetailItem = pending;
+    }
+    if (!added) return null;
+    if (added === true) {
+      yield refreshTorrentsList();
+      added = AppState.torrents.find(function (t) {
+        return (t.hash || '').toLowerCase() === hash;
+      }) || {
+        hash: hash,
+        title: item.title || item.name || row.title
+      };
+    }
+    added.poster = added.poster || poster;
+    added.tmdbId = added.tmdbId || item.id;
+    added.media_type = added.media_type || mediaType;
+    return added;
+  });
+  return _addBestPickToServer.apply(this, arguments);
+}
+window.addBestPickToServer = addBestPickToServer;
 function searchResultHash(result) {
   if (!result) return null;
   if (result._hash === undefined) result._hash = extractHashFromMagnet(result.magnet) || null;
@@ -5933,7 +5973,7 @@ function getCurrentSearchMode() {
   if (modeSelect) currentSearchMode = modeSelect.value;
   return currentSearchMode;
 }
-function searchTMDB(_x35) {
+function searchTMDB(_x38) {
   return _searchTMDB.apply(this, arguments);
 }
 function _searchTMDB() {
@@ -5987,7 +6027,7 @@ function _searchTMDB() {
   });
   return _searchTMDB.apply(this, arguments);
 }
-function searchTMDBLegacy(_x36, _x37) {
+function searchTMDBLegacy(_x39, _x40) {
   return _searchTMDBLegacy.apply(this, arguments);
 }
 function _searchTMDBLegacy() {
@@ -6164,7 +6204,7 @@ function renderFilteredGlobalResults(results) {
     }
   };
 }
-function showGlobalSearchDetail(_x38) {
+function showGlobalSearchDetail(_x41) {
   return _showGlobalSearchDetail.apply(this, arguments);
 }
 function _showGlobalSearchDetail() {

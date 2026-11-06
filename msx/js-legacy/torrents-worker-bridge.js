@@ -153,6 +153,13 @@ var TorrentsWorker = function () {
         filters: filters || null
       }, timeoutMs || 30000, signal);
     },
+    jacredBest: function (url, ctx, pickUrl, timeoutMs, signal) {
+      return request('JACRED_BEST', {
+        url: url,
+        ctx: ctx,
+        pickUrl: pickUrl
+      }, timeoutMs || 30000, signal);
+    },
     computeFilters: function (items) {
       return request('COMPUTE_FILTERS', {
         items: items

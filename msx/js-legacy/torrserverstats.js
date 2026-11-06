@@ -412,7 +412,7 @@ function playbackPreloadTick(state) {
     }
     if (state.loaded >= PRELOAD_PROBE_AFTER_BYTES) startPreloadProbe(state);
     renderPlaybackPreload(state);
-    if (state.loaded >= PRELOAD_TARGET_BYTES) {
+    if (state.loaded >= PRELOAD_TARGET_BYTES && !state.waiting) {
       finishPlaybackPreload(state, true);
       return;
     }
@@ -421,6 +421,7 @@ function playbackPreloadTick(state) {
 }
 function finishPlaybackPreload(state, play) {
   if (activePlaybackPreload !== state) return;
+  if (play && state.waiting) return;
   activePlaybackPreload = null;
   if (state.timer) {
     clearTimeout(state.timer);
@@ -557,10 +558,20 @@ function onPlaybackPreloadKeyUp(e) {
 window.addEventListener('keydown', onPlaybackPreloadKeyDown, true);
 window.addEventListener('keyup', onPlaybackPreloadKeyUp, true);
 function runPlaybackPreload(hash, fileId, title) {
+  var open = activePlaybackPreload;
+  if (open && open.waiting && fileId !== null && open.hash === String(hash).toLowerCase()) {
+    return new Promise(function (resolve) {
+      open.waiting = false;
+      open.fileId = fileId;
+      open.key = open.hash + ':' + fileId;
+      open.resolve = resolve;
+      startPreloadRequest(open);
+    });
+  }
   if (activePlaybackPreload) finishPlaybackPreload(activePlaybackPreload, false);
   return new Promise(function (resolve) {
     var state = {
-      hash: hash,
+      hash: String(hash).toLowerCase(),
       fileId: fileId,
       key: String(hash).toLowerCase() + ':' + fileId,
       resolve: resolve,
@@ -569,6 +580,7 @@ function runPlaybackPreload(hash, fileId, title) {
       stats: null,
       loaded: 0,
       error: '',
+      waiting: fileId === null,
       probeStarted: false
     };
     activePlaybackPreload = state;
@@ -582,31 +594,38 @@ function runPlaybackPreload(hash, fileId, title) {
     els.fill.style.transition = '';
     els.root.classList.add('active');
     if (typeof abortPendingPreload === 'function') abortPendingPreload();
-    if (typeof wasPreloadedRecently === 'function') wasPreloadedRecently(hash, fileId);
-    var url = AppState.currentTorrserverUrl + '/stream?link=' + hash + '&index=' + fileId + '&preload=preload';
-    var options = {
-      method: 'GET',
-      headers: getAuthHeaders(),
-      bgMode: 'none'
-    };
-    if (state.controller) options.signal = state.controller.signal;
-    (window.bgFetch ? window.bgFetch(url, options) : fetch(url, options)).then(function (response) {
-      if (activePlaybackPreload !== state) return;
-      if (response.ok) {
-        state.loaded = Math.max(state.loaded, PRELOAD_TARGET_BYTES);
-        renderPlaybackPreload(state);
-        finishPlaybackPreload(state, true);
-      } else {
-        state.error = 'TorrServer ответил ' + response.status;
-        renderPlaybackPreload(state);
-      }
-    }, function (error) {
-      if (activePlaybackPreload !== state || error && error.name === 'AbortError') return;
-      state.error = 'Нет ответа от TorrServer';
-      renderPlaybackPreload(state);
-    });
+    if (!state.waiting) startPreloadRequest(state);
     schedulePlaybackPreloadTick(state, 0);
   });
+}
+function startPreloadRequest(state) {
+  if (typeof wasPreloadedRecently === 'function') wasPreloadedRecently(state.hash, state.fileId);
+  var url = AppState.currentTorrserverUrl + '/stream?link=' + state.hash + '&index=' + state.fileId + '&preload=preload';
+  var options = {
+    method: 'GET',
+    headers: getAuthHeaders(),
+    bgMode: 'none'
+  };
+  if (state.controller) options.signal = state.controller.signal;
+  (window.bgFetch ? window.bgFetch(url, options) : fetch(url, options)).then(function (response) {
+    if (activePlaybackPreload !== state) return;
+    if (response.ok) {
+      state.loaded = Math.max(state.loaded, PRELOAD_TARGET_BYTES);
+      renderPlaybackPreload(state);
+      finishPlaybackPreload(state, true);
+    } else {
+      state.error = 'TorrServer ответил ' + response.status;
+      renderPlaybackPreload(state);
+    }
+  }, function (error) {
+    if (activePlaybackPreload !== state || error && error.name === 'AbortError') return;
+    state.error = 'Нет ответа от TorrServer';
+    renderPlaybackPreload(state);
+  });
+}
+function endPlaybackPreloadWait() {
+  var state = activePlaybackPreload;
+  if (state && state.waiting) finishPlaybackPreload(state, false);
 }
 function isPlaybackPreloadActive() {
   return !!activePlaybackPreload;
@@ -623,5 +642,6 @@ window.stopTorrentStatsUpdates = stopTorrentStatsUpdates;
 window.torrentStatsCache = torrentStatsCache;
 window.refreshTorrentStatsCadence = refreshTorrentStatsCadence;
 window.runPlaybackPreload = runPlaybackPreload;
+window.endPlaybackPreloadWait = endPlaybackPreloadWait;
 window.isPlaybackPreloadActive = isPlaybackPreloadActive;
 window.isPreloadScreenShown = isPreloadScreenShown;

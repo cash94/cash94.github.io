@@ -116,7 +116,7 @@
       "css/flex-gap-fallback.css": "8acd2bbb",
       "css/inter.css": "2caa5b93",
       "css/legacy.css": "100d5c5a",
-      "css/styles.css": "0e6ba82d",
+      "css/styles.css": "5e80fd32",
       "css/uicons-regular-rounded.css": "feee56fb",
       "css/uicons-thin-chubby.css": "1d6159cb",
       "css/uicons-thin-rounded.css": "365fbd61",
@@ -124,16 +124,18 @@
       "js/account.js": "65c22e09",
       "js/animations.js": "538e1ff5",
       "js/app.js": "0b2e5b73",
+      "js/best-torrents-pick.js": "cd63487a",
+      "js/best-torrents.js": "297e0c5a",
       "js/catalog-idb-patch.js": "7cf849b3",
       "js/catalog-worker-bridge.js": "7f94619a",
       "js/catalog-worker-patch.js": "cae8e189",
       "js/catalog-worker-posters-batch-patch.js": "0ba6a595",
       "js/catalog-worker-posters-patch.js": "d7d7dcc3",
       "js/catalog-worker.js": "e736d314",
-      "js/catalog.js": "a7169737",
+      "js/catalog.js": "6929d9de",
       "js/category-banners.js": "46ea538e",
       "js/config.js": "8832f0c8",
-      "js/control.js": "12fa4de4",
+      "js/control.js": "69d09415",
       "js/donate.js": "14adc57a",
       "js/favorites-db.js": "8772a3b7",
       "js/home.js": "73299fe2",
@@ -142,7 +144,7 @@
       "js/osk.js": "acd5c812",
       "js/perf-probe.js": "7143cc61",
       "js/player-memory-fix.js": "2fbf8c05",
-      "js/player.js": "4237f366",
+      "js/player.js": "ef550bce",
       "js/poster-db.js": "5133286b",
       "js/poster-prefetch.js": "a3173518",
       "js/screensaver.js": "a1d305b7",
@@ -152,11 +154,11 @@
       "js/sync.js": "3b6f95ab",
       "js/tizen-avplay.js": "0e36f4e6",
       "js/tmdb.js": "14f83980",
-      "js/torrents-worker-bridge.js": "5082b72d",
+      "js/torrents-worker-bridge.js": "84a127e9",
       "js/torrents-worker-patch.js": "1bab9f71",
-      "js/torrents-worker.js": "2cd34b76",
-      "js/torrents.js": "40439326",
-      "js/torrserverstats.js": "9d3a3654",
+      "js/torrents-worker.js": "f0d520c9",
+      "js/torrents.js": "b417f94e",
+      "js/torrserverstats.js": "5787ab47",
       "js/ui-customizer.js": "ab310609"
       // ASSET_V:end
     };
@@ -791,6 +793,12 @@
                 <div class="field-label">Адрес Jacred</div>
                 <input type="text" class="text-input" id="jacred-url" placeholder="jac.red">
               </div>
+              <div class="settings-list">
+                <div class="checkbox-container">
+                  <input type="checkbox" id="best-torrents-enabled">
+                  <span>Показать лучшие торренты<small class="setting-desc">В карточке появится кнопка «Лучшие»: 4K, 1080, 720 и 480 — раздача с лучшим сочетанием размера, сидов и озвучек. Список собирается по нажатию и хранится 3 дня</small></span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1244,6 +1252,11 @@
                попадание в список фокусируемых (control.js) -->
           <button id="catalog-resume-btn" class="catalog-watch-btn catalog-resume-btn hidden">Продолжить</button>
           <button id="catalog-watch-btn" class="catalog-watch-btn" data-label="Торренты">Торренты</button>
+          <!-- Включается в настройках, «Трекеры» (js/best-torrents.js). Список —
+               div, а не button: getDetailActionButtons собирает кнопки этого ряда,
+               а строки списка в нём лишние -->
+          <button id="catalog-best-btn" class="catalog-toggle-overview-btn hidden" data-label="Лучшие">Лучшие<span class="catalog-best-caret"></span></button>
+          <div id="catalog-best-menu" class="catalog-best-menu hidden"></div>
           <button id="detail-progress-btn" class="detail-progress-btn hidden">Играть</button>
           <button id="catalog-toggle-overview-btn" class="catalog-toggle-overview-btn" data-label="Подробнее">Подробнее</button>
           <!-- Только в режиме карточки торрента (torrent-detail-mode): уводит в
@@ -1575,6 +1588,8 @@
     document.write('<script src="https://cash94.github.io/msx/js/catalog-worker-bridge.js?v=' + assetV('js/catalog-worker-bridge.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/catalog-worker-patch.js?v=' + assetV('js/catalog-worker-patch.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/catalog-idb-patch.js?v=' + assetV('js/catalog-idb-patch.js') + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/best-torrents-pick.js?v=' + assetV('js/best-torrents-pick.js') + '"><\/script>');
+    document.write('<script src="https://cash94.github.io/msx/js/best-torrents.js?v=' + assetV('js/best-torrents.js') + '"><\/script>');
     //document.write('<script src="https://cash94.github.io/msx/js/catalog-worker-posters-patch.js?v=' + assetV('js/catalog-worker-posters-patch.js') + '"><\/script>');
     //document.write('<script src="https://cash94.github.io/msx/js/catalog-worker-posters-batch-patch.js?v=' + assetV('js/catalog-worker-posters-batch-patch.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/player.js?v=' + assetV('js/player.js') + '"><\/script>');

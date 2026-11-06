@@ -2932,6 +2932,37 @@ function pickSeriesEpisode(torrent, files, resume) {
 }
 
 /**
+ * Сезон выбран явно (список «Лучшие»): серия берётся внутри него.
+ *
+ * Место просмотра годится, только если оно в этом сезоне. Иначе — первая серия
+ * сезона: человек ушёл дальше или досмотрел его и пришёл пересмотреть.
+ * pickSeriesEpisode таких серий «после места просмотра» не находит. seek 0, а не
+ * null: на null плеер спросит сервер и включит досмотренную серию с конца.
+ *
+ * Раздача одного сезона — вся в нём, какой бы номер ни стоял в именах файлов: у
+ * аниме «ТВ-3» файлы нередко S01. Сверяем номера только в сборнике.
+ *
+ * @param {?Object} start ответ pickSeriesEpisode
+ * @returns {Object} {index, seek}
+ */
+function pickSeasonEpisode(torrent, files, start, season) {
+  var hash = String(torrent.hash).toLowerCase(), seasons = getTorrentSeasons(torrent);
+  var refs = [], seen = {}, many = false, first = -1, firstEpisode = 0, i;
+  for (i = 0; i < files.length; i++) {
+    refs[i] = fileEpisodeRef(hash, files[i], seasons);
+    if (refs[i] && refs[i].season !== null) seen[refs[i].season] = true;
+  }
+  many = Object.keys(seen).length > 1;
+  if (!many) return start || { index: 0, seek: 0 };
+  if (start && refs[start.index] && refs[start.index].season === season) return start;
+  for (i = 0; i < files.length; i++) {
+    if (!refs[i] || refs[i].season !== season) continue;
+    if (first === -1 || refs[i].episode < firstEpisode) { first = i; firstEpisode = refs[i].episode; }
+  }
+  return { index: first === -1 ? 0 : first, seek: 0 };
+}
+
+/**
  * Откуда запускать выбранную раздачу сериала.
  * @param {Object} torrent раздача, уже добавленная в TorrServer
  * @param {Object} item    карточка сериала (id)
@@ -2962,6 +2993,179 @@ async function findSeriesStart(torrent, item) {
   return start ? { fileId: files[start.index].id, index: start.index, seek: start.seek } : null;
 }
 window.findSeriesStart = findSeriesStart;
+
+// Сколько ждём файлы раздачи из списка «Лучшие». Дольше, чем SERIES_FILES_WAIT_MS:
+// здесь ждут в окне предзагрузки, с пирами на экране и «Назад» под рукой
+var SEASON_FILES_WAIT_MS = 60000;
+var SEASON_FILES_RETRY_MS = 1500;
+
+function pauseMs(ms) {
+  return new Promise(function (resolve) { setTimeout(resolve, ms); });
+}
+
+/** Ответ TorrServer без файлов — ещё не приговор: метаданные могли не дойти */
+async function waitSeasonFiles(torrent, isCancelled) {
+  var deadline = Date.now() + SEASON_FILES_WAIT_MS;
+  while (!isCancelled() && Date.now() < deadline) {
+    var left = deadline - Date.now();
+    var list = await Promise.race([
+      getTorrentFilesWithCache(torrent, true),
+      pauseMs(left).then(function () { return []; })
+    ]);
+    var files = extractVideoFiles(list || []);
+    if (files.length) return files;
+    await pauseMs(SEASON_FILES_RETRY_MS);
+  }
+  return [];
+}
+
+function filesHaveEpisodeNumbers(files) {
+  for (var i = 0; i < files.length; i++) {
+    if (!parseEpisodeRef(files[i].path || files[i].name)) return false;
+  }
+  return true;
+}
+
+/** Файл фильма — самый большой: первым в раздаче бывает и сэмпл */
+function biggestFileIndex(files) {
+  var best = 0;
+  for (var i = 1; i < files.length; i++) if ((files[i].length || 0) > (files[best].length || 0)) best = i;
+  return best;
+}
+
+/**
+ * Запуск из списка «Лучшие» прямо из карточки, как «Продолжить»: поиск не
+ * открывается, из плеера возвращаемся в карточку (AppState.cardPlayback).
+ *
+ * Сразу показываем окно предзагрузки, а раздачу добавляем и файлы ждём уже за ним.
+ * Ждать приходится только их: без метаданных торрента неизвестно, какой файл
+ * открыть. Зато по пирам в окне видно, живая ли раздача, и «Назад» отменяет запуск.
+ * Окно одно на весь запуск: startHLSPlayback продолжает в нём прогрев файла.
+ * TMDB спрашиваем, только если в именах файлов нет номеров.
+ *
+ * @param {Object} item карточка
+ * @param {Object} row  строка списка (best-torrents-pick.js)
+ * @param {?number} season сезон, на котором выбрали строку; у фильма null
+ * @param {Element} from кнопка, к которой вернуть фокус
+ * @returns {Promise<string>} 'started' | 'cancelled' | 'dead' — файлов нет |
+ *          'failed' — раздача не добавилась | 'offline'
+ */
+async function playBestPick(item, row, season, from) {
+  if (typeof ensureTorrserverOnline === 'function' && !(await ensureTorrserverOnline())) return 'offline';
+  var hash = String(row.hash).toLowerCase();
+  var serial = item.media_type === 'tv';
+  var overlay = getEl('playback-overlay'), overlayText = document.querySelector('.playback-text');
+  var withWindow = !!AppState.preloadBeforePlay && typeof runPlaybackPreload === 'function';
+  var cancelled = false;
+  var onCancel = new Promise(function (resolve) {
+    seriesStartCancel = function () { cancelled = true; resolve('cancelled'); };
+  });
+  if (withWindow) {
+    runPlaybackPreload(hash, null, item.title || item.name).then(function (ok) {
+      if (ok === false && seriesStartCancel) seriesStartCancel();
+    });
+  } else {
+    overlay.classList.add('active');
+    if (overlayText) overlayText.textContent = 'Запуск...';
+  }
+
+  try {
+    var poster = typeof window.getCatalogKnownPosterUrl === 'function' ? window.getCatalogKnownPosterUrl(item, null) : null;
+    var resumeRead = serial && window.HomeScreen
+      ? Promise.resolve(HomeScreen.fetchResume({ id: item.id, media_type: 'tv' }))['catch'](function () { return null; })
+      : Promise.resolve(null);
+    var adding = window.addBestPickToServer(item, row, poster);
+    // Отменили, пока раздача добавлялась: окно её уже останавливало, но тогда её
+    // на сервере ещё не было
+    adding.then(function () {
+      if (cancelled && typeof dropTorrentToServer === 'function') dropTorrentToServer(hash)['catch'](function () { });
+    }, function () { });
+
+    var torrent = await Promise.race([adding, onCancel]);
+    if (torrent === 'cancelled') return torrent;
+    if (!torrent) {
+      if (withWindow) endPlaybackPreloadWait();
+      return 'failed';
+    }
+    var files = await Promise.race([waitSeasonFiles(torrent, function () { return cancelled; }), onCancel]);
+    if (files === 'cancelled') return files;
+    if (!files.length) {
+      seriesStartCancel = null;
+      if (withWindow) endPlaybackPreloadWait();
+      else if (typeof dropTorrentToServer === 'function') dropTorrentToServer(hash)['catch'](function () { });
+      return 'dead';
+    }
+
+    var start = { index: biggestFileIndex(files), seek: null };
+    if (serial) {
+      var resume = await Promise.race([resumeRead, onCancel]);
+      if (resume === 'cancelled') return resume;
+      if (!filesHaveEpisodeNumbers(files)) {
+        await Promise.race([window.ensureTorrentEpisodeMeta(torrent, files), pauseMs(ANDROID_EPISODE_META_WAIT_MS), onCancel]);
+        if (cancelled) return 'cancelled';
+      }
+      start = pickSeasonEpisode(torrent, files, pickSeriesEpisode(torrent, files, resume), season);
+    }
+
+    seriesStartCancel = null;
+    overlay.classList.remove('active');
+    if (window.addToWatchHistory) {
+      Promise.resolve(window.addToWatchHistory(String(item.id), item.title || item.name, item.media_type, poster))['catch'](function () { });
+    }
+    var started = await playOpenedTorrent(item, torrent, files, start.index, start.seek, from);
+    // Плеер упал раньше предзагрузки — окно ожидания само не закроется
+    if (withWindow) endPlaybackPreloadWait();
+    return started === false ? 'cancelled' : 'started';
+  } finally {
+    seriesStartCancel = null;
+    overlay.classList.remove('active');
+    if (overlayText) overlayText.textContent = 'Воспроизведение...';
+  }
+}
+window.playBestPick = playBestPick;
+
+/**
+ * Запустить раздачу так, чтобы плеер считал её открытой, а вернуться — на главную
+ * или в карточку. Общая часть «Продолжить» и списка «Лучшие».
+ * @param {Element} [from] запуск из карточки — элемент под фокусом
+ * @returns {Promise<boolean|undefined>} false — плеер не поднялся
+ */
+async function playOpenedTorrent(item, torrent, videoFiles, idx, seek, from) {
+  var hash = String(torrent.hash).toLowerCase();
+  // Раздача становится «открытой»: плеер берёт из неё серии, заголовок и тип
+  if (!torrent.tmdbId && item.id) torrent.tmdbId = String(item.id);
+  if (!torrent.media_type && item.media_type) torrent.media_type = item.media_type;
+  if (typeof knownTorrentMeta !== 'undefined' && knownTorrentMeta && item.id) {
+    var known = knownTorrentMeta.get(hash) || {};
+    knownTorrentMeta.set(hash, {
+      id: known.id || String(item.id), mediaType: known.mediaType || item.media_type,
+      poster: known.poster || torrent.poster || null, title: known.title || torrent.title
+    });
+  }
+  var fromCard = !!from;
+  AppState.cardPlayback = fromCard ? { item: item, from: from, scrollTop: getEl('detail-view').scrollTop } : null;
+  AppState.currentDetailItem = torrent;
+  AppState.androidBackCatalog = item;
+  AppState.isCatalogSerials = false;
+  // Нативный плеер Android: по возврату не открывать карточку раздачи
+  // (updatePlayerTimeline), экран под плеером — главная
+  if (window.AndroidJS) AppState.playFromHash = true;
+
+  var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + videoFiles[idx].id;
+  var overlay = getEl('playback-overlay');
+  if (overlay) overlay.classList.remove('active');
+  resumingFromHome = true;
+  var started;
+  try { started = await startHLSPlayback(playUrl, seek, false, idx); }
+  finally { resumingFromHome = false; }
+  if (window.AndroidJS) AppState.currentScreen = fromCard ? 'detail' : 'home';
+  if (started === false && fromCard) {
+    // Плеер не поднялся — карточка на месте, раздача ей больше не нужна
+    AppState.cardPlayback = null;
+    AppState.currentDetailItem = item;
+  }
+  return started;
+}
 
 /**
  * Продолжить просмотр записи истории.
@@ -2998,37 +3202,7 @@ async function resumeWatching(item, resume, opts) {
       seek = null;
     }
 
-    // Раздача становится «открытой»: плеер берёт из неё серии, заголовок и тип
-    if (!torrent.tmdbId && item.id) torrent.tmdbId = String(item.id);
-    if (!torrent.media_type && item.media_type) torrent.media_type = item.media_type;
-    if (typeof knownTorrentMeta !== 'undefined' && knownTorrentMeta && item.id) {
-      var known = knownTorrentMeta.get(hash) || {};
-      knownTorrentMeta.set(hash, {
-        id: known.id || String(item.id), mediaType: known.mediaType || item.media_type,
-        poster: known.poster || torrent.poster || null, title: known.title || torrent.title
-      });
-    }
-    var fromCard = !!(opts && opts.card);
-    AppState.cardPlayback = fromCard ? { item: item, from: opts.card, scrollTop: getEl('detail-view').scrollTop } : null;
-    AppState.currentDetailItem = torrent;
-    AppState.androidBackCatalog = item;
-    AppState.isCatalogSerials = false;
-    // Нативный плеер Android: по возврату не открывать карточку раздачи
-    // (updatePlayerTimeline), экран под плеером — главная
-    if (window.AndroidJS) AppState.playFromHash = true;
-
-    var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + videoFiles[idx].id;
-    if (overlay) overlay.classList.remove('active');
-    resumingFromHome = true;
-    var started;
-    try { started = await startHLSPlayback(playUrl, seek, false, idx); }
-    finally { resumingFromHome = false; }
-    if (window.AndroidJS) AppState.currentScreen = fromCard ? 'detail' : 'home';
-    if (started === false && fromCard) {
-      // Плеер не поднялся — карточка на месте, раздача ей больше не нужна
-      AppState.cardPlayback = null;
-      AppState.currentDetailItem = item;
-    }
+    var started = await playOpenedTorrent(item, torrent, videoFiles, idx, seek, opts && opts.card);
     return started === false ? 'missing' : 'started';
   } finally {
     if (overlay) overlay.classList.remove('active');

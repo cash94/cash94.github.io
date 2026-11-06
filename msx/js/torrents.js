@@ -7212,6 +7212,39 @@ var SearchPicks = (function () {
 })();
 window.SearchPicks = SearchPicks;
 
+/**
+ * Раздача из списка «Лучшие» — на сервер, с контекстом карточки. Поиска здесь нет,
+ * поэтому карточку подставляем на время добавления: addTorrentToServer берёт из
+ * неё название, а в pendingDetailItem могла остаться другая, от прошлого поиска.
+ * @returns {Promise<?Object>} раздача; null — не добавилась (ошибку показали)
+ */
+async function addBestPickToServer(item, row, poster) {
+    var hash = extractHashFromMagnet(row.magnet);
+    if (!hash) return null;
+    var pending = AppState.pendingDetailItem;
+    var mediaType = item.media_type || AppState.mediaType || 'movie';
+    AppState.pendingDetailItem = item;
+    AppState.isCatalogSerials = false;
+    SearchPicks.add(hash, row);
+    var added;
+    try {
+        added = await addTorrentToServer(row.magnet, hash, row, { poster: poster, tmdbId: item.id, mediaType: mediaType });
+    } finally {
+        AppState.pendingDetailItem = pending;
+    }
+    if (!added) return null;
+    if (added === true) {
+        await refreshTorrentsList();
+        added = AppState.torrents.find(function (t) { return (t.hash || '').toLowerCase() === hash; }) ||
+            { hash: hash, title: item.title || item.name || row.title };
+    }
+    added.poster = added.poster || poster;
+    added.tmdbId = added.tmdbId || item.id;
+    added.media_type = added.media_type || mediaType;
+    return added;
+}
+window.addBestPickToServer = addBestPickToServer;
+
 function searchResultHash(result) {
     if (!result) return null;
     if (result._hash === undefined) result._hash = extractHashFromMagnet(result.magnet) || null;

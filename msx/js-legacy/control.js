@@ -552,7 +552,7 @@ function getDetailActionButtons() {
   return out;
 }
 function getDetailItems() {
-  var s = ['#detail-view .home-nav-btn', '.detail-progress-btn', '.file-item', '#catalog-resume-btn', '#catalog-watch-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-favorite-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-episode-card', '.catalog-actor-card', '.catalog-recommendation-card'];
+  var s = ['#detail-view .home-nav-btn', '.detail-progress-btn', '.file-item', '#catalog-resume-btn', '#catalog-watch-btn', '#catalog-best-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-favorite-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-episode-card', '.catalog-actor-card', '.catalog-recommendation-card'];
   var it = document.querySelectorAll(s.join(','));
   var a = [];
   for (var i = 0; i < it.length; i++) if (VISIBLE(it[i])) a.push(it[i]);
@@ -2429,6 +2429,10 @@ function isHomeUnderneath() {
   return !!(h && !h.hidden);
 }
 function onBack() {
+  if (isBestTorrentsOpen()) {
+    BestTorrents.close();
+    return true;
+  }
   var s = getEl('search-overlay'),
     d = getEl('detail-view'),
     c = getEl('config-screen');
@@ -4169,6 +4173,9 @@ function applyCustomFilterMenuSelection() {
   } catch (e) {}
   return true;
 }
+function isBestTorrentsOpen() {
+  return !!(window.BestTorrents && BestTorrents.isOpen());
+}
 function isCustomFilterMenuOpen() {
   var m = getEl('custom-filter-menu');
   return !!(m && !m.classList.contains('hidden') && customFilterMenuState);
@@ -4254,6 +4261,10 @@ function setupFocusRescue() {
         closeCustomFilterMenu();
         return;
       }
+      if (isBestTorrentsOpen()) {
+        BestTorrents.close();
+        return;
+      }
       if (s === 'catalog' && window.catalogState && window.catalogState.currentCatalog) {
         window.catalogState.lastSelectedIndex = 0;
         window.catalogState.lastSelectedId = null;
@@ -4270,6 +4281,10 @@ function setupFocusRescue() {
         if (d === 'up') moveCustomFilterMenu(-1);else if (d === 'down') moveCustomFilterMenu(1);
         return;
       }
+      if (isBestTorrentsOpen()) {
+        BestTorrents.handleArrow(d);
+        return;
+      }
       navKeyRepeat = !!e.repeat;
       setNavHold(d);
       runScreenNavigation(d);
@@ -4284,6 +4299,10 @@ function setupFocusRescue() {
       okKeyLastDown = okNow;
       if (isCustomFilterMenuOpen()) {
         applyCustomFilterMenuSelection();
+        return;
+      }
+      if (isBestTorrentsOpen()) {
+        if (!okRepeat) BestTorrents.handleOk();
         return;
       }
       if (s === 'torrents') {

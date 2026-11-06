@@ -4840,6 +4840,7 @@ function _showCatalogDetail() {
     var wb = getEl('catalog-watch-btn');
     setupFavoriteButton(item);
     var episodesPromise = setupDetailResume(item);
+    if (window.BestTorrents) BestTorrents.beginCard(item);
     if (aw) aw.classList.add('hidden');
     if (rw) rw.classList.add('hidden');
     if (wb) {
@@ -4949,6 +4950,7 @@ function _showCatalogDetail() {
       if (typeof Animations !== 'undefined' && typeof Animations.detailContentReady === 'function') {
         Animations.detailContentReady();
       }
+      if (window.BestTorrents) BestTorrents.cardReady(item, wb && wb.dataset.searchTitle || title, details);
     });
   });
   return _showCatalogDetail.apply(this, arguments);
@@ -5062,6 +5064,7 @@ function hideCatalogDetailView() {
   var dv = getEl('detail-view');
   if (!dv) return;
   stopTrailerBackground();
+  if (window.BestTorrents) BestTorrents.leave();
   dv.classList.remove('catalog-detail-mode');
   dv.style.backgroundImage = '';
   var se = getEl('detail-title-subtitle');

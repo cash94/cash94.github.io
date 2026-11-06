@@ -1313,7 +1313,7 @@ function _seekStream() {
                 throw error;
               }
             });
-            return function retrySeek(_x64, _x65) {
+            return function retrySeek(_x76, _x77) {
               return _ref2.apply(this, arguments);
             };
           }();
@@ -2526,6 +2526,37 @@ function pickSeriesEpisode(torrent, files, resume) {
     seek: bestSeason === season && bestEpisode === resume.episode ? seek : null
   };
 }
+function pickSeasonEpisode(torrent, files, start, season) {
+  var hash = String(torrent.hash).toLowerCase(),
+    seasons = getTorrentSeasons(torrent);
+  var refs = [],
+    seen = {},
+    many = false,
+    first = -1,
+    firstEpisode = 0,
+    i;
+  for (i = 0; i < files.length; i++) {
+    refs[i] = fileEpisodeRef(hash, files[i], seasons);
+    if (refs[i] && refs[i].season !== null) seen[refs[i].season] = true;
+  }
+  many = Object.keys(seen).length > 1;
+  if (!many) return start || {
+    index: 0,
+    seek: 0
+  };
+  if (start && refs[start.index] && refs[start.index].season === season) return start;
+  for (i = 0; i < files.length; i++) {
+    if (!refs[i] || refs[i].season !== season) continue;
+    if (first === -1 || refs[i].episode < firstEpisode) {
+      first = i;
+      firstEpisode = refs[i].episode;
+    }
+  }
+  return {
+    index: first === -1 ? 0 : first,
+    seek: 0
+  };
+}
 function findSeriesStart(_x21, _x22) {
   return _findSeriesStart.apply(this, arguments);
 }
@@ -2565,7 +2596,173 @@ function _findSeriesStart() {
   return _findSeriesStart.apply(this, arguments);
 }
 window.findSeriesStart = findSeriesStart;
-function resumeWatching(_x23, _x24, _x25) {
+var SEASON_FILES_WAIT_MS = 60000;
+var SEASON_FILES_RETRY_MS = 1500;
+function pauseMs(ms) {
+  return new Promise(function (resolve) {
+    setTimeout(resolve, ms);
+  });
+}
+function waitSeasonFiles(_x23, _x24) {
+  return _waitSeasonFiles.apply(this, arguments);
+}
+function _waitSeasonFiles() {
+  _waitSeasonFiles = _asyncToGenerator(function* (torrent, isCancelled) {
+    var deadline = Date.now() + SEASON_FILES_WAIT_MS;
+    while (!isCancelled() && Date.now() < deadline) {
+      var left = deadline - Date.now();
+      var list = yield Promise.race([getTorrentFilesWithCache(torrent, true), pauseMs(left).then(function () {
+        return [];
+      })]);
+      var files = extractVideoFiles(list || []);
+      if (files.length) return files;
+      yield pauseMs(SEASON_FILES_RETRY_MS);
+    }
+    return [];
+  });
+  return _waitSeasonFiles.apply(this, arguments);
+}
+function filesHaveEpisodeNumbers(files) {
+  for (var i = 0; i < files.length; i++) {
+    if (!parseEpisodeRef(files[i].path || files[i].name)) return false;
+  }
+  return true;
+}
+function biggestFileIndex(files) {
+  var best = 0;
+  for (var i = 1; i < files.length; i++) if ((files[i].length || 0) > (files[best].length || 0)) best = i;
+  return best;
+}
+function playBestPick(_x25, _x26, _x27, _x28) {
+  return _playBestPick.apply(this, arguments);
+}
+function _playBestPick() {
+  _playBestPick = _asyncToGenerator(function* (item, row, season, from) {
+    if (typeof ensureTorrserverOnline === 'function' && !(yield ensureTorrserverOnline())) return 'offline';
+    var hash = String(row.hash).toLowerCase();
+    var serial = item.media_type === 'tv';
+    var overlay = getEl('playback-overlay'),
+      overlayText = document.querySelector('.playback-text');
+    var withWindow = !!AppState.preloadBeforePlay && typeof runPlaybackPreload === 'function';
+    var cancelled = false;
+    var onCancel = new Promise(function (resolve) {
+      seriesStartCancel = function () {
+        cancelled = true;
+        resolve('cancelled');
+      };
+    });
+    if (withWindow) {
+      runPlaybackPreload(hash, null, item.title || item.name).then(function (ok) {
+        if (ok === false && seriesStartCancel) seriesStartCancel();
+      });
+    } else {
+      overlay.classList.add('active');
+      if (overlayText) overlayText.textContent = 'Запуск...';
+    }
+    try {
+      var poster = typeof window.getCatalogKnownPosterUrl === 'function' ? window.getCatalogKnownPosterUrl(item, null) : null;
+      var resumeRead = serial && window.HomeScreen ? Promise.resolve(HomeScreen.fetchResume({
+        id: item.id,
+        media_type: 'tv'
+      }))['catch'](function () {
+        return null;
+      }) : Promise.resolve(null);
+      var adding = window.addBestPickToServer(item, row, poster);
+      adding.then(function () {
+        if (cancelled && typeof dropTorrentToServer === 'function') dropTorrentToServer(hash)['catch'](function () {});
+      }, function () {});
+      var torrent = yield Promise.race([adding, onCancel]);
+      if (torrent === 'cancelled') return torrent;
+      if (!torrent) {
+        if (withWindow) endPlaybackPreloadWait();
+        return 'failed';
+      }
+      var files = yield Promise.race([waitSeasonFiles(torrent, function () {
+        return cancelled;
+      }), onCancel]);
+      if (files === 'cancelled') return files;
+      if (!files.length) {
+        seriesStartCancel = null;
+        if (withWindow) endPlaybackPreloadWait();else if (typeof dropTorrentToServer === 'function') dropTorrentToServer(hash)['catch'](function () {});
+        return 'dead';
+      }
+      var start = {
+        index: biggestFileIndex(files),
+        seek: null
+      };
+      if (serial) {
+        var resume = yield Promise.race([resumeRead, onCancel]);
+        if (resume === 'cancelled') return resume;
+        if (!filesHaveEpisodeNumbers(files)) {
+          yield Promise.race([window.ensureTorrentEpisodeMeta(torrent, files), pauseMs(ANDROID_EPISODE_META_WAIT_MS), onCancel]);
+          if (cancelled) return 'cancelled';
+        }
+        start = pickSeasonEpisode(torrent, files, pickSeriesEpisode(torrent, files, resume), season);
+      }
+      seriesStartCancel = null;
+      overlay.classList.remove('active');
+      if (window.addToWatchHistory) {
+        Promise.resolve(window.addToWatchHistory(String(item.id), item.title || item.name, item.media_type, poster))['catch'](function () {});
+      }
+      var started = yield playOpenedTorrent(item, torrent, files, start.index, start.seek, from);
+      if (withWindow) endPlaybackPreloadWait();
+      return started === false ? 'cancelled' : 'started';
+    } finally {
+      seriesStartCancel = null;
+      overlay.classList.remove('active');
+      if (overlayText) overlayText.textContent = 'Воспроизведение...';
+    }
+  });
+  return _playBestPick.apply(this, arguments);
+}
+window.playBestPick = playBestPick;
+function playOpenedTorrent(_x29, _x30, _x31, _x32, _x33, _x34) {
+  return _playOpenedTorrent.apply(this, arguments);
+}
+function _playOpenedTorrent() {
+  _playOpenedTorrent = _asyncToGenerator(function* (item, torrent, videoFiles, idx, seek, from) {
+    var hash = String(torrent.hash).toLowerCase();
+    if (!torrent.tmdbId && item.id) torrent.tmdbId = String(item.id);
+    if (!torrent.media_type && item.media_type) torrent.media_type = item.media_type;
+    if (typeof knownTorrentMeta !== 'undefined' && knownTorrentMeta && item.id) {
+      var known = knownTorrentMeta.get(hash) || {};
+      knownTorrentMeta.set(hash, {
+        id: known.id || String(item.id),
+        mediaType: known.mediaType || item.media_type,
+        poster: known.poster || torrent.poster || null,
+        title: known.title || torrent.title
+      });
+    }
+    var fromCard = !!from;
+    AppState.cardPlayback = fromCard ? {
+      item: item,
+      from: from,
+      scrollTop: getEl('detail-view').scrollTop
+    } : null;
+    AppState.currentDetailItem = torrent;
+    AppState.androidBackCatalog = item;
+    AppState.isCatalogSerials = false;
+    if (window.AndroidJS) AppState.playFromHash = true;
+    var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + videoFiles[idx].id;
+    var overlay = getEl('playback-overlay');
+    if (overlay) overlay.classList.remove('active');
+    resumingFromHome = true;
+    var started;
+    try {
+      started = yield startHLSPlayback(playUrl, seek, false, idx);
+    } finally {
+      resumingFromHome = false;
+    }
+    if (window.AndroidJS) AppState.currentScreen = fromCard ? 'detail' : 'home';
+    if (started === false && fromCard) {
+      AppState.cardPlayback = null;
+      AppState.currentDetailItem = item;
+    }
+    return started;
+  });
+  return _playOpenedTorrent.apply(this, arguments);
+}
+function resumeWatching(_x35, _x36, _x37) {
   return _resumeWatching.apply(this, arguments);
 }
 function _resumeWatching() {
@@ -2594,41 +2791,7 @@ function _resumeWatching() {
         idx++;
         seek = null;
       }
-      if (!torrent.tmdbId && item.id) torrent.tmdbId = String(item.id);
-      if (!torrent.media_type && item.media_type) torrent.media_type = item.media_type;
-      if (typeof knownTorrentMeta !== 'undefined' && knownTorrentMeta && item.id) {
-        var known = knownTorrentMeta.get(hash) || {};
-        knownTorrentMeta.set(hash, {
-          id: known.id || String(item.id),
-          mediaType: known.mediaType || item.media_type,
-          poster: known.poster || torrent.poster || null,
-          title: known.title || torrent.title
-        });
-      }
-      var fromCard = !!(opts && opts.card);
-      AppState.cardPlayback = fromCard ? {
-        item: item,
-        from: opts.card,
-        scrollTop: getEl('detail-view').scrollTop
-      } : null;
-      AppState.currentDetailItem = torrent;
-      AppState.androidBackCatalog = item;
-      AppState.isCatalogSerials = false;
-      if (window.AndroidJS) AppState.playFromHash = true;
-      var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + videoFiles[idx].id;
-      if (overlay) overlay.classList.remove('active');
-      resumingFromHome = true;
-      var started;
-      try {
-        started = yield startHLSPlayback(playUrl, seek, false, idx);
-      } finally {
-        resumingFromHome = false;
-      }
-      if (window.AndroidJS) AppState.currentScreen = fromCard ? 'detail' : 'home';
-      if (started === false && fromCard) {
-        AppState.cardPlayback = null;
-        AppState.currentDetailItem = item;
-      }
+      var started = yield playOpenedTorrent(item, torrent, videoFiles, idx, seek, opts && opts.card);
       return started === false ? 'missing' : 'started';
     } finally {
       if (overlay) overlay.classList.remove('active');
@@ -2867,7 +3030,7 @@ function showPlayerHint(message, durationMs) {
     playerHint.textContent = DEFAULT_PLAYER_HINT;
   }, durationMs || 4000);
 }
-function preparePlaybackMetadata(_x26, _x27, _x28, _x29) {
+function preparePlaybackMetadata(_x38, _x39, _x40, _x41) {
   return _preparePlaybackMetadata.apply(this, arguments);
 }
 function _preparePlaybackMetadata() {
@@ -2924,7 +3087,7 @@ function _preparePlaybackMetadata() {
   });
   return _preparePlaybackMetadata.apply(this, arguments);
 }
-function initGstPlayback(_x30, _x31, _x32) {
+function initGstPlayback(_x42, _x43, _x44) {
   return _initGstPlayback.apply(this, arguments);
 }
 function _initGstPlayback() {
@@ -3063,7 +3226,7 @@ function updateDirectTrackDiag(videoPlayer) {
   if (t) for (var i = 0; i < t.length; i++) kinds.push((t[i].kind || '?') + (t[i].language ? '/' + t[i].language : ''));
   directPlaybackDiag.kinds = kinds.join(', ');
 }
-function initTranscodingOffPlayback(_x33, _x34, _x35) {
+function initTranscodingOffPlayback(_x45, _x46, _x47) {
   return _initTranscodingOffPlayback.apply(this, arguments);
 }
 function _initTranscodingOffPlayback() {
@@ -3186,7 +3349,7 @@ function _initTranscodingOffPlayback() {
   });
   return _initTranscodingOffPlayback.apply(this, arguments);
 }
-function initServerProxyPlayback(_x36, _x37, _x38) {
+function initServerProxyPlayback(_x48, _x49, _x50) {
   return _initServerProxyPlayback.apply(this, arguments);
 }
 function _initServerProxyPlayback() {
@@ -3415,7 +3578,7 @@ function parseStreamRef(url) {
     fileId: indexParam
   } : null;
 }
-function startHLSPlayback(_x39, _x40, _x41, _x42, _x43) {
+function startHLSPlayback(_x51, _x52, _x53, _x54, _x55) {
   return _startHLSPlayback.apply(this, arguments);
 }
 function _startHLSPlayback() {
@@ -3774,7 +3937,7 @@ function showDetailView(field = null) {
     }, 250);
   }
 }
-function updateDetailProgress(_x44) {
+function updateDetailProgress(_x56) {
   return _updateDetailProgress.apply(this, arguments);
 }
 function _updateDetailProgress() {
@@ -3877,7 +4040,7 @@ function updateCurrentFileProgress(hash, fileId, timecode, duration) {
     if (progressPercent > 5) targetItem.classList.add('has-progress');
   }
 }
-function loadFileInfo(_x45, _x46) {
+function loadFileInfo(_x57, _x58) {
   return _loadFileInfo.apply(this, arguments);
 }
 function _loadFileInfo() {
@@ -3942,7 +4105,7 @@ function applyNativeAudioPref(videoPlayer) {
   for (var i = 0; i < list.length; i++) list[i].enabled = i === index;
   return index;
 }
-function switchAudioTrack(_x47) {
+function switchAudioTrack(_x59) {
   return _switchAudioTrack.apply(this, arguments);
 }
 function _switchAudioTrack() {
@@ -4984,7 +5147,7 @@ function setupAudioButton() {
   });
   setupPlayerPanelsOutsideClick();
 }
-function saveAudioPreference(_x48, _x49, _x50) {
+function saveAudioPreference(_x60, _x61, _x62) {
   return _saveAudioPreference.apply(this, arguments);
 }
 function _saveAudioPreference() {
@@ -5007,7 +5170,7 @@ function _saveAudioPreference() {
   });
   return _saveAudioPreference.apply(this, arguments);
 }
-function loadMediaPreferences(_x51, _x52) {
+function loadMediaPreferences(_x63, _x64) {
   return _loadMediaPreferences.apply(this, arguments);
 }
 function _loadMediaPreferences() {
@@ -5034,7 +5197,7 @@ function _loadMediaPreferences() {
   });
   return _loadMediaPreferences.apply(this, arguments);
 }
-function loadPlaybackPrepare(_x53, _x54, _x55) {
+function loadPlaybackPrepare(_x65, _x66, _x67) {
   return _loadPlaybackPrepare.apply(this, arguments);
 }
 function _loadPlaybackPrepare() {
@@ -5084,7 +5247,7 @@ function _loadPlaybackPrepare() {
   });
   return _loadPlaybackPrepare.apply(this, arguments);
 }
-function loadAudioPreference(_x56, _x57) {
+function loadAudioPreference(_x68, _x69) {
   return _loadAudioPreference.apply(this, arguments);
 }
 function _loadAudioPreference() {
@@ -5125,7 +5288,7 @@ function renderSubtitleTracks() {
   subtitlesList.innerHTML = html;
   setupSubtitlesListDelegation();
 }
-function switchSubtitleTrack(_x58) {
+function switchSubtitleTrack(_x70) {
   return _switchSubtitleTrack.apply(this, arguments);
 }
 function _switchSubtitleTrack() {
@@ -5822,7 +5985,7 @@ function setupSubtitlesButton() {
   });
   setupPlayerPanelsOutsideClick();
 }
-function saveSubtitlePreference(_x59, _x60, _x61) {
+function saveSubtitlePreference(_x71, _x72, _x73) {
   return _saveSubtitlePreference.apply(this, arguments);
 }
 function _saveSubtitlePreference() {
@@ -5845,7 +6008,7 @@ function _saveSubtitlePreference() {
   });
   return _saveSubtitlePreference.apply(this, arguments);
 }
-function loadSubtitlePreference(_x62, _x63) {
+function loadSubtitlePreference(_x74, _x75) {
   return _loadSubtitlePreference.apply(this, arguments);
 }
 function _loadSubtitlePreference() {
