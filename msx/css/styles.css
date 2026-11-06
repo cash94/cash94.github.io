@@ -11811,11 +11811,12 @@ html.apple-device {
    КАРТОЧКА КАТАЛОГА — «СЦЕНА» (класс detail-cinema)
    ----------------------------------------------------------------------------
    Кадр стоит неподвижно на весь экран (.catalog-detail-backdrop — fixed),
-   затемнён слева и снизу (#detail-view::before). Слева внизу колонка: логотип
-   или название, «год · длительность · ★», плашки жанров и стран, белая
-   «Поиск торрентов» и круглые «Подробнее» / «Избранное» / «Трейлер»,
-   описание в пять строк. Ниже, по прокрутке, на тёмной подложке едут поверх
-   кадра ленты «Режиссёр», «В главных ролях» (широкие плитки), «Похожие».
+   слегка затемнён слева и снизу (#detail-view::before). Слева внизу колонка:
+   логотип или название, «год · длительность · ★», плашки жанров и стран,
+   белая «Продолжить» (если есть что продолжать) и круглые «Торренты» /
+   «Подробнее» / «Избранное» / «Трейлер». Ниже, по прокрутке, на тёмной подложке
+   едут поверх кадра ленты «Серии», «Режиссёр», «В главных ролях» (широкие
+   плитки), «Похожие».
 
    Класс detail-cinema стоит на #detail-view в index.html постоянно, а все
    правила ниже требуют ещё и .catalog-detail-mode — карточку торрента они не
@@ -11835,6 +11836,7 @@ html.apple-device {
 }
 
 .detail-cinema-head,
+.detail-cinema-below .catalog-detail-episodes-wrap,
 .detail-cinema-below .catalog-detail-crew-wrap,
 .detail-cinema-below .catalog-detail-collection-wrap {
   display: none;
@@ -11849,20 +11851,21 @@ html.apple-device {
   opacity: 1 !important;
 }
 
-/* Слева темнее и шире, чем было под колонку в --cu: описание в --cs
-   доходит до ~65 % ширины экрана */
+/* Лёгкое затемнение: кадр должен оставаться ярким, описания на экране нет, а
+   логотип, мету и плашки держит ещё и их тень. Заменяет общий градиент
+   #detail-view::before целиком — тот остаётся только у карточки торрента */
 #detail-view.catalog-detail-mode.detail-cinema::before {
   background:
     linear-gradient(to right,
-      rgba(0, 0, 0, 0.92) 0%,
-      rgba(0, 0, 0, 0.78) 30%,
-      rgba(0, 0, 0, 0.45) 55%,
-      rgba(0, 0, 0, 0) 80%),
+      rgba(0, 0, 0, 0.5) 0%,
+      rgba(0, 0, 0, 0.3) 30%,
+      rgba(0, 0, 0, 0.1) 52%,
+      rgba(0, 0, 0, 0) 70%),
     linear-gradient(to top,
-      #000 0%,
-      rgba(0, 0, 0, 0.78) 18%,
-      rgba(0, 0, 0, 0.22) 46%,
-      rgba(0, 0, 0, 0) 66%);
+      rgba(0, 0, 0, 0.55) 0%,
+      rgba(0, 0, 0, 0.3) 18%,
+      rgba(0, 0, 0, 0.06) 42%,
+      rgba(0, 0, 0, 0) 58%);
 }
 
 /* --- СЦЕНА: колонка прижата к низу экрана -------------------------------- */
@@ -12194,7 +12197,7 @@ html.apple-device {
   letter-spacing: 0.03em;
 }
 
-/* --- КНОПКИ: белая «Поиск торрентов» и круглые со значками --------------- */
+/* --- КНОПКИ: белая «Продолжить» и круглые со значками ------------------- */
 /* Высоту и центровку значков держит line-height, а не display: flex — кнопки
    прячут инлайновым display (трейлер, торрентный режим), и свой display
    здесь пришлось бы ставить с !important, ломая это скрытие */
@@ -12226,14 +12229,32 @@ html.apple-device {
   overflow: visible;
 }
 
-#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn {
+/* «Продолжить» — как кнопка баннера главной: белая, в фокусе цветом фокуса */
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-resume-btn {
   padding: 0 calc(var(--cs) * 1.7) !important;
+  border: none !important;
+  background: #fff !important;
+  color: #000 !important;
+  font-weight: 700;
 }
 
-#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn::before {
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-resume-btn.focused {
+  background: var(--focus-color, #ff8c00) !important;
+  color: #fff !important;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.45) !important;
+}
+
+/* content с !important — против content: none !important у .catalog-watch-btn */
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-resume-btn::before {
+  content: "\ef70" !important;
+  margin-right: 0.5em;
+  font-family: "uicons-regular-rounded";
+  font-weight: normal;
+  line-height: 1;
   vertical-align: -0.12em;
 }
 
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn {
@@ -12242,10 +12263,12 @@ html.apple-device {
   font-size: 0 !important;
   border-radius: 50% !important;
   background: rgba(255, 255, 255, 0.16) !important;
+  color: #fff !important;
 }
 
 /* Фокус — белый круг, как у остальных кнопок карточки (общее правило фокуса
    проигрывает фону круглой кнопки по специфичности) */
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn.focused,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn.focused,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn.focused,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn.focused {
@@ -12253,6 +12276,12 @@ html.apple-device {
   color: #000 !important;
 }
 
+/* Магнит: content с !important — против значка поиска в общем правиле кнопки */
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn::before {
+  content: "\ec79" !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn::before,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn::before {
   margin: 0;
   font-size: calc(var(--cs) * 1.15);
@@ -12274,6 +12303,7 @@ html.apple-device {
 
 /* Подпись под круглой кнопкой в фокусе: текст кнопки скрыт (font-size: 0),
    а значок без слов на ТВ не всегда понятен */
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn::after,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn::after,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn::after,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn::after {
@@ -12294,6 +12324,7 @@ html.apple-device {
   pointer-events: none;
 }
 
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn.focused::after,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn.focused::after,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn.focused::after,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn.focused::after {
@@ -12457,17 +12488,20 @@ html.apple-device {
       rgba(0, 0, 0, 0.94) 100%);
 }
 
+#detail-view.catalog-detail-mode.detail-cinema .catalog-detail-episodes-wrap,
 #detail-view.catalog-detail-mode.detail-cinema .catalog-detail-crew-wrap,
 #detail-view.catalog-detail-mode.detail-cinema .catalog-detail-collection-wrap {
   display: block;
   padding: 0;
 }
 
+#detail-view.catalog-detail-mode.detail-cinema .catalog-detail-episodes-wrap.hidden,
 #detail-view.catalog-detail-mode.detail-cinema .catalog-detail-crew-wrap.hidden,
 #detail-view.catalog-detail-mode.detail-cinema .catalog-detail-collection-wrap.hidden {
   display: none;
 }
 
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-episodes-wrap,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew-wrap,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-collection-wrap,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actors-wrap,
@@ -12482,6 +12516,7 @@ html.apple-device {
   margin: 0 0 calc(var(--cu) * 0.6) 0 !important;
 }
 
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-episodes,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actors,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-collection,
@@ -12496,14 +12531,154 @@ html.apple-device {
   scrollbar-width: none;
 }
 
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-episodes::-webkit-scrollbar,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew::-webkit-scrollbar,
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-collection::-webkit-scrollbar {
   display: none;
 }
 
+#detail-view .catalog-detail-episodes-wrap.row-tx-clip,
 #detail-view .catalog-detail-crew-wrap.row-tx-clip,
 #detail-view .catalog-detail-collection-wrap.row-tx-clip {
   overflow: hidden !important;
+}
+
+/* Лента серий открывается на текущей серии и шагает плитками, поэтому слева от
+   линии блоков (3,2 --cu) выглядывала бы предыдущая. Обрезаем её обёрткой по
+   этой линии; 0,3 --cu слева — запас под рамку фокуса, сосед за ним не виден
+   (между плитками 1,2 --cu). На телефоне ленты листают пальцем, там как было */
+@media screen and (min-width: 601px) and (min-height: 501px) {
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-episodes-wrap {
+    margin-left: calc(var(--cu) * 2.9) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-episodes-wrap .catalog-detail-section-title {
+    padding-left: calc(var(--cu) * 0.3) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-episodes {
+    padding-left: calc(var(--cu) * 0.3) !important;
+  }
+}
+
+/* Плитка серии — те же пропорции и подпись на градиенте, что у плиток
+   «Моих торрентов» (320x210 на 1080), только в --cu. Без переходов: см.
+   #detail-view.torrent-detail-mode .file-item и .play-btn */
+#detail-view.catalog-detail-mode.detail-cinema .catalog-episode-card {
+  position: relative;
+  -webkit-flex: none;
+  flex: none;
+  box-sizing: border-box;
+  width: calc(var(--cu) * 16);
+  height: calc(var(--cu) * 10.5);
+  margin: 0 calc(var(--cu) * 1.2) 0 0;
+  border-radius: calc(var(--cu) * 0.5);
+  background: #14141c;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-episode-card.hidden {
+  display: none;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-episode-card.focused {
+  box-shadow: 0 0 0 calc(var(--cu) * 0.25) var(--focus-color, #ff8c00) !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-episode-still,
+#detail-view.catalog-detail-mode.detail-cinema .catalog-episode-no-still {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-episode-still img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  -o-object-fit: cover;
+  object-fit: cover;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-episode-still img.hidden,
+#detail-view.catalog-detail-mode.detail-cinema .catalog-episode-no-still.hidden {
+  display: none;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-episode-no-still {
+  background: #1b1b2b;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-episode-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: calc(var(--cu) * 3.1);
+  height: calc(var(--cu) * 3.1);
+  margin: calc(var(--cu) * -2.3) 0 0 calc(var(--cu) * -1.55);
+  border-radius: 50%;
+  background: #fff;
+  color: #000;
+  font-size: calc(var(--cu) * 1.2);
+  line-height: calc(var(--cu) * 3.1);
+  text-align: center;
+  visibility: hidden;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-episode-card:hover .catalog-episode-play,
+#detail-view.catalog-detail-mode.detail-cinema .catalog-episode-card.focused .catalog-episode-play {
+  visibility: visible;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-episode-info {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: calc(var(--cu) * 1.4) calc(var(--cu) * 0.7) calc(var(--cu) * 0.6);
+  background: linear-gradient(to top,
+      rgba(0, 0, 0, 0.95) 0%,
+      rgba(0, 0, 0, 0.78) 45%,
+      rgba(0, 0, 0, 0) 100%);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-episode-name {
+  overflow: hidden;
+  margin-bottom: calc(var(--cu) * 0.15);
+  color: #fff;
+  font-size: calc(var(--cu) * 0.85);
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-episode-size {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: calc(var(--cu) * 0.7);
+  line-height: 1.25;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-episode-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--cu) * 0.25);
+  background: rgba(255, 255, 255, 0.22);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-episode-progress.hidden {
+  display: none;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-episode-progress > div {
+  height: 100%;
+  background: var(--focus-color, #ff8c00);
 }
 
 /* Широкая плитка человека: фото слева, имя и роль справа. Режиссёр — та же
@@ -12685,6 +12860,7 @@ html.apple-device {
   }
 
   #detail-view.catalog-detail-mode.detail-cinema .catalog-detail-section-title,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-episodes,
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew,
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actors,
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-collection,
@@ -12692,6 +12868,7 @@ html.apple-device {
     padding-left: 16px !important;
   }
 
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-episodes,
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew,
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actors,
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-collection,
@@ -12721,11 +12898,29 @@ html.apple-device {
   }
 
   #detail-view.catalog-detail-mode.detail-cinema .catalog-detail-section-title,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-episodes,
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew,
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actors,
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-collection,
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-recommendations {
     padding-left: 24px !important;
+  }
+}
+
+/* --- ТЕЛЕФОН: «Продолжить» — круглый значок, как все кнопки здесь -------- */
+@media screen and (max-width: 600px) and (orientation: portrait),
+  screen and (orientation: landscape) and (max-height: 500px) {
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-resume-btn {
+    width: calc(var(--cs) * 2.9);
+    padding: 0 !important;
+    font-size: 0 !important;
+    border-radius: 50% !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-resume-btn::before {
+    margin: 0;
+    font-size: calc(var(--cs) * 1.15);
+    vertical-align: middle;
   }
 }
 

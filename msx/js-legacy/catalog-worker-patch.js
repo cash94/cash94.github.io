@@ -79,7 +79,8 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
             watchedAt: item.watchedAt,
             timestamp: item.timestamp,
             isHistoryItem: true,
-            historyIndex: idx
+            historyIndex: idx,
+            resume: item.resume || null
           };
         }).sort(function (a, b) {
           return b.timestamp - a.timestamp;
@@ -139,7 +140,8 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
               media_type: item.mediaType,
               poster_path: pp,
               vote_average: null,
-              isHistoryItem: true
+              isHistoryItem: true,
+              resume: item.resume || null
             };
           });
         }

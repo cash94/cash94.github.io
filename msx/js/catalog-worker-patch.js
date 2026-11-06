@@ -92,7 +92,7 @@
                             poster_path: pp, vote_average: null, overview: null,
                             release_date: item.watchedAt ? item.watchedAt.split('T')[0] : null,
                             watchedAt: item.watchedAt, timestamp: item.timestamp,
-                            isHistoryItem: true, historyIndex: idx
+                            isHistoryItem: true, historyIndex: idx, resume: item.resume || null
                         };
                     }).sort(function (a, b) { return b.timestamp - a.timestamp; });
                     catalogState.totalItems = catalogState.items.length;
@@ -172,7 +172,7 @@
                     return {
                         id: item.tmdbId, title: item.title, name: item.title,
                         media_type: item.mediaType, poster_path: pp,
-                        vote_average: null, isHistoryItem: true
+                        vote_average: null, isHistoryItem: true, resume: item.resume || null
                     };
                 });
             }

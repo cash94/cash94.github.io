@@ -2743,50 +2743,152 @@ function returnHomeFromAndroidPlayer() {
       dropTorrentToServer(hash)['catch'](function () { });
       if (torrentProgressCache.has(hash)) torrentProgressCache.delete(hash);
     }
+    if (AppState.cardPlayback) { returnToDetailCard(); return; }
     AppState.currentDetailItem = null;
     if (!window.HomeScreen) return;
+    // Новое место в кнопку баннера приносит сам показ (updateHistoryResume)
     HomeScreen.show();
-    // Новое место — в кнопку баннера, когда таймкод выхода доедет до сервера
-    awaitPendingTimecodeSave().then(function () {
-      if (typeof HomeScreen.updateResume === 'function') HomeScreen.updateResume();
-    });
   }, 0);
 }
+
+/**
+ * Возврат в карточку-«сцену», откуда запускали «Продолжить» или серию из
+ * ленты: она так и лежит собранной, снова только показать. Раздача в
+ * currentDetailItem была нужна плееру — возвращаем сам фильм.
+ */
+function returnToDetailCard() {
+  var ctx = AppState.cardPlayback;
+  AppState.cardPlayback = null;
+  AppState.playFromHash = false;
+  AppState.isCatalogSearch = false;
+  AppState.currentDetailItem = ctx.item;
+  AppState.currentScreen = 'detail';
+  if (typeof Animations !== 'undefined' && typeof Animations.ensureDetailVisible === 'function') Animations.ensureDetailVisible();
+  else getEl('detail-view').style.display = 'block';
+  // Скрытая карточка теряет прокрутку, и лента приезжала бы от самого верха
+  getEl('detail-view').scrollTop = ctx.scrollTop;
+  // Фокус — сразу: без него его подхватит запасной путь на первую кнопку, и
+  // сцена съедет к ней и обратно
+  if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
+  if (ctx.from && ctx.from.offsetParent !== null) focusEl(ctx.from);
+}
+
+function torrentFileList(torrent) {
+  if (Array.isArray(torrent.file_stats)) return torrent.file_stats;
+  if (torrent.data) {
+    try { var data = JSON.parse(torrent.data); if (data.TorrServer && data.TorrServer.Files) return data.TorrServer.Files; } catch (e) { }
+  }
+  return [];
+}
+
+/**
+ * Та же серия или фильм в другой раздаче на сервере: прежнюю удалили, а сервер
+ * TorrStream помнит место просмотра по фильму и серии, а не по раздаче. Раздача
+ * опознаётся по id TMDB, серия — по номеру в имени файла, файл фильма — самый большой.
+ */
+function findSameTitleSource(item, resume) {
+  var list = AppState.torrents || [];
+  for (var i = 0; i < list.length; i++) {
+    var t = list[i];
+    var idMatch = String(t.title || '').match(/\[(\d+)\]/);
+    var id = t.tmdbId || (idMatch && idMatch[1]);
+    if (!id || String(id) !== String(item.id)) continue;
+    var files = extractVideoFiles(torrentFileList(t));
+    if (item.media_type !== 'tv') {
+      var big = null;
+      for (var m = 0; m < files.length; m++) if (!big || (files[m].length || 0) > (big.length || 0)) big = files[m];
+      if (big) return { torrent: t, files: files, fileId: big.id };
+      continue;
+    }
+    for (var f = 0; resume.episode && f < files.length; f++) {
+      var ref = parseEpisodeRef(files[f].path);
+      if (ref && ref.episode === resume.episode && (ref.season === null || ref.season === resume.season)) {
+        return { torrent: t, files: files, fileId: files[f].id };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Откуда играть запись истории: её раздача, а если TorrServer её забыл — она
+ * же, возвращённая сохранённым magnet (magnet-store.js), иначе та же серия или
+ * фильм в другой раздаче. Раньше забытая раздача сразу давала 'missing', до
+ * возврата magnet в startHLSPlayback дело не доходило.
+ * @returns {Promise<?Object>} {torrent, files, fileId}; null — играть нечего
+ */
+async function findResumeSource(item, resume) {
+  var hash = String(resume.hash).toLowerCase();
+  var pick = function (torrent) {
+    var files = torrent ? extractVideoFiles(torrentFileList(torrent)) : [];
+    for (var i = 0; i < files.length; i++) {
+      if (String(files[i].id) === String(resume.fileId)) return { torrent: torrent, files: files, fileId: resume.fileId };
+    }
+    return null;
+  };
+  // Раздачу удалили из TorrServer — ждать её незачем: две короткие попытки
+  var source = pick(await resolveTorrentWithFiles(hash, 2, 500));
+  if (!source && window.MagnetStore && await MagnetStore.ensure(hash)) {
+    source = pick(await resolveTorrentWithFiles(hash, 3, 700));
+  }
+  return source || findSameTitleSource(item, resume);
+}
+
+/**
+ * Серии раздачи, которую смотрели, — для ленты в карточке сериала.
+ * @returns {Promise<?Object>} {hash, files, progress: {fileId: запись},
+ *          current: fileId серии, которую запустит «Продолжить»}; null — раздачи
+ *          нет или в ней один файл, показывать нечего
+ */
+async function loadResumeEpisodes(item, resume) {
+  var source = await findResumeSource(item, resume);
+  if (!source || source.files.length < 2) return null;
+  var torrent = source.torrent, files = source.files;
+  if (!torrent.tmdbId && item.id) torrent.tmdbId = String(item.id);
+  if (!torrent.media_type) torrent.media_type = 'tv';
+  await ensureTorrentEpisodeMeta(torrent, files);
+  var progress = await getTorrentProgressBatch(torrent.hash, files);
+  var current = source.fileId;
+  if (isResumeFinished(resume)) {
+    for (var i = 0; i + 1 < files.length; i++) {
+      if (String(files[i].id) === String(source.fileId)) { current = files[i + 1].id; break; }
+    }
+  }
+  return { hash: torrent.hash, files: files, progress: progress.byFileId, current: current };
+}
+window.loadResumeEpisodes = loadResumeEpisodes;
 
 /**
  * Продолжить просмотр записи истории.
  * @param {Object} item   элемент ряда главной (id, media_type, title, poster_path)
  * @param {Object} resume {hash, fileId, timecode, duration, season?, episode?}
+ * @param {Object} [opts] card — запуск из карточки фильма, значение — элемент
+ *          под фокусом: по выходу из плеера вернуться к нему, а не на главную
  * @returns {Promise<string>} 'started' — ушли в плеер; 'missing' — раздачи
- *          (или файла, или следующей серии) нет в TorrServer, пусть вызывающий
- *          откроет карточку; 'offline' — TorrServer недоступен (баннер уже показан)
+ *          (или файла) нет в TorrServer, пусть вызывающий откроет карточку;
+ *          'last' — досмотрена последняя серия раздачи, следующей нет;
+ *          'offline' — TorrServer недоступен (баннер уже показан)
  */
-async function resumeWatching(item, resume) {
+async function resumeWatching(item, resume, opts) {
   if (!resume || !resume.hash) return 'missing';
   if (typeof ensureTorrserverOnline === 'function' && !(await ensureTorrserverOnline())) return 'offline';
   var overlay = getEl('playback-overlay');
   if (overlay) overlay.classList.add('active');
   try {
-    var hash = String(resume.hash).toLowerCase();
-    // Раздачу удалили из TorrServer — ждать её незачем: две короткие попытки
-    var torrent = await resolveTorrentWithFiles(hash, 2, 500);
-    if (!torrent) return 'missing';
-    var files = [];
-    if (Array.isArray(torrent.file_stats)) files = torrent.file_stats;
-    else if (torrent.data) {
-      try { var data = JSON.parse(torrent.data); if (data.TorrServer && data.TorrServer.Files) files = data.TorrServer.Files; } catch (e) { }
-    }
-    var videoFiles = extractVideoFiles(files);
+    var source = await findResumeSource(item, resume);
+    if (!source) return 'missing';
+    var torrent = source.torrent, videoFiles = source.files;
+    var hash = String(torrent.hash).toLowerCase();
     var idx = -1;
     for (var i = 0; i < videoFiles.length; i++) {
-      if (String(videoFiles[i].id) === String(resume.fileId)) { idx = i; break; }
+      if (String(videoFiles[i].id) === String(source.fileId)) { idx = i; break; }
     }
     if (idx === -1) return 'missing';
     // Досмотренная серия — следующая, со своего места (null: плеер спросит
     // сервер); досмотренного фильма здесь не бывает — баннер такой не предлагает
     var seek = Math.floor(resume.timecode) || 0;
     if (isResumeFinished(resume)) {
-      if (item.media_type !== 'tv' || idx + 1 >= videoFiles.length) return 'missing';
+      if (item.media_type !== 'tv' || idx + 1 >= videoFiles.length) return 'last';
       idx++;
       seek = null;
     }
@@ -2801,6 +2903,8 @@ async function resumeWatching(item, resume) {
         poster: known.poster || torrent.poster || null, title: known.title || torrent.title
       });
     }
+    var fromCard = !!(opts && opts.card);
+    AppState.cardPlayback = fromCard ? { item: item, from: opts.card, scrollTop: getEl('detail-view').scrollTop } : null;
     AppState.currentDetailItem = torrent;
     AppState.androidBackCatalog = item;
     AppState.isCatalogSerials = false;
@@ -2814,7 +2918,12 @@ async function resumeWatching(item, resume) {
     var started;
     try { started = await startHLSPlayback(playUrl, seek, false, idx); }
     finally { resumingFromHome = false; }
-    if (window.AndroidJS) AppState.currentScreen = 'home';
+    if (window.AndroidJS) AppState.currentScreen = fromCard ? 'detail' : 'home';
+    if (started === false && fromCard) {
+      // Плеер не поднялся — карточка на месте, раздача ей больше не нужна
+      AppState.cardPlayback = null;
+      AppState.currentDetailItem = item;
+    }
     return started === false ? 'missing' : 'started';
   } finally {
     if (overlay) overlay.classList.remove('active');
@@ -3798,6 +3907,8 @@ function showDetailView(field = null) {
       return;
     }
     trackTimecodeSave(saveTimecodeToServer()).then(function () { stopTimecodeSaving(); });
+    // Откуда бы ни запускали: и ряд главной, и лежащая под поиском карточка
+    if (typeof window.refreshDetailResume === 'function') window.refreshDetailResume();
     stopHeartbeat();
     if (nearEndCheckInterval) { clearInterval(nearEndCheckInterval); nearEndCheckInterval = null; }
     lastCleanedSegment = -1; currentEpisodeFiles = []; currentEpisodeIndex = 0; currentTorrentHash = null;
@@ -3843,7 +3954,7 @@ function showDetailView(field = null) {
     // Запускали с главной («Продолжить» в баннере, resumeWatching): туда и
     // возвращаемся, карточку раздачи не открываем. Раздачу останавливаем, как
     // и после просмотра из карточки, — TorrServer незачем её дальше качать
-    if (navUnder && navUnder.screen === 'home' && window.HomeScreen) {
+    if (navUnder && navUnder.screen === 'home' && window.HomeScreen && !AppState.cardPlayback) {
       var homeHash = (AppState.currentDetailItem && AppState.currentDetailItem.hash) || null;
       if (homeHash) {
         dropTorrentToServer(homeHash)['catch'](function () { });
@@ -3851,15 +3962,24 @@ function showDetailView(field = null) {
       }
       AppState.playFromHash = false;
       AppState.currentDetailItem = null;
+      // Новое место в кнопку баннера приносит сам показ (updateHistoryResume)
       HomeScreen.show();
-      // Новое место — в кнопку баннера, когда таймкод выхода доедет до сервера
-      awaitPendingTimecodeSave().then(function () {
-        if (typeof HomeScreen.updateResume === 'function') HomeScreen.updateResume();
-      });
       return;
     }
 
     getEl('torrserver-section').style.display = 'block';
+
+    // Запускали из карточки фильма: в неё и возвращаемся, а раздачу
+    // останавливаем — как после запуска с главной
+    if (AppState.cardPlayback) {
+      var cardHash = (AppState.currentDetailItem && AppState.currentDetailItem.hash) || null;
+      if (cardHash) {
+        dropTorrentToServer(cardHash)['catch'](function () { });
+        if (torrentProgressCache.has(cardHash)) torrentProgressCache.delete(cardHash);
+      }
+      returnToDetailCard();
+      return;
+    }
   }
   // Сначала drop, только потом список.
   //
@@ -6099,6 +6219,7 @@ function updatePlayerTimeline(timelineData) {
         body: JSON.stringify({ clientId: savedClientId, hash: currentTimecodeData.hash, fileId: currentTimecodeData.fileId, timecode: timecodeToSave, duration: currentTimecodeData.duration, completed: isCompleted, mediaKey: currentTimecodeMediaKey() })
       }));
     }
+    if (typeof window.refreshDetailResume === 'function') window.refreshDetailResume();
     if (androidReturnHome) { returnHomeFromAndroidPlayer(); return; }
     if (AppState.playFromHash && AppState.isCatalogSerials) { AppState.isCatalogSearch = false; return; }
     else if (AppState.playFromHash) { AppState.playFromHash = false; AppState.isCatalogSearch = false; return; }

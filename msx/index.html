@@ -116,7 +116,7 @@
       "css/flex-gap-fallback.css": "8acd2bbb",
       "css/inter.css": "2caa5b93",
       "css/legacy.css": "100d5c5a",
-      "css/styles.css": "c54e48ac",
+      "css/styles.css": "0e6ba82d",
       "css/uicons-regular-rounded.css": "feee56fb",
       "css/uicons-thin-chubby.css": "1d6159cb",
       "css/uicons-thin-rounded.css": "365fbd61",
@@ -126,23 +126,23 @@
       "js/app.js": "0b2e5b73",
       "js/catalog-idb-patch.js": "7cf849b3",
       "js/catalog-worker-bridge.js": "7f94619a",
-      "js/catalog-worker-patch.js": "a3305ef2",
+      "js/catalog-worker-patch.js": "cae8e189",
       "js/catalog-worker-posters-batch-patch.js": "0ba6a595",
       "js/catalog-worker-posters-patch.js": "d7d7dcc3",
       "js/catalog-worker.js": "e736d314",
-      "js/catalog.js": "a0bf419c",
+      "js/catalog.js": "a7169737",
       "js/category-banners.js": "46ea538e",
-      "js/config.js": "915ab348",
-      "js/control.js": "1d6a2e62",
+      "js/config.js": "8832f0c8",
+      "js/control.js": "e7c0062d",
       "js/donate.js": "14adc57a",
       "js/favorites-db.js": "8772a3b7",
-      "js/home.js": "84d313ce",
+      "js/home.js": "0ab98e49",
       "js/magnet-store.js": "773f87d4",
       "js/nav.js": "02a98d5e",
       "js/osk.js": "acd5c812",
       "js/perf-probe.js": "7143cc61",
       "js/player-memory-fix.js": "2fbf8c05",
-      "js/player.js": "d9356da7",
+      "js/player.js": "b37c94b1",
       "js/poster-db.js": "5133286b",
       "js/poster-prefetch.js": "a3173518",
       "js/screensaver.js": "a1d305b7",
@@ -155,7 +155,7 @@
       "js/torrents-worker-bridge.js": "5082b72d",
       "js/torrents-worker-patch.js": "1bab9f71",
       "js/torrents-worker.js": "2cd34b76",
-      "js/torrents.js": "91f2053d",
+      "js/torrents.js": "0cd26b21",
       "js/torrserverstats.js": "9d3a3654",
       "js/ui-customizer.js": "ab310609"
       // ASSET_V:end
@@ -1239,7 +1239,11 @@
         <div id="catalog-detail-overview" class="catalog-detail-overview"></div>
 
         <div id="catalog-detail-actions" class="catalog-detail-actions">
-          <button id="catalog-watch-btn" class="catalog-watch-btn">Торренты</button>
+          <!-- «Продолжить» — только у того, что есть в «Продолжить просмотр»
+               (setupDetailResume в js/catalog.js). Класс catalog-watch-btn — от него
+               попадание в список фокусируемых (control.js) -->
+          <button id="catalog-resume-btn" class="catalog-watch-btn catalog-resume-btn hidden">Продолжить</button>
+          <button id="catalog-watch-btn" class="catalog-watch-btn" data-label="Торренты">Торренты</button>
           <button id="detail-progress-btn" class="detail-progress-btn hidden">Играть</button>
           <button id="catalog-toggle-overview-btn" class="catalog-toggle-overview-btn" data-label="Подробнее">Подробнее</button>
           <!-- Только в режиме карточки торрента (torrent-detail-mode): уводит в

@@ -1531,7 +1531,7 @@ async function loadHistoryCatalog() {
                     poster_path: pp, vote_average: null, overview: null,
                     release_date: item.watchedAt ? item.watchedAt.split('T')[0] : null,
                     watchedAt: item.watchedAt, timestamp: item.timestamp,
-                    isHistoryItem: true, historyIndex: idx
+                    isHistoryItem: true, historyIndex: idx, resume: item.resume || null
                 };
             }).sort(function (a, b) { return b.timestamp - a.timestamp; });
             catalogState.totalItems = catalogState.items.length;
@@ -4449,6 +4449,10 @@ function ensureCinemaBlocks(panel) {
         below.id = 'detail-cinema-below';
         below.className = 'detail-cinema-below';
         below.innerHTML =
+            '<div id="catalog-detail-episodes-wrap" class="catalog-detail-episodes-wrap hidden">' +
+            '<div class="catalog-detail-section-title">Серии</div>' +
+            '<div id="catalog-detail-episodes" class="catalog-detail-episodes-grid"></div>' +
+            '</div>' +
             '<div id="catalog-detail-crew-wrap" class="catalog-detail-crew-wrap hidden">' +
             '<div class="catalog-detail-section-title">Режиссёр</div>' +
             '<div id="catalog-detail-crew" class="catalog-detail-crew-grid"></div>' +
@@ -4817,10 +4821,13 @@ function setupDetailLayout(item, index, posterUrl) {
         var cw = getEl('catalog-detail-collection-wrap');
         if (cw && rw && cw.nextSibling !== rw) below.insertBefore(cw, rw);
     }
+    var eps = getEl('catalog-detail-episodes-wrap');
+    if (eps) eps.classList.add('hidden');
     var crew = getEl('catalog-detail-crew-wrap');
     if (crew) crew.classList.add('hidden');
     var coll = getEl('catalog-detail-collection-wrap');
     if (coll) coll.classList.add('hidden');
+    enableDetailRowTransform(getEl('catalog-detail-episodes'));
     enableDetailRowTransform(getEl('catalog-detail-crew'));
     enableDetailRowTransform(getEl('catalog-detail-collection'));
     enableDetailRowTransform(getEl('catalog-detail-actors'));
@@ -5500,7 +5507,7 @@ function setDetailCardPoster(card, url) {
  *     приходит из кэша, и к нажатию «вниз» ленты уже с постерами.
  * Наблюдатель остаётся запасным путём: до чего не дошла очередь, поставит он.
  */
-var DETAIL_LANE_GRID_IDS = ['catalog-detail-crew', 'catalog-detail-actors', 'catalog-detail-collection', 'catalog-detail-recommendations'];
+var DETAIL_LANE_GRID_IDS = ['catalog-detail-episodes', 'catalog-detail-crew', 'catalog-detail-actors', 'catalog-detail-collection', 'catalog-detail-recommendations'];
 var detailPosterWarm = { cards: [], timer: null, prefetchTimer: null };
 
 function queueDetailPosterWarm(card) {
@@ -5925,6 +5932,11 @@ function setupDetailDelegation(dv) {
         dv.removeEventListener('click', dv._detailClickHandler);
     }
     dv._detailClickHandler = function (e) {
+        var episodeCard = e.target.closest('.catalog-episode-card');
+        if (episodeCard) {
+            playCardEpisode(episodeCard);
+            return;
+        }
         // Клик по актёру — уходим из карточки в сетку с его фильмографией
         var actorCard = e.target.closest('.catalog-actor-card');
         if (actorCard && actorCard.dataset.personId) {
@@ -5949,6 +5961,194 @@ function setupDetailDelegation(dv) {
     };
     dv.addEventListener('click', dv._detailClickHandler);
 }
+
+/* ===== «ПРОДОЛЖИТЬ» И СЕРИИ В КАРТОЧКЕ =====
+ * У того, что есть в ряду «Продолжить просмотр», в «сцене» первая кнопка —
+ * «Продолжить» с той же подписью, что на баннере главной, а у сериала ниже
+ * кнопок идёт лента серий раздачи, которую смотрели: кадр, название, размер и
+ * полоса просмотра, как на плитках «Моих торрентов». Запускает обе
+ * resumeWatching (player.js) с возвратом сюда же, в карточку.
+ *
+ * Лента — свои плитки, а не .file-item: те живут в #files-list и завязаны на
+ * торрентную карточку (описание под фокусом, поиск по хэшу, кнопка play).
+ * Плитки только прибавляются, лишние гасятся, как и в других лентах. */
+var detailResume = { item: null, resume: null, hash: '', tiles: [] };
+
+function setupDetailResume(item) {
+    var btn = getEl('catalog-resume-btn');
+    var r = window.HomeScreen && typeof HomeScreen.resumeFor === 'function' ? HomeScreen.resumeFor(item) : null;
+    detailResume.item = item;
+    detailResume.resume = r;
+    if (!btn) return null;
+    btn.classList.toggle('hidden', !r);
+    if (!r) return null;
+    btn.textContent = HomeScreen.resumeLabel(item, r);
+    btn.onclick = function () { playFromCard(item, r, btn); };
+    if (item.media_type !== 'tv' || typeof window.loadResumeEpisodes !== 'function') return null;
+    return window.loadResumeEpisodes(item, r)['catch'](function () { return null; });
+}
+
+function playFromCard(item, resume, from) {
+    if (typeof window.resumeWatching !== 'function') return;
+    var fail = function (text) {
+        if (typeof window.showToast === 'function') window.showToast(text);
+        focusDetailMain();
+    };
+    window.resumeWatching(item, resume, { card: from }).then(function (res) {
+        if (res === 'started' || res === 'offline') return;
+        // Кнопка «Торренты» рядом: ей раздачу и находят заново
+        fail(res === 'last' ? 'Это последняя серия раздачи' : 'Раздачи больше нет в TorrServer — выберите её заново');
+    }, function () {
+        fail('Не удалось начать воспроизведение');
+    });
+}
+
+/** Серия запускается с места, где остановились; досмотренная — сначала */
+function playCardEpisode(card) {
+    var d = card.dataset;
+    if (!d.hash || !detailResume.item) return;
+    var at = Number(d.timecode) || 0, duration = Number(d.duration) || 0;
+    var finished = typeof window.isResumeFinished === 'function' &&
+        window.isResumeFinished({ timecode: at, duration: duration });
+    playFromCard(detailResume.item, { hash: d.hash, fileId: d.fileId, timecode: finished ? 0 : at, duration: duration }, card);
+}
+
+function focusDetailMain() {
+    var rb = getEl('catalog-resume-btn'), wb = getEl('catalog-watch-btn');
+    var target = rb && !rb.classList.contains('hidden') ? rb : wb;
+    if (target && typeof window.focusEl === 'function') window.focusEl(target);
+}
+
+function buildEpisodeCard() {
+    var card = document.createElement('div');
+    card.className = 'catalog-episode-card hidden';
+
+    var still = document.createElement('div');
+    still.className = 'catalog-episode-still';
+    var img = document.createElement('img');
+    img.decoding = 'async';
+    img.alt = '';
+    img.className = 'hidden';
+    var noStill = document.createElement('div');
+    noStill.className = 'catalog-episode-no-still hidden';
+    img.onload = function () { img.classList.remove('hidden'); };
+    img.onerror = function () { img.classList.add('hidden'); noStill.classList.remove('hidden'); };
+    still.appendChild(img);
+    still.appendChild(noStill);
+
+    var play = document.createElement('div');
+    play.className = 'catalog-episode-play';
+    play.textContent = '▶';
+
+    var info = document.createElement('div');
+    info.className = 'catalog-episode-info';
+    // marquee-text + span: длинное название проезжает под фокусом (control.js)
+    var name = document.createElement('div');
+    name.className = 'catalog-episode-name marquee-text';
+    var nameText = document.createElement('span');
+    name.appendChild(nameText);
+    var size = document.createElement('div');
+    size.className = 'catalog-episode-size';
+    info.appendChild(name);
+    info.appendChild(size);
+
+    var bar = document.createElement('div');
+    bar.className = 'catalog-episode-progress hidden';
+    var fill = document.createElement('div');
+    bar.appendChild(fill);
+
+    card.appendChild(still);
+    card.appendChild(play);
+    card.appendChild(info);
+    card.appendChild(bar);
+    card._img = img;
+    card._placeholder = noStill;
+    card._nameBox = name;
+    card._name = nameText;
+    card._size = size;
+    card._bar = bar;
+    card._fill = fill;
+    return card;
+}
+
+/**
+ * @param {?Object} data ответ loadResumeEpisodes: {hash, files, progress, current}
+ * @param {boolean} keepScroll вернулись из плеера: лента остаётся где была
+ */
+function renderDetailEpisodes(data, keepScroll) {
+    var wrap = getEl('catalog-detail-episodes-wrap'), grid = getEl('catalog-detail-episodes');
+    if (!wrap || !grid) return;
+    var tiles = detailResume.tiles, files = (data && data.files) || [];
+    while (tiles.length < files.length) {
+        var fresh = buildEpisodeCard();
+        fresh._poolIdx = tiles.length;      // столбец ленты — порядок загрузки кадров
+        grid.appendChild(fresh);
+        tiles.push(fresh);
+    }
+    var currentIdx = 0;
+    for (var i = 0; i < tiles.length; i++) {
+        var card = tiles[i], file = files[i];
+        if (!file) {
+            hideDetailCard(card);
+            delete card.dataset.hash;
+            delete card.dataset.fileId;
+            continue;
+        }
+        var meta = typeof getTorrentEpisodeMeta === 'function' ? getTorrentEpisodeMeta(data.hash, file.id) : null;
+        var label = typeof formatEpisodeLabel === 'function' ? formatEpisodeLabel(meta, i + 1) : 'Серия ' + (i + 1);
+        var watched = data.progress && data.progress[String(file.id)];
+        var current = String(file.id) === String(data.current);
+        if (current) currentIdx = i;
+        card.dataset.hash = data.hash;
+        card.dataset.fileId = file.id;
+        card.dataset.timecode = watched ? watched.timecode : 0;
+        card.dataset.duration = watched ? watched.duration : 0;
+        card._name.textContent = label;
+        card._nameBox.classList.remove('marquee');
+        card._size.textContent = typeof formatBytes === 'function' ? formatBytes(file.length) : '';
+        var share = watched && watched.duration > 0 ? Math.min(watched.timecode / watched.duration, 1) : 0;
+        card._bar.classList.toggle('hidden', !(share > 0));
+        card._fill.style.width = (share * 100) + '%';
+        card.classList.toggle('is-current', current);
+        // Тот же кадр при возврате из плеера не снимаем — иначе он мигнул бы
+        var still = meta && meta.stillPath ? buildTmdbPosterUrl(meta.stillPath, 'w300') : '';
+        if (still !== card._posterUrl || !still) setDetailCardPoster(card, still);
+        card.classList.remove('hidden');
+    }
+    wrap.classList.toggle('hidden', !files.length);
+    if (files.length && !keepScroll) {
+        // Лента открывается на текущей серии: к сороковой пульт шёл бы долго.
+        // Целым числом плиток — она встаёт по линии остальных блоков
+        // По rect, а не offsetLeft: тот округляет, и на сороковой плитке набегают пиксели
+        var step = files.length > 1 ? tiles[1].getBoundingClientRect().left - tiles[0].getBoundingClientRect().left : 0;
+        if (typeof setScrollXImmediate === 'function') setScrollXImmediate(grid, step * currentIdx);
+    }
+    if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
+}
+
+/**
+ * Вышли из плеера, откуда бы ни запускали: перечитать историю (updateResume ждёт
+ * таймкод выхода), а в открытой карточке — кнопку и плитки. Она может лежать и
+ * скрытой под выдачей поиска, поэтому сверяем с detailResume, а не с
+ * currentDetailItem: там на время просмотра раздача. Досмотренный фильм теряет
+ * кнопку, и фокус с неё надо снять.
+ */
+function refreshDetailResume() {
+    var item = detailResume.item;
+    var update = window.HomeScreen && typeof HomeScreen.updateResume === 'function'
+        ? HomeScreen.updateResume() : Promise.resolve();
+    var stillHere = function () { return item && detailResume.item === item && isCinemaCatalogDetail(); };
+    return update.then(function () {
+        if (!stillHere()) return null;
+        var episodes = setupDetailResume(item);
+        var f = document.querySelector('.focused');
+        if (AppState.currentScreen === 'detail' && (!f || f.offsetParent === null)) focusDetailMain();
+        return episodes;
+    }).then(function (data) {
+        if (stillHere()) renderDetailEpisodes(data, true);
+    });
+}
+window.refreshDetailResume = refreshDetailResume;
 
 /**
  * Главная функция показа деталей каталога
@@ -6011,6 +6211,9 @@ async function showCatalogDetail(item, index, posterUrl) {
     var wb = getEl('catalog-watch-btn');
     // Звёздочка не ждёт ответа TMDB: id и media_type известны сразу из элемента
     setupFavoriteButton(item);
+    // «Продолжить» — тоже: место просмотра уже есть в ряду главной. Серии
+    // ходят в TorrServer и TMDB, поэтому запрос сразу, параллельно с деталями
+    var episodesPromise = setupDetailResume(item);
     if (aw) aw.classList.add('hidden');
     if (rw) rw.classList.add('hidden');
     if (wb) {
@@ -6119,6 +6322,9 @@ async function showCatalogDetail(item, index, posterUrl) {
     renderDetailCrew(item, src);
     renderDetailCollection(item, src);
     renderDetailRecommendations(src, rw, mt);
+    if (episodesPromise) episodesPromise.then(function (data) {
+        if (isDetailStillCurrent(item)) renderDetailEpisodes(data, false);
+    });
 
     // ==================== RUTUBE ТРЕЙЛЕР (параллельно) ====================
     stopTrailerBackground();
@@ -6154,14 +6360,15 @@ async function showCatalogDetail(item, index, posterUrl) {
 
     // Делегирование событий
     setupDetailDelegation(dv);
-    // Фокус на кнопку просмотра
+    // Фокус на кнопку просмотра: «Продолжить», если она есть, иначе «Торренты»
     requestAnimationFrame(function () {
         if (typeof updateFocusableElements === 'function' && typeof setFocus === 'function') {
             updateFocusableElements();
             var idx = -1;
+            var mainBtn = detailResume.resume ? 'catalog-resume-btn' : 'catalog-watch-btn';
             if (typeof focusableElements !== 'undefined') {
                 for (var i = 0; i < focusableElements.length; i++) {
-                    if (focusableElements[i].id === 'catalog-watch-btn') { idx = i; break; }
+                    if (focusableElements[i].id === mainBtn) { idx = i; break; }
                 }
             }
             setFocus(idx !== -1 ? idx : 0);
@@ -6397,7 +6604,7 @@ function hideCatalogDetailView() {
 
 function updateCatalogWatchButton(t) {
     var b = getEl('catalog-watch-btn');
-    if (b) b.textContent = 'Поиск торрентов';
+    if (b) b.textContent = 'Торренты';
 }
 
 function onCatalogItemClick(item, index) {
@@ -6916,7 +7123,7 @@ async function loadRowItems(key) {
                 return {
                     id: item.tmdbId, title: item.title, name: item.title,
                     media_type: item.mediaType, poster_path: pp,
-                    vote_average: null, isHistoryItem: true
+                    vote_average: null, isHistoryItem: true, resume: item.resume || null
                 };
             });
         }

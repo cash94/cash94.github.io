@@ -952,7 +952,7 @@ function getDetailItems() {
     // '#detail-view .home-nav-btn' — кнопки шапки разделов, поднятой поверх
     // карточки (js/home.js: DetailTopbar). Селектор намеренно привязан к
     // #detail-view: пока шапка на своём месте, он не совпадает ни с чем.
-    var s = ['#detail-view .home-nav-btn', '.detail-progress-btn', '.file-item', '#catalog-watch-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-favorite-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'];
+    var s = ['#detail-view .home-nav-btn', '.detail-progress-btn', '.file-item', '#catalog-resume-btn', '#catalog-watch-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-favorite-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-episode-card', '.catalog-actor-card', '.catalog-recommendation-card'];
     // Сборный селектор → порядок обхода совпадает с порядком в DOM, а не с
     // порядком селекторов. Важно для торрентного detail: там ряд актёров идёт
     // ПЕРЕД файлами, и «вверх» от плитки должно попадать в него.
@@ -981,7 +981,7 @@ function getDetailItems() {
  *
  * @returns {boolean} true — шаг сделан здесь
  */
-var DETAIL_LANE_CLASSES = ['file-item', 'catalog-actor-card', 'catalog-recommendation-card'];
+var DETAIL_LANE_CLASSES = ['file-item', 'catalog-episode-card', 'catalog-actor-card', 'catalog-recommendation-card'];
 
 function detailLaneStep(dir) {
     if (dir !== 'left' && dir !== 'right') return false;
@@ -1007,13 +1007,15 @@ function detailLaneStep(dir) {
 
 /**
  * Карточка каталога в раскладке «сцена» (detail-cinema, catalog.js):
- * строка кнопок, а под ней ленты «Режиссёр», «В главных ролях», «Похожие».
+ * строка кнопок, а под ней ленты «Серии», «Режиссёр», «В главных ролях», «Похожие».
  * Вверх-вниз ходим по ним как по строкам в порядке разметки — пустые и
  * скрытые пропускаем. В ленту возвращаемся на ту плитку, с которой из неё
  * ушли; в первый раз — на ближайшую по горизонтали к той, откуда пришли.
- * В строку кнопок — на кнопку, с которой уходили, иначе на «Поиск торрентов».
+ * В ленту серий в первый раз — на серию, которую запустит «Продолжить».
+ * В строку кнопок — на кнопку, с которой уходили, иначе на главную:
+ * «Продолжить», а если её нет — «Торренты».
  */
-var CINEMA_LANE_IDS = ['catalog-detail-crew', 'catalog-detail-actors', 'catalog-detail-collection', 'catalog-detail-recommendations'];
+var CINEMA_LANE_IDS = ['catalog-detail-episodes', 'catalog-detail-crew', 'catalog-detail-actors', 'catalog-detail-collection', 'catalog-detail-recommendations'];
 var CINEMA_LANE_TOP = 0.08;          // лента встаёт под верхний край экрана с этим отступом (доля высоты)
 // Переезд между сценой и лентами — почти экран. Обычная прокрутка едет с
 // постоянной скоростью и всё длиннее SCROLL_SMOOTH.maxDuration ставит сразу, без
@@ -1028,7 +1030,7 @@ function isCinemaDetail() {
 }
 
 function isCinemaLaneWrap(el) {
-    return !!(el && el.id && /^catalog-detail-(crew|actors|collection|recommendations)-wrap$/.test(el.id));
+    return !!(el && el.id && /^catalog-detail-(episodes|crew|actors|collection|recommendations)-wrap$/.test(el.id));
 }
 
 function getCinemaLanes() {
@@ -1042,7 +1044,8 @@ function getCinemaLanes() {
         var items = [];
         for (var c = grid.firstElementChild; c; c = c.nextElementSibling) {
             if (c.classList.contains('hidden') || c.style.display === 'none') continue;
-            if (c.classList.contains('catalog-actor-card') || c.classList.contains('catalog-recommendation-card')) items.push(c);
+            if (c.classList.contains('catalog-actor-card') || c.classList.contains('catalog-recommendation-card') ||
+                c.classList.contains('catalog-episode-card')) items.push(c);
         }
         if (items.length) out.push({ key: CINEMA_LANE_IDS[i], items: items });
     }
@@ -1120,8 +1123,13 @@ function cinemaVerticalStep(f, dir) {
     var lane = lanes[ti], target = cinemaNavMemo.last[lane.key];
     if (lane.items.indexOf(target) === -1) target = null;
     if (!target && lane.key === 'actions') {
-        var wb = getEl('catalog-watch-btn');
-        target = lane.items.indexOf(wb) !== -1 ? wb : lane.items[0];
+        var rb = getEl('catalog-resume-btn'), wb = getEl('catalog-watch-btn');
+        target = lane.items.indexOf(rb) !== -1 ? rb : (lane.items.indexOf(wb) !== -1 ? wb : lane.items[0]);
+    }
+    if (!target && lane.key === 'catalog-detail-episodes') {
+        for (var e = 0; e < lane.items.length && !target; e++) {
+            if (lane.items[e].classList.contains('is-current')) target = lane.items[e];
+        }
     }
     if (!target) {
         // Ближайшая по горизонтали — по положению покоя ленты, а не текущему
@@ -2192,7 +2200,7 @@ function updateFocusableElements() {
     if (screen === 'detail') {
         // Карточки актёров/рекомендаций — тоже фокусируемые: без них «вверх» из
         // ряда файлов торрентного detail упирается в кнопки шапки
-        var sel = '#detail-view .home-nav-btn, .detail-progress-btn, .file-item, .catalog-watch-btn, .catalog-toggle-overview-btn, .catalog-trailer-btn, .catalog-actor-card, .catalog-recommendation-card';
+        var sel = '#detail-view .home-nav-btn, .detail-progress-btn, .file-item, .catalog-watch-btn, .catalog-toggle-overview-btn, .catalog-trailer-btn, .catalog-episode-card, .catalog-actor-card, .catalog-recommendation-card';
         var els = document.querySelectorAll(sel);
         for (var i = 0; i < els.length; i++) if (els[i] && els[i].offsetParent !== null) list.push(els[i]);
         focusableElements = list;
@@ -3081,6 +3089,7 @@ function isElementFullyVisible(el, container) {
     var isRowVp = !!(container.classList && container.classList.contains('catalog-row-viewport'));
     var isH = isRowVp ||
         container.id === 'files-list' ||
+        container.id === 'catalog-detail-episodes-wrap' ||
         container.id === 'catalog-detail-crew-wrap' ||
         container.id === 'catalog-detail-collection-wrap' ||
         container.id === 'catalog-detail-actors-wrap' ||
@@ -4129,6 +4138,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
     var isRowViewport = !!(container.classList && container.classList.contains('catalog-row-viewport'));
 
     var isH = isRowViewport ||
+        container.id === 'catalog-detail-episodes-wrap' ||
         container.id === 'catalog-detail-crew-wrap' ||
         container.id === 'catalog-detail-collection-wrap' ||
         container.id === 'catalog-detail-actors-wrap' ||
@@ -4140,7 +4150,8 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         var r = el.getBoundingClientRect();
         var cr = container.getBoundingClientRect();
         var con = "";
-        if (container.id === 'catalog-detail-crew-wrap' ||
+        if (container.id === 'catalog-detail-episodes-wrap' ||
+            container.id === 'catalog-detail-crew-wrap' ||
             container.id === 'catalog-detail-collection-wrap' ||
             container.id === 'catalog-detail-actors-wrap' ||
             container.id === 'catalog-detail-recommendations-wrap' ||
@@ -4151,7 +4162,10 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             con = container;
         }
 
-        var hp = 30;
+        // Серии обрезаны по линии остальных блоков (styles.css), и плитка у этой
+        // линии видна целиком — запас от края окна ей не нужен
+        var isEpisodes = container.id === 'catalog-detail-episodes-wrap';
+        var hp = isEpisodes ? 0 : 30;
 
         // Позиция покоя: пока лента едет, живой rect показывал бы «уже видно»
         var dx = pendingScrollDeltaX(con);
@@ -4166,6 +4180,12 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
                 targetLeft = curLeft + (r.left - cr.left) - (cr.width - r.width - hp);
             } else {
                 targetLeft = curLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
+            }
+            // Шагаем целыми плитками: первая видимая всегда встаёт на линию
+            if (isEpisodes) {
+                var sib = el.previousElementSibling;
+                var tileStep = sib ? el.getBoundingClientRect().left - sib.getBoundingClientRect().left : 0;
+                if (tileStep > 0) targetLeft = (direction === 'right' ? Math.ceil(targetLeft / tileStep) : Math.floor(targetLeft / tileStep)) * tileStep;
             }
             targetLeft = Math.max(0, Math.min(getMaxScrollX(con), targetLeft));
             // Сравниваем с целью уже запущенного твина, а не с текущим
@@ -4267,7 +4287,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         }
         return;
     } else if (container.id === 'detail-view') {
-        if (el.id === 'back-from-detail' || el.id === 'catalog-watch-btn' || el.id === 'detail-progress-btn') {
+        if (el.id === 'back-from-detail' || el.id === 'catalog-watch-btn' || el.id === 'catalog-resume-btn' || el.id === 'detail-progress-btn') {
             applyScroll(container, { scrollTop: 0 }, smooth);
             return;
         }
@@ -4490,6 +4510,8 @@ function focusEl(el, opts) {
             container = getEl('files-list');
             // Вернуться в ряд серий на эту же плитку (getDetailFileEntry)
             if (container) container._lastFocusedTile = el;
+        } else if (el.classList && el.classList.contains('catalog-episode-card')) {
+            container = getEl('catalog-detail-episodes-wrap');
         } else if (isAC && el.classList.contains('catalog-crew-card')) {
             container = getEl('catalog-detail-crew-wrap');
         } else if (isAC) {
@@ -4542,7 +4564,7 @@ function focusEl(el, opts) {
             scrollConfigIntoView(el, container);
         }
     } else {
-        needScroll = el.id === 'back-from-detail' || el.id === 'catalog-watch-btn' ||
+        needScroll = el.id === 'back-from-detail' || el.id === 'catalog-watch-btn' || el.id === 'catalog-resume-btn' ||
             isTopAnchoredTarget(el) || isCatalogGridCard(el) || isCatalogRowCard(el);
         if (!needScroll && container) needScroll = !isElementFullyVisible(el, container);
     }
@@ -5402,6 +5424,7 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
  */
 (function () {
     var H_SCROLL_SELECTOR = '.files-list, ' +
+        '.catalog-detail-episodes-grid, ' +
         '.catalog-detail-actors-grid, ' +
         '.catalog-detail-recommendations-grid, ' +
         '.catalog-row-viewport, ' +
@@ -5603,6 +5626,7 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     var EDGE_SELECTOR = '#catalog-rows .catalog-row-viewport, ' +
         '#detail-view .files-list, ' +
         '#detail-view .catalog-detail-actors-grid, ' +
+        '#detail-view .catalog-detail-episodes-grid, ' +
         '#detail-view .catalog-detail-crew-grid, ' +
         '#detail-view .catalog-detail-recommendations-grid';
     var STEP_MS = 320;       // как HOME.HOVER_SCROLL_MS

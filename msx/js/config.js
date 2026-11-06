@@ -225,6 +225,8 @@ var AppState = {
   isSerials: false,
   playFromHash: false,
   androidBackCatalog: '',
+  // Плеер запущен из карточки фильма: {item, from} — куда вернуться (player.js)
+  cardPlayback: null,
   catalogIndex: null,
   catalogPu: null,
   backCurrentCatalog: '',

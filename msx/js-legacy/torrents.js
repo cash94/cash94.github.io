@@ -3235,7 +3235,7 @@ window.revealTorrentDetailExtras = revealTorrentDetailExtras;
 function visibleItemsforDetail(change) {
   var detailView = getEl('detail-view');
   if (change === 'showDetail') {
-    var massHidden = ['catalog-detail-actors-wrap', 'catalog-detail-backdrop', 'catalog-detail-recommendations-wrap', 'catalog-detail-overview', 'catalog-detail-meta', 'catalog-watch-btn', 'catalog-toggle-overview-btn', 'catalog-trailer-btn', 'detail-poster', 'files-list-title', 'detail-open-card-btn', 'catalog-favorite-btn'];
+    var massHidden = ['catalog-detail-actors-wrap', 'catalog-detail-backdrop', 'catalog-detail-recommendations-wrap', 'catalog-detail-overview', 'catalog-detail-meta', 'catalog-resume-btn', 'catalog-watch-btn', 'catalog-toggle-overview-btn', 'catalog-trailer-btn', 'detail-poster', 'files-list-title', 'detail-open-card-btn', 'catalog-favorite-btn'];
     massHidden.forEach(function (id) {
       var el = getEl(id);
       if (el) el.classList.add('hidden');

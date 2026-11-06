@@ -148,6 +148,7 @@ var AppState = {
   isSerials: false,
   playFromHash: false,
   androidBackCatalog: '',
+  cardPlayback: null,
   catalogIndex: null,
   catalogPu: null,
   backCurrentCatalog: '',

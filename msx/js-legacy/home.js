@@ -444,23 +444,24 @@
       });
     });
   }
+  function historyRowItem(it) {
+    var pp = it.posterPath;
+    if (pp && pp.indexOf('http') !== 0) pp = pp.charAt(0) === '/' ? pp : '/' + pp;
+    return {
+      id: it.tmdbId,
+      title: it.title,
+      name: it.title,
+      media_type: it.mediaType,
+      poster_path: pp,
+      vote_average: null,
+      isHistoryItem: true,
+      resume: it.resume || null
+    };
+  }
   function loadHistoryItems() {
     return homeFetch(withClientId(serverUrl() + '/api/history')).then(function (data) {
       if (!data || !data.success || !data.history || !data.history.length) return [];
-      return data.history.slice(0, HOME.ITEMS_PER_ROW).map(function (it) {
-        var pp = it.posterPath;
-        if (pp && pp.indexOf('http') !== 0) pp = pp.charAt(0) === '/' ? pp : '/' + pp;
-        return {
-          id: it.tmdbId,
-          title: it.title,
-          name: it.title,
-          media_type: it.mediaType,
-          poster_path: pp,
-          vote_average: null,
-          isHistoryItem: true,
-          resume: it.resume || null
-        };
-      });
+      return data.history.slice(0, HOME.ITEMS_PER_ROW).map(historyRowItem);
     });
   }
   function loadCollectionItems(cfg) {
@@ -2499,6 +2500,14 @@
     if (finished && item.media_type !== 'tv') return null;
     return r;
   }
+  function resumeForItem(item) {
+    var list = homeState.data && homeState.data.history;
+    var type = item && (item.media_type || 'movie');
+    for (var i = 0; item && list && i < list.length; i++) {
+      if (String(list[i].id) === String(item.id) && list[i].media_type === type) return heroResume(list[i]);
+    }
+    return heroResume(item);
+  }
   function formatResumeTime(sec) {
     sec = Math.max(0, Math.floor(sec || 0));
     var h = Math.floor(sec / 3600),
@@ -2532,27 +2541,65 @@
     });
     return true;
   }
-  function updateHistoryResume() {
-    var list = homeState.data && homeState.data.history;
-    if (!list || !list.length) return Promise.resolve();
-    return homeFetch(withClientId(serverUrl() + '/api/history')).then(function (data) {
-      if (!data || !data.success || !data.history) return;
+  function historyKey(item) {
+    return String(item.id) + '_' + item.media_type;
+  }
+  function syncHistoryRow(fresh) {
+    var old = homeState.data.history || [];
+    var known = {},
+      i;
+    for (i = 0; i < old.length; i++) known[historyKey(old[i])] = old[i];
+    var same = fresh.length === old.length;
+    var list = fresh.map(function (it, n) {
+      var was = known[historyKey(it)];
+      if (was) was.resume = it.resume;
+      if (was !== old[n]) same = false;
+      return was || it;
+    });
+    homeState.data.history = list;
+    var ri = homeState.rowKeys.indexOf('history');
+    if (ri === -1) return;
+    var cards = homeState.rows[ri];
+    if (!same) {
+      var track = homeState.rowEls[ri].querySelector('.catalog-row-track');
+      var anchor = cards[homeState.rowCols[ri]];
+      var hadFocus = !!(anchor && anchor.classList.contains('focused'));
       var byKey = {};
-      for (var i = 0; i < data.history.length; i++) {
-        var h = data.history[i];
-        byKey[String(h.tmdbId) + '_' + h.mediaType] = h.resume || null;
+      for (i = 0; i < cards.length; i++) byKey[cards[i].dataset.itemId + '_' + cards[i].dataset.mediaType] = cards[i];
+      var next = list.map(function (it, n) {
+        var card = byKey[historyKey(it)] || createHomeCard(it, 'history', n);
+        card.dataset.itemIndex = n;
+        return card;
+      });
+      for (i = 0; i < cards.length; i++) {
+        if (next.indexOf(cards[i]) === -1 && cards[i].parentNode) cards[i].parentNode.removeChild(cards[i]);
       }
-      var ri = homeState.rowKeys.indexOf('history');
-      var rowEl = ri !== -1 ? homeState.rowEls[ri] : null;
-      for (var j = 0; j < list.length; j++) {
-        var k = String(list[j].id) + '_' + list[j].media_type;
-        if (!Object.prototype.hasOwnProperty.call(byKey, k)) continue;
-        list[j].resume = byKey[k];
-        var card = rowEl ? rowEl.querySelector('.catalog-row-card[data-item-index="' + j + '"]') : null;
-        if (card) setCardProgress(card, list[j].resume);
-      }
+      for (i = 0; i < next.length; i++) track.appendChild(next[i]);
+      homeState.rows[ri] = cards = next;
+      var col = Math.max(0, next.indexOf(anchor));
+      homeState.rowCols[ri] = col;
+      if (homeState.lastRowKey === 'history') homeState.lastColIndex = col;
+      invalidateFocus();
+      loadRowPosters(ri);
+      if (hadFocus) focusCard(ri, col);
+    }
+    for (i = 0; i < cards.length; i++) setCardProgress(cards[i], list[i].resume);
+  }
+  function updateHistoryResume() {
+    if (homeState.historySync) return homeState.historySync;
+    if (!homeState.data || !homeState.built) return Promise.resolve();
+    var saved = typeof awaitPendingTimecodeSave === 'function' ? awaitPendingTimecodeSave() : Promise.resolve();
+    var sync = saved.then(function () {
+      return homeFetch(withClientId(serverUrl() + '/api/history'));
+    }).then(function (data) {
+      if (!data || !data.success || !data.history || !data.history.length) return;
+      syncHistoryRow(data.history.slice(0, HOME.ITEMS_PER_ROW).map(historyRowItem));
       if (homeState.hero.item) setPlayLabel(homeState.hero.item);
-    })['catch'](function () {});
+    })['catch'](function () {}).then(function () {
+      homeState.historySync = null;
+    });
+    homeState.historySync = sync;
+    return sync;
   }
   function playHeroItem() {
     var item = homeState.hero.item;
@@ -2792,6 +2839,7 @@
     invalidateHeroTop();
     homeState.activated = true;
     setActiveRow(Math.min(homeState.activeRow, Math.max(0, homeState.rowEls.length - 1)));
+    updateHistoryResume();
     requestAnimationFrame(function () {
       if (!isHomeFocusable()) return;
       if (typeof updateFocusableElements === 'function') updateFocusableElements();
@@ -3449,6 +3497,8 @@
     rearmTrailer: rearmHeroTrailer,
     removeHistoryItem: removeHistoryItem,
     updateResume: updateHistoryResume,
+    resumeFor: resumeForItem,
+    resumeLabel: resumeLabel,
     logoUrl: knownLogoUrl,
     state: homeState
   };

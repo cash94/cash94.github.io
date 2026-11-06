@@ -552,13 +552,13 @@ function getDetailActionButtons() {
   return out;
 }
 function getDetailItems() {
-  var s = ['#detail-view .home-nav-btn', '.detail-progress-btn', '.file-item', '#catalog-watch-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-favorite-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-actor-card', '.catalog-recommendation-card'];
+  var s = ['#detail-view .home-nav-btn', '.detail-progress-btn', '.file-item', '#catalog-resume-btn', '#catalog-watch-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-favorite-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-episode-card', '.catalog-actor-card', '.catalog-recommendation-card'];
   var it = document.querySelectorAll(s.join(','));
   var a = [];
   for (var i = 0; i < it.length; i++) if (VISIBLE(it[i])) a.push(it[i]);
   return a;
 }
-var DETAIL_LANE_CLASSES = ['file-item', 'catalog-actor-card', 'catalog-recommendation-card'];
+var DETAIL_LANE_CLASSES = ['file-item', 'catalog-episode-card', 'catalog-actor-card', 'catalog-recommendation-card'];
 function detailLaneStep(dir) {
   if (dir !== 'left' && dir !== 'right') return false;
   var f = document.querySelector('.focused');
@@ -582,7 +582,7 @@ function detailLaneStep(dir) {
   });
   return true;
 }
-var CINEMA_LANE_IDS = ['catalog-detail-crew', 'catalog-detail-actors', 'catalog-detail-collection', 'catalog-detail-recommendations'];
+var CINEMA_LANE_IDS = ['catalog-detail-episodes', 'catalog-detail-crew', 'catalog-detail-actors', 'catalog-detail-collection', 'catalog-detail-recommendations'];
 var CINEMA_LANE_TOP = 0.08;
 var CINEMA_SCROLL_S = 0.5;
 var CINEMA_SCROLL_EASE = 'sine.inOut';
@@ -595,7 +595,7 @@ function isCinemaDetail() {
   return !!(dv && dv.classList.contains('detail-cinema') && dv.classList.contains('catalog-detail-mode'));
 }
 function isCinemaLaneWrap(el) {
-  return !!(el && el.id && /^catalog-detail-(crew|actors|collection|recommendations)-wrap$/.test(el.id));
+  return !!(el && el.id && /^catalog-detail-(episodes|crew|actors|collection|recommendations)-wrap$/.test(el.id));
 }
 function getCinemaLanes() {
   var out = [];
@@ -611,7 +611,7 @@ function getCinemaLanes() {
     var items = [];
     for (var c = grid.firstElementChild; c; c = c.nextElementSibling) {
       if (c.classList.contains('hidden') || c.style.display === 'none') continue;
-      if (c.classList.contains('catalog-actor-card') || c.classList.contains('catalog-recommendation-card')) items.push(c);
+      if (c.classList.contains('catalog-actor-card') || c.classList.contains('catalog-recommendation-card') || c.classList.contains('catalog-episode-card')) items.push(c);
     }
     if (items.length) out.push({
       key: CINEMA_LANE_IDS[i],
@@ -683,8 +683,14 @@ function cinemaVerticalStep(f, dir) {
     target = cinemaNavMemo.last[lane.key];
   if (lane.items.indexOf(target) === -1) target = null;
   if (!target && lane.key === 'actions') {
-    var wb = getEl('catalog-watch-btn');
-    target = lane.items.indexOf(wb) !== -1 ? wb : lane.items[0];
+    var rb = getEl('catalog-resume-btn'),
+      wb = getEl('catalog-watch-btn');
+    target = lane.items.indexOf(rb) !== -1 ? rb : lane.items.indexOf(wb) !== -1 ? wb : lane.items[0];
+  }
+  if (!target && lane.key === 'catalog-detail-episodes') {
+    for (var e = 0; e < lane.items.length && !target; e++) {
+      if (lane.items[e].classList.contains('is-current')) target = lane.items[e];
+    }
   }
   if (!target) {
     var fr = f.getBoundingClientRect(),
@@ -1959,7 +1965,7 @@ function updateFocusableElements() {
     return;
   }
   if (screen === 'detail') {
-    var sel = '#detail-view .home-nav-btn, .detail-progress-btn, .file-item, .catalog-watch-btn, .catalog-toggle-overview-btn, .catalog-trailer-btn, .catalog-actor-card, .catalog-recommendation-card';
+    var sel = '#detail-view .home-nav-btn, .detail-progress-btn, .file-item, .catalog-watch-btn, .catalog-toggle-overview-btn, .catalog-trailer-btn, .catalog-episode-card, .catalog-actor-card, .catalog-recommendation-card';
     var els = document.querySelectorAll(sel);
     for (var i = 0; i < els.length; i++) if (els[i] && els[i].offsetParent !== null) list.push(els[i]);
     focusableElements = list;
@@ -2964,7 +2970,7 @@ function isElementFullyVisible(el, container) {
   var r = el.getBoundingClientRect();
   var cr = container.getBoundingClientRect();
   var isRowVp = !!(container.classList && container.classList.contains('catalog-row-viewport'));
-  var isH = isRowVp || container.id === 'files-list' || container.id === 'catalog-detail-crew-wrap' || container.id === 'catalog-detail-collection-wrap' || container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers-wrap';
+  var isH = isRowVp || container.id === 'files-list' || container.id === 'catalog-detail-episodes-wrap' || container.id === 'catalog-detail-crew-wrap' || container.id === 'catalog-detail-collection-wrap' || container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers-wrap';
   if (isH) {
     var hp = 45;
     var vp = 65;
@@ -3449,18 +3455,19 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
   var isWindow = container === window || container === document.body;
   var scrollContainer = isWindow ? window.scrollingElement || document.documentElement : container;
   var isRowViewport = !!(container.classList && container.classList.contains('catalog-row-viewport'));
-  var isH = isRowViewport || container.id === 'catalog-detail-crew-wrap' || container.id === 'catalog-detail-collection-wrap' || container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers-wrap' || container.id === 'files-list';
+  var isH = isRowViewport || container.id === 'catalog-detail-episodes-wrap' || container.id === 'catalog-detail-crew-wrap' || container.id === 'catalog-detail-collection-wrap' || container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers-wrap' || container.id === 'files-list';
   if (isH) {
     var r = el.getBoundingClientRect();
     var cr = container.getBoundingClientRect();
     var con = "";
-    if (container.id === 'catalog-detail-crew-wrap' || container.id === 'catalog-detail-collection-wrap' || container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers-wrap') {
+    if (container.id === 'catalog-detail-episodes-wrap' || container.id === 'catalog-detail-crew-wrap' || container.id === 'catalog-detail-collection-wrap' || container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers-wrap') {
       con = container.id.replace('-wrap', '');
       con = getEl(con);
     } else {
       con = container;
     }
-    var hp = 30;
+    var isEpisodes = container.id === 'catalog-detail-episodes-wrap';
+    var hp = isEpisodes ? 0 : 30;
     var dx = pendingScrollDeltaX(con);
     var isHorizVisible = r.left - dx >= cr.left + hp && r.right - dx <= cr.right - hp;
     if (!isHorizVisible) {
@@ -3472,6 +3479,11 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         targetLeft = curLeft + (r.left - cr.left) - (cr.width - r.width - hp);
       } else {
         targetLeft = curLeft + (r.left - cr.left) - cr.width / 2 + r.width / 2;
+      }
+      if (isEpisodes) {
+        var sib = el.previousElementSibling;
+        var tileStep = sib ? el.getBoundingClientRect().left - sib.getBoundingClientRect().left : 0;
+        if (tileStep > 0) targetLeft = (direction === 'right' ? Math.ceil(targetLeft / tileStep) : Math.floor(targetLeft / tileStep)) * tileStep;
       }
       targetLeft = Math.max(0, Math.min(getMaxScrollX(con), targetLeft));
       var fromLeft = dx ? curLeft + dx : curLeft;
@@ -3529,7 +3541,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
     }
     return;
   } else if (container.id === 'detail-view') {
-    if (el.id === 'back-from-detail' || el.id === 'catalog-watch-btn' || el.id === 'detail-progress-btn') {
+    if (el.id === 'back-from-detail' || el.id === 'catalog-watch-btn' || el.id === 'catalog-resume-btn' || el.id === 'detail-progress-btn') {
       applyScroll(container, {
         scrollTop: 0
       }, smooth);
@@ -3665,6 +3677,8 @@ function focusEl(el, opts) {
     if (isFI) {
       container = getEl('files-list');
       if (container) container._lastFocusedTile = el;
+    } else if (el.classList && el.classList.contains('catalog-episode-card')) {
+      container = getEl('catalog-detail-episodes-wrap');
     } else if (isAC && el.classList.contains('catalog-crew-card')) {
       container = getEl('catalog-detail-crew-wrap');
     } else if (isAC) {
@@ -3696,7 +3710,7 @@ function focusEl(el, opts) {
       scrollConfigIntoView(el, container);
     }
   } else {
-    needScroll = el.id === 'back-from-detail' || el.id === 'catalog-watch-btn' || isTopAnchoredTarget(el) || isCatalogGridCard(el) || isCatalogRowCard(el);
+    needScroll = el.id === 'back-from-detail' || el.id === 'catalog-watch-btn' || el.id === 'catalog-resume-btn' || isTopAnchoredTarget(el) || isCatalogGridCard(el) || isCatalogRowCard(el);
     if (!needScroll && container) needScroll = !isElementFullyVisible(el, container);
   }
   if (needScroll) {
@@ -4598,7 +4612,7 @@ function initControl() {
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initControl);else initControl();
 (function () {
-  var H_SCROLL_SELECTOR = '.files-list, ' + '.catalog-detail-actors-grid, ' + '.catalog-detail-recommendations-grid, ' + '.catalog-row-viewport, ' + '.catalog-row';
+  var H_SCROLL_SELECTOR = '.files-list, ' + '.catalog-detail-episodes-grid, ' + '.catalog-detail-actors-grid, ' + '.catalog-detail-recommendations-grid, ' + '.catalog-row-viewport, ' + '.catalog-row';
   var TOUCH_AXIS_THRESHOLD = 10;
   var FLING_MS = 140;
   var FLING_IDLE_MS = 80;
@@ -4735,7 +4749,7 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
   window.initSmoothHorizontalScroll = function () {};
 })();
 (function () {
-  var EDGE_SELECTOR = '#catalog-rows .catalog-row-viewport, ' + '#detail-view .files-list, ' + '#detail-view .catalog-detail-actors-grid, ' + '#detail-view .catalog-detail-crew-grid, ' + '#detail-view .catalog-detail-recommendations-grid';
+  var EDGE_SELECTOR = '#catalog-rows .catalog-row-viewport, ' + '#detail-view .files-list, ' + '#detail-view .catalog-detail-actors-grid, ' + '#detail-view .catalog-detail-episodes-grid, ' + '#detail-view .catalog-detail-crew-grid, ' + '#detail-view .catalog-detail-recommendations-grid';
   var STEP_MS = 320;
   var STEP_SEC = 0.3;
   var hover = {
