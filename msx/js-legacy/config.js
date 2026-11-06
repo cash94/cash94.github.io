@@ -109,6 +109,7 @@ var AppState = {
   bufferHidden: false,
   autoSkipIntro: false,
   playerManualHide: false,
+  screensaver: true,
   playerScreensaver: true,
   preloadBeforePlay: true,
   builtinKeyboard: false,

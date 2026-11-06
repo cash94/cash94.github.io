@@ -1736,12 +1736,17 @@ function setupCheckboxes() {
       setAutoSkip(e.target.checked);
     });
   }
+  var screensaverAllCheckbox = getEl('screensaver-enabled');
+  if (screensaverAllCheckbox) {
+    AppState.screensaver = localStorage.getItem('screensaver') !== 'false';
+    screensaverAllCheckbox.checked = AppState.screensaver;
+    screensaverAllCheckbox.addEventListener('change', function (e) {
+      setScreensaver(e.target.checked);
+    });
+  }
   var screensaverCheckbox = getEl('player-screensaver');
   if (screensaverCheckbox) {
-    if (window.AndroidJS) {
-      var screensaverContainer = screensaverCheckbox.closest('.checkbox-container');
-      if (screensaverContainer) screensaverContainer.classList.add('hidden');
-    }
+    updatePlayerScreensaverRow();
     AppState.playerScreensaver = localStorage.getItem('playerScreensaver') !== 'false';
     screensaverCheckbox.checked = AppState.playerScreensaver;
     screensaverCheckbox.addEventListener('change', function (e) {
@@ -2090,6 +2095,19 @@ function setPlayerManualHide(on) {
   }
 }
 window.setPlayerManualHide = setPlayerManualHide;
+function updatePlayerScreensaverRow() {
+  var cb = getEl('player-screensaver');
+  var row = cb && cb.closest('.checkbox-container');
+  if (row) row.classList.toggle('hidden', !!window.AndroidJS || AppState.screensaver === false);
+}
+function setScreensaver(on) {
+  AppState.screensaver = !!on;
+  try {
+    localStorage.setItem('screensaver', AppState.screensaver);
+  } catch (e) {}
+  updatePlayerScreensaverRow();
+}
+window.setScreensaver = setScreensaver;
 function setPlayerScreensaver(on) {
   AppState.playerScreensaver = !!on;
   try {

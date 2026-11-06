@@ -50,7 +50,7 @@
   function playerPaused() {
     var st = window.AppState;
     if (!st || st.currentScreen !== 'player' || st.isYoutubePlayback || st.isSeeking) return false;
-    if (st.playerScreensaver === false) return false;
+    if (st.playerScreensaver === false || st.screensaver === false) return false;
     var v = document.getElementById('video-player');
     if (!v || !v.paused || v.readyState < 2) return false;
     var po = document.getElementById('player-overlay');
@@ -77,6 +77,7 @@
     if (document.hidden) return false;
     var st = window.AppState;
     if (!st) return false;
+    if (st.screensaver === false) return false;
     if (typeof window.isPreloadScreenShown === 'function' && window.isPreloadScreenShown()) return false;
     var starting = document.getElementById('playback-overlay');
     if (starting && starting.classList.contains('active')) return false;

@@ -2158,7 +2158,12 @@ function updatePlayerSettingsMenu() {
   var manualHide = getEl('psetting-manualhide');
   if (manualHide) manualHide.classList.toggle('is-on', !!AppState.playerManualHide);
   var saver = getEl('psetting-screensaver');
-  if (saver) saver.classList.toggle('is-on', AppState.playerScreensaver !== false);
+  if (saver) {
+    saver.classList.toggle('is-on', AppState.playerScreensaver !== false);
+    // Общий «Скринсейвер» (раздел «Прочее») снят — пункт ни на что не влияет.
+    // Android прячет его всегда: там нативный плеер
+    saver.style.display = (window.AndroidJS || AppState.screensaver === false) ? 'none' : '';
+  }
   var subSize = getEl('psetting-subsize-value');
   if (subSize) subSize.textContent = SUBTITLE_SIZES[getSubtitleSize()].label;
 }
@@ -2175,8 +2180,6 @@ function setupPlayerSettingsButton() {
   // ...и HUD там свой, нативный
   var manualHideItem = getEl('psetting-manualhide');
   if (manualHideItem && window.AndroidJS) manualHideItem.style.display = 'none';
-  var saverItem = getEl('psetting-screensaver');
-  if (saverItem && window.AndroidJS) saverItem.style.display = 'none';
   var btn = getEl('player-settings-btn');
   var panel = getEl('player-settings-panel');
   if (!btn || !panel) return;

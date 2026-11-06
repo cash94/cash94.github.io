@@ -2234,14 +2234,21 @@ function setupCheckboxes() {
     });
   }
 
-  // Скринсейвер в плеере (пелена и заставка на паузе, screensaver.js). В
-  // Android-приложении фильм идёт в нативном плеере — там галка не нужна.
+  // Скринсейвер целиком (раздел «Прочее», screensaver.js). Читаем до галки
+  // плеера: от него зависит, видна ли она (updatePlayerScreensaverRow).
+  var screensaverAllCheckbox = getEl('screensaver-enabled');
+  if (screensaverAllCheckbox) {
+    AppState.screensaver = localStorage.getItem('screensaver') !== 'false';
+    screensaverAllCheckbox.checked = AppState.screensaver;
+    screensaverAllCheckbox.addEventListener('change', function (e) {
+      setScreensaver(e.target.checked);
+    });
+  }
+
+  // Скринсейвер в плеере (пелена и заставка на паузе, screensaver.js).
   var screensaverCheckbox = getEl('player-screensaver');
   if (screensaverCheckbox) {
-    if (window.AndroidJS) {
-      var screensaverContainer = screensaverCheckbox.closest('.checkbox-container');
-      if (screensaverContainer) screensaverContainer.classList.add('hidden');
-    }
+    updatePlayerScreensaverRow();
     AppState.playerScreensaver = localStorage.getItem('playerScreensaver') !== 'false';
     screensaverCheckbox.checked = AppState.playerScreensaver;
     screensaverCheckbox.addEventListener('change', function (e) {
@@ -2655,6 +2662,26 @@ function setPlayerManualHide(on) {
   }
 }
 window.setPlayerManualHide = setPlayerManualHide;
+
+/**
+ * Галка скринсейвера в разделе «Плеер». В Android-приложении фильм идёт в
+ * нативном плеере — там она не нужна. При снятом общем «Скринсейвере» она ни на
+ * что не влияла бы, поэтому тоже прячем; своё значение она при этом хранит.
+ */
+function updatePlayerScreensaverRow() {
+  var cb = getEl('player-screensaver');
+  var row = cb && cb.closest('.checkbox-container');
+  if (row) row.classList.toggle('hidden', !!window.AndroidJS || AppState.screensaver === false);
+}
+
+/** Скринсейвер целиком: галка в разделе «Прочее» */
+function setScreensaver(on) {
+  AppState.screensaver = !!on;
+  try { localStorage.setItem('screensaver', AppState.screensaver); } catch (e) { }
+  updatePlayerScreensaverRow();
+  // Заставку и пелену, если уже вышли, снимет ближайший тик screensaver.js
+}
+window.setScreensaver = setScreensaver;
 
 /** Скринсейвер в плеере: галка в разделе «Плеер» и пункт в шестерёнке */
 function setPlayerScreensaver(on) {

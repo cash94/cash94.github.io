@@ -21,6 +21,8 @@
 // Любое нажатие убирает и заставку, и пелену и показывает HUD плеера.
 // Настройка «Включить скринсейвер» (AppState.playerScreensaver) выключает в
 // плеере и пелену, и заставку — playerPaused() тогда всегда «нет».
+// «Скринсейвер» в разделе «Прочее» (AppState.screensaver) — общий выключатель:
+// снята — нет ни заставки на любом экране, ни пелены в плеере.
 //
 // Грузится СРАЗУ после config.js — раньше всех, кто слушает клавиатуру на
 // window в фазе захвата (osk.js, ui-customizer.js, torrserverstats.js). Только
@@ -90,9 +92,10 @@
     function playerPaused() {
         var st = window.AppState;
         if (!st || st.currentScreen !== 'player' || st.isYoutubePlayback || st.isSeeking) return false;
-        // «Включить скринсейвер» снят: пауза в плеере не гасит экран и не
-        // зовёт заставку (canStart в плеере спрашивает только нас)
-        if (st.playerScreensaver === false) return false;
+        // «Включить скринсейвер» или общий «Скринсейвер» сняты: пауза в плеере
+        // не гасит экран и не зовёт заставку (canStart в плеере спрашивает
+        // только нас)
+        if (st.playerScreensaver === false || st.screensaver === false) return false;
         var v = document.getElementById('video-player');
         if (!v || !v.paused || v.readyState < 2) return false;
         var po = document.getElementById('player-overlay');
@@ -128,6 +131,7 @@
         if (document.hidden) return false;
         var st = window.AppState;
         if (!st) return false;
+        if (st.screensaver === false) return false;
         // Запуск фильма: окно предзагрузки и «Загрузка…» ждут, глядя на экран, а
         // видео ещё нет, и проверка «что-то играет» заставку не удержала бы
         if (typeof window.isPreloadScreenShown === 'function' && window.isPreloadScreenShown()) return false;
