@@ -1033,6 +1033,14 @@ function isCinemaLaneWrap(el) {
     return !!(el && el.id && /^catalog-detail-(episodes|crew|actors|collection|recommendations)-wrap$/.test(el.id));
 }
 
+/** -1 — первая видимая плитка ленты, 1 — последняя, 0 — в середине. Заглушка и лишние карточки пула скрыты */
+function cinemaLaneEdge(el) {
+    var prev = el.previousElementSibling, next = el.nextElementSibling;
+    while (prev && prev.classList.contains('hidden')) prev = prev.previousElementSibling;
+    while (next && next.classList.contains('hidden')) next = next.nextElementSibling;
+    return !prev ? -1 : !next ? 1 : 0;
+}
+
 function getCinemaLanes() {
     var out = [];
     var acts = getDetailActionButtons();
@@ -3613,10 +3621,18 @@ function getMaxScrollX(container) {
     // прокручиваемую область не входит), поэтому меряем сам трек: у него
     // width: max-content, и transform на offsetWidth не влияет
     if (isTxScroller(container)) {
-        // Трек — сама лента (актёры и похожие в карточке, enableDetailRowTransform):
-        // у неё overflow: visible, и scrollWidth — ширина содержимого, transform
-        // на него тоже не влияет
-        if (container._txTrack === container) return Math.max(0, container.scrollWidth - container.clientWidth);
+        // Трек — сама лента (актёры и похожие в карточке, enableDetailRowTransform).
+        // У неё overflow: visible, и scrollWidth кончается на последней плитке, без
+        // правого отступа: у упора плитка стояла вплотную к краю окна, и рамку
+        // фокуса резало. Меряем сами; transform сдвигает плитку и ленту одинаково
+        if (container._txTrack === container) {
+            var lastTile = container.lastElementChild;
+            while (lastTile && !lastTile.offsetWidth) lastTile = lastTile.previousElementSibling;
+            if (!lastTile) return 0;
+            var tileEnd = lastTile.getBoundingClientRect().right - container.getBoundingClientRect().left;
+            var endPad = parseFloat(window.getComputedStyle(container).paddingRight) || 0;
+            return Math.max(0, Math.round(tileEnd + endPad - container.clientWidth));
+        }
         return Math.max(0, container._txTrack.offsetWidth - container.clientWidth);
     }
     return Math.max(0, container.scrollWidth - container.clientWidth);
@@ -4166,10 +4182,22 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         // линии видна целиком — запас от края окна ей не нужен
         var isEpisodes = container.id === 'catalog-detail-episodes-wrap';
         var hp = isEpisodes ? 0 : 30;
+        // А рамке фокуса нужен: окно режет всё, что вылезает за него. Левый
+        // отступ ленты и есть запас под неё (styles.css), у правого края такой же
+        var fullHp = isEpisodes ? (parseFloat(window.getComputedStyle(con).paddingLeft) || 0) : hp;
+        // Крайние плитки лент сцены — всегда до упора. Запас от края окна их не
+        // довозил: лента вставала правее нуля и не доходила до конца, а обратно
+        // на место её возвращала только мышь. У серий шаг плитками ещё и не
+        // срабатывал на первой: соседа нет, шаг нулевой, — и рамку резало
+        var laneEdge = isCinemaLaneWrap(container) ? cinemaLaneEdge(el) : 0;
 
         // Позиция покоя: пока лента едет, живой rect показывал бы «уже видно»
         var dx = pendingScrollDeltaX(con);
-        var isHorizVisible = (r.left - dx) >= cr.left + hp && (r.right - dx) <= cr.right - hp;
+        var isHorizVisible = (r.left - dx) >= cr.left + fullHp && (r.right - dx) <= cr.right - fullHp;
+        if (laneEdge) {
+            var laneRest = getScrollX(con) + dx;
+            isHorizVisible = laneEdge < 0 ? laneRest < 1 : laneRest > getMaxScrollX(con) - 1;
+        }
 
         if (!isHorizVisible) {
             var curLeft = getScrollX(con);
@@ -4177,7 +4205,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
             if (direction === 'left') {
                 targetLeft = curLeft + (r.left - cr.left) - hp;
             } else if (direction === 'right') {
-                targetLeft = curLeft + (r.left - cr.left) - (cr.width - r.width - hp);
+                targetLeft = curLeft + (r.left - cr.left) - (cr.width - r.width - fullHp);
             } else {
                 targetLeft = curLeft + (r.left - cr.left) - (cr.width / 2) + (r.width / 2);
             }
@@ -4187,12 +4215,13 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
                 var tileStep = sib ? el.getBoundingClientRect().left - sib.getBoundingClientRect().left : 0;
                 if (tileStep > 0) targetLeft = (direction === 'right' ? Math.ceil(targetLeft / tileStep) : Math.floor(targetLeft / tileStep)) * tileStep;
             }
+            if (laneEdge) targetLeft = laneEdge < 0 ? 0 : getMaxScrollX(con);
             targetLeft = Math.max(0, Math.min(getMaxScrollX(con), targetLeft));
             // Сравниваем с целью уже запущенного твина, а не с текущим
             // положением: иначе тот же самый доводчик пересоздавал бы твин
             // и прокрутка каждый раз начинала разгон заново
             var fromLeft = dx ? curLeft + dx : curLeft;
-            var needsHScroll = Math.abs(fromLeft - targetLeft) > 10;
+            var needsHScroll = Math.abs(fromLeft - targetLeft) > (laneEdge ? 1 : 10);
             if (needsHScroll) {
                 setScrollX(con, targetLeft, smooth);
             }

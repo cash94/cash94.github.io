@@ -2726,6 +2726,8 @@ window.isResumeFinished = isResumeFinished;
 var resumingFromHome = false;
 var androidReturnHome = null;
 var androidReturnHomeTimer = null;
+// Сериал запущен из выдачи поиска: по возврату остаёмся в ней
+var androidReturnSearch = false;
 
 /**
  * Возврат из нативного плеера, запущенного с главной. Таймлайнов приходит
@@ -2748,6 +2750,20 @@ function returnHomeFromAndroidPlayer() {
     if (!window.HomeScreen) return;
     // Новое место в кнопку баннера приносит сам показ (updateHistoryResume)
     HomeScreen.show();
+  }, 0);
+}
+
+/**
+ * Возврат из нативного плеера в выдачу поиска, откуда запустили сериал
+ * (playFromHash). Оверлей с выдачей и не прятался. Таймлайны приходят пачкой, как
+ * и у returnHomeFromAndroidPlayer: флаги снимаем после неё, иначе следующий
+ * таймлайн ушёл бы в showDetailView.
+ */
+function returnSearchFromAndroidPlayer() {
+  AppState.isCatalogSearch = false;
+  setTimeout(function () {
+    androidReturnSearch = false;
+    AppState.playFromHash = false;
   }, 0);
 }
 
@@ -2857,6 +2873,95 @@ async function loadResumeEpisodes(item, resume) {
   return { hash: torrent.hash, files: files, progress: progress.byFileId, current: current };
 }
 window.loadResumeEpisodes = loadResumeEpisodes;
+
+// ==================== СЕРИАЛ ИЗ ВЫДАЧИ РАЗДАЧ ====================
+// Раздачу сериала выбрали в поиске, открытом из его карточки: сразу в плеер, на
+// нужной серии, а не в карточку раздачи. Свободный поиск сюда не ходит — там
+// раздачу именно добавляют, и она открывается как в «Моих торрентах».
+
+// Свежая раздача отдаёт файлы только с метаданными, а их может и не быть: дольше
+// под заставкой не держим, карточка раздачи ждёт сама и показывает ход
+var SERIES_FILES_WAIT_MS = 15000;
+var seriesStartCancel = null;
+
+/** Сезон и серия файла — те же, что у таймкода (getTimecodeMediaKey) */
+function fileEpisodeRef(hash, file, seasons) {
+  var meta = window.getTorrentEpisodeMeta(hash, file.id);
+  if (meta && meta.episode) return { season: meta.season, episode: meta.episode };
+  var ref = parseEpisodeRef(file.path || file.name);
+  if (!ref) return null;
+  return { season: ref.season !== null ? ref.season : (seasons.length === 1 ? seasons[0] : null), episode: ref.episode };
+}
+
+/**
+ * Серия, с которой запускать раздачу.
+ *  - смотрели в этой же раздаче — её файл, досмотренная — следующий;
+ *  - в другой — серия из таймкода по номеру. Досмотрена — ближайшая после неё,
+ *    такой же ближайшей заменяем и серию, которой в этой раздаче нет;
+ *  - не смотрели — первая.
+ * @param {Array} files видеофайлы раздачи в порядке серий
+ * @returns {?Object} {index, seek}; seek null — плеер спросит сервер.
+ *          null — запускать нечего: новых серий нет или место неизвестно
+ */
+function pickSeriesEpisode(torrent, files, resume) {
+  if (!resume) return { index: 0, seek: null };
+  var hash = String(torrent.hash).toLowerCase();
+  var finished = isResumeFinished(resume);
+  var seek = Math.floor(resume.timecode) || 0;
+  if (String(resume.hash).toLowerCase() === hash) {
+    for (var i = 0; i < files.length; i++) {
+      if (String(files[i].id) !== String(resume.fileId)) continue;
+      if (!finished) return { index: i, seek: seek };
+      return i + 1 < files.length ? { index: i + 1, seek: null } : null;
+    }
+  }
+  if (!resume.episode) return null;
+  var season = resume.season || 0, seasons = getTorrentSeasons(torrent);
+  var best = -1, bestSeason = 0, bestEpisode = 0;
+  for (var f = 0; f < files.length; f++) {
+    var ref = fileEpisodeRef(hash, files[f], seasons);
+    if (!ref) continue;
+    var s = ref.season === null ? season : ref.season, e = ref.episode;
+    var after = s > season || (s === season && e > resume.episode);
+    var same = s === season && e === resume.episode;
+    if (!after && !(same && !finished)) continue;
+    if (best === -1 || s < bestSeason || (s === bestSeason && e < bestEpisode)) { best = f; bestSeason = s; bestEpisode = e; }
+  }
+  if (best === -1) return null;
+  return { index: best, seek: bestSeason === season && bestEpisode === resume.episode ? seek : null };
+}
+
+/**
+ * Откуда запускать выбранную раздачу сериала.
+ * @param {Object} torrent раздача, уже добавленная в TorrServer
+ * @param {Object} item    карточка сериала (id)
+ * @returns {Promise<?Object|string>} {fileId, index, seek}; null — открыть
+ *          карточку раздачи; 'cancelled' — ждать файлы передумали («Назад»)
+ */
+async function findSeriesStart(torrent, item) {
+  var timer = null;
+  var waited = await Promise.race([
+    getTorrentFilesWithCache(torrent, true),
+    new Promise(function (resolve) { timer = setTimeout(function () { resolve(null); }, SERIES_FILES_WAIT_MS); }),
+    new Promise(function (resolve) { seriesStartCancel = function () { resolve('cancelled'); }; })
+  ]);
+  clearTimeout(timer);
+  seriesStartCancel = null;
+  if (waited === 'cancelled') return waited;
+  var files = extractVideoFiles(waited || []);
+  if (!files.length) return null;
+  var resume = window.HomeScreen ? await HomeScreen.fetchResume({ id: item.id, media_type: 'tv' }) : null;
+  // Имена файлов не у всех раздач с номером: тогда серию знает только TMDB
+  if (resume) {
+    await Promise.race([
+      window.ensureTorrentEpisodeMeta(torrent, files),
+      new Promise(function (resolve) { setTimeout(resolve, ANDROID_EPISODE_META_WAIT_MS); })
+    ]);
+  }
+  var start = pickSeriesEpisode(torrent, files, resume);
+  return start ? { fileId: files[start.index].id, index: start.index, seek: start.seek } : null;
+}
+window.findSeriesStart = findSeriesStart;
 
 /**
  * Продолжить просмотр записи истории.
@@ -3869,6 +3974,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 }
 
 function cancelCurrentPlayback() {
+  if (seriesStartCancel) seriesStartCancel();
   if (currentPlaybackController) { currentPlaybackController.abort(); currentPlaybackController = null; }
   if (AppState.bufferCheckInterval) { clearInterval(AppState.bufferCheckInterval); AppState.bufferCheckInterval = null; }
   if (AppState._loadingTimeout) { clearTimeout(AppState._loadingTimeout); AppState._loadingTimeout = null; }
@@ -6221,6 +6327,7 @@ function updatePlayerTimeline(timelineData) {
     }
     if (typeof window.refreshDetailResume === 'function') window.refreshDetailResume();
     if (androidReturnHome) { returnHomeFromAndroidPlayer(); return; }
+    if (androidReturnSearch) { returnSearchFromAndroidPlayer(); return; }
     if (AppState.playFromHash && AppState.isCatalogSerials) { AppState.isCatalogSearch = false; return; }
     else if (AppState.playFromHash) { AppState.playFromHash = false; AppState.isCatalogSearch = false; return; }
     showDetailView(currentTimecodeData.fileId);

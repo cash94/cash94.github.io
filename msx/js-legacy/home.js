@@ -2508,6 +2508,19 @@
     }
     return heroResume(item);
   }
+  function fetchResumeFor(item) {
+    var saved = typeof awaitPendingTimecodeSave === 'function' ? awaitPendingTimecodeSave() : Promise.resolve();
+    return saved.then(function () {
+      return homeFetch(withClientId(serverUrl() + '/api/history'));
+    }).then(function (data) {
+      var list = data && data.success && data.history;
+      if (!list) return resumeForItem(item);
+      for (var i = 0; i < list.length; i++) {
+        if (String(list[i].tmdbId) === String(item.id) && list[i].mediaType === item.media_type) return list[i].resume || null;
+      }
+      return null;
+    });
+  }
   function formatResumeTime(sec) {
     sec = Math.max(0, Math.floor(sec || 0));
     var h = Math.floor(sec / 3600),
@@ -3498,6 +3511,7 @@
     removeHistoryItem: removeHistoryItem,
     updateResume: updateHistoryResume,
     resumeFor: resumeForItem,
+    fetchResume: fetchResumeFor,
     resumeLabel: resumeLabel,
     logoUrl: knownLogoUrl,
     state: homeState

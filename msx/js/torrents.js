@@ -6732,6 +6732,35 @@ async function ensureTorrserverOnline() {
 }
 window.ensureTorrserverOnline = ensureTorrserverOnline;
 
+/**
+ * Запуск серии из выдачи — как фильма из неё же: выдача ждёт под плеером, и
+ * выход из него возвращает в неё. Нативный плеер открывается поверх, оверлей
+ * там остаётся, а экраны, которые он переключил под собой, возвращаем.
+ * @param {Object} start ответ findSeriesStart
+ * @param {Function} restoreSearch возврат в выдачу, если плеер не поднялся
+ */
+async function playSeriesFromSearch(torrent, start, restoreSearch) {
+    // Этот флаг — для карточки раздачи, а её не будет
+    AppState.isCatalogSerials = false;
+    var searchOverlay = getEl('search-overlay');
+    var section = getEl('torrserver-section');
+    var sectionDisplay = section ? section.style.display : '';
+    var hash = String(torrent.hash).toLowerCase();
+    var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + start.fileId;
+    if (window.AndroidJS) androidReturnSearch = true;
+    else if (searchOverlay) searchOverlay.classList.add('hidden');
+    getEl('playback-overlay').classList.remove('active');
+    var started = await startHLSPlayback(playUrl, start.seek, true, start.index);
+    if (started === false) {
+        androidReturnSearch = false;
+        AppState.currentDetailItem = AppState.androidBackCatalog;
+        restoreSearch(searchOverlay);
+    } else if (window.AndroidJS) {
+        AppState.currentScreen = 'search';
+        if (section) section.style.display = sectionDisplay;
+    }
+}
+
 async function playFromHash(hash, magnet, searchResult = null) {
     if (!hash) {
         if (typeof window.showErrorBanner === 'function') window.showErrorBanner('Не удалось открыть раздачу', 'В результате поиска нет hash');
@@ -6788,17 +6817,17 @@ async function playFromHash(hash, magnet, searchResult = null) {
             });
         }
         if (!window.AndroidJS || !AppState.transcodingFullOnOff) { AppState.currentDetailItem = addedTorrent; }
+        // Плеер не поднялся или предзагрузку отменили «Назад» — результаты
+        // поиска уже спрятаны, и без возврата экран остался бы пустым
+        var restoreSearchAfterFailedStart = function (searchOverlay) {
+            if (AppState.currentScreen === 'player') return;
+            AppState.playFromHash = false;
+            AppState.currentScreen = 'search';
+            if (searchOverlay) searchOverlay.classList.remove('hidden');
+            setTimeout(function () { if (typeof window.focusSearchHome === 'function') window.focusSearchHome(); }, 80);
+        };
         if (!isSerial) {
             var fileId = 1;
-            // Плеер не поднялся или предзагрузку отменили «Назад» — результаты
-            // поиска уже спрятаны, и без возврата экран остался бы пустым
-            var restoreSearchAfterFailedStart = function (searchOverlay) {
-                if (AppState.currentScreen === 'player') return;
-                AppState.playFromHash = false;
-                AppState.currentScreen = 'search';
-                if (searchOverlay) searchOverlay.classList.remove('hidden');
-                setTimeout(function () { if (typeof window.focusSearchHome === 'function') window.focusSearchHome(); }, 80);
-            };
             if (window.AndroidJS) {
                 getEl('playback-overlay').classList.remove('active');
                 // Нативный плеер открывается мимо startHLSPlayback, поэтому окно
@@ -6843,6 +6872,25 @@ async function playFromHash(hash, magnet, searchResult = null) {
             if (!started) restoreSearchAfterFailedStart(searchOverlay);
         } else {
             AppState.currentDetailItem = addedTorrent; AppState.isCatalogSerials = true;
+            // Поиск из карточки сериала: раздачу выбрали, чтобы смотреть, — сразу
+            // в плеер. Свободный поиск раздачу добавляет: она открывается ниже,
+            // как в «Моих торрентах». Не вышло подобрать серию — тоже ниже
+            var seriesCard = AppState.searchLocked && ctx.mediaType === 'tv' ? AppState.pendingDetailItem : null;
+            if (seriesCard && seriesCard.id && addedTorrent && typeof addedTorrent === 'object') {
+                document.querySelector('.playback-text').textContent = 'Поиск серии...';
+                var seriesStart = await findSeriesStart(addedTorrent, seriesCard);
+                if (seriesStart === 'cancelled') {
+                    // Карточки раздачи не будет — снимаем то, что поставили ради неё
+                    AppState.isCatalogSerials = false;
+                    AppState.currentDetailItem = AppState.androidBackCatalog;
+                    restoreSearchAfterFailedStart(getEl('search-overlay'));
+                    return false;
+                }
+                if (seriesStart) {
+                    await playSeriesFromSearch(addedTorrent, seriesStart, restoreSearchAfterFailedStart);
+                    return true;
+                }
+            }
             // Результаты поиска не уничтожаем — только прячем оверлей. «Назад» из
             // деталей раздачи вернёт в них: под записью раздачи в стеке
             // переходов лежит поиск (back-from-detail). Раньше здесь звали

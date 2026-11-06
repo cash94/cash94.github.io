@@ -1770,7 +1770,7 @@ function _addProgressToDetail() {
             if (detailView) detailView.style.pointerEvents = 'auto';
           });
         });
-        return function (_x36) {
+        return function (_x39) {
           return _ref3.apply(this, arguments);
         };
       }());
@@ -5429,7 +5429,32 @@ function _ensureTorrserverOnline() {
   return _ensureTorrserverOnline.apply(this, arguments);
 }
 window.ensureTorrserverOnline = ensureTorrserverOnline;
-function playFromHash(_x30, _x31) {
+function playSeriesFromSearch(_x30, _x31, _x32) {
+  return _playSeriesFromSearch.apply(this, arguments);
+}
+function _playSeriesFromSearch() {
+  _playSeriesFromSearch = _asyncToGenerator(function* (torrent, start, restoreSearch) {
+    AppState.isCatalogSerials = false;
+    var searchOverlay = getEl('search-overlay');
+    var section = getEl('torrserver-section');
+    var sectionDisplay = section ? section.style.display : '';
+    var hash = String(torrent.hash).toLowerCase();
+    var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + start.fileId;
+    if (window.AndroidJS) androidReturnSearch = true;else if (searchOverlay) searchOverlay.classList.add('hidden');
+    getEl('playback-overlay').classList.remove('active');
+    var started = yield startHLSPlayback(playUrl, start.seek, true, start.index);
+    if (started === false) {
+      androidReturnSearch = false;
+      AppState.currentDetailItem = AppState.androidBackCatalog;
+      restoreSearch(searchOverlay);
+    } else if (window.AndroidJS) {
+      AppState.currentScreen = 'search';
+      if (section) section.style.display = sectionDisplay;
+    }
+  });
+  return _playSeriesFromSearch.apply(this, arguments);
+}
+function playFromHash(_x33, _x34) {
   return _playFromHash.apply(this, arguments);
 }
 function _playFromHash() {
@@ -5479,17 +5504,17 @@ function _playFromHash() {
       if (!window.AndroidJS || !AppState.transcodingFullOnOff) {
         AppState.currentDetailItem = addedTorrent;
       }
+      var restoreSearchAfterFailedStart = function (searchOverlay) {
+        if (AppState.currentScreen === 'player') return;
+        AppState.playFromHash = false;
+        AppState.currentScreen = 'search';
+        if (searchOverlay) searchOverlay.classList.remove('hidden');
+        setTimeout(function () {
+          if (typeof window.focusSearchHome === 'function') window.focusSearchHome();
+        }, 80);
+      };
       if (!isSerial) {
         var fileId = 1;
-        var restoreSearchAfterFailedStart = function (searchOverlay) {
-          if (AppState.currentScreen === 'player') return;
-          AppState.playFromHash = false;
-          AppState.currentScreen = 'search';
-          if (searchOverlay) searchOverlay.classList.remove('hidden');
-          setTimeout(function () {
-            if (typeof window.focusSearchHome === 'function') window.focusSearchHome();
-          }, 80);
-        };
         if (window.AndroidJS) {
           getEl('playback-overlay').classList.remove('active');
           if (AppState.preloadBeforePlay && typeof runPlaybackPreload === 'function' && !(yield runPlaybackPreload(hash, fileId, addedTorrent.title))) return false;
@@ -5530,6 +5555,21 @@ function _playFromHash() {
       } else {
         AppState.currentDetailItem = addedTorrent;
         AppState.isCatalogSerials = true;
+        var seriesCard = AppState.searchLocked && ctx.mediaType === 'tv' ? AppState.pendingDetailItem : null;
+        if (seriesCard && seriesCard.id && addedTorrent && typeof addedTorrent === 'object') {
+          document.querySelector('.playback-text').textContent = 'Поиск серии...';
+          var seriesStart = yield findSeriesStart(addedTorrent, seriesCard);
+          if (seriesStart === 'cancelled') {
+            AppState.isCatalogSerials = false;
+            AppState.currentDetailItem = AppState.androidBackCatalog;
+            restoreSearchAfterFailedStart(getEl('search-overlay'));
+            return false;
+          }
+          if (seriesStart) {
+            yield playSeriesFromSearch(addedTorrent, seriesStart, restoreSearchAfterFailedStart);
+            return true;
+          }
+        }
         var searchOverlay = getEl('search-overlay');
         if (searchOverlay) searchOverlay.classList.add('hidden');
         if (AppState.androidBackCatalog && AppState.androidBackCatalog.id) AppState.inSearch = "catalog";
@@ -5893,7 +5933,7 @@ function getCurrentSearchMode() {
   if (modeSelect) currentSearchMode = modeSelect.value;
   return currentSearchMode;
 }
-function searchTMDB(_x32) {
+function searchTMDB(_x35) {
   return _searchTMDB.apply(this, arguments);
 }
 function _searchTMDB() {
@@ -5947,7 +5987,7 @@ function _searchTMDB() {
   });
   return _searchTMDB.apply(this, arguments);
 }
-function searchTMDBLegacy(_x33, _x34) {
+function searchTMDBLegacy(_x36, _x37) {
   return _searchTMDBLegacy.apply(this, arguments);
 }
 function _searchTMDBLegacy() {
@@ -6124,7 +6164,7 @@ function renderFilteredGlobalResults(results) {
     }
   };
 }
-function showGlobalSearchDetail(_x35) {
+function showGlobalSearchDetail(_x38) {
   return _showGlobalSearchDetail.apply(this, arguments);
 }
 function _showGlobalSearchDetail() {
