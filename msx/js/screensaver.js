@@ -128,6 +128,11 @@
         if (document.hidden) return false;
         var st = window.AppState;
         if (!st) return false;
+        // Запуск фильма: окно предзагрузки и «Загрузка…» ждут, глядя на экран, а
+        // видео ещё нет, и проверка «что-то играет» заставку не удержала бы
+        if (typeof window.isPreloadScreenShown === 'function' && window.isPreloadScreenShown()) return false;
+        var starting = document.getElementById('playback-overlay');
+        if (starting && starting.classList.contains('active')) return false;
         if (st.currentScreen === 'player') return playerPaused();
         if (st.isYoutubePlayback) return false;
         if (st.trailerPlay) return false;          // трейлер в карточке, даже пока грузится

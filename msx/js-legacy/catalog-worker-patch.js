@@ -155,6 +155,9 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   }();
   var _origFetchRutubeTrailer = window.fetchRutubeTrailer || fetchRutubeTrailer;
   window.fetchRutubeTrailer = fetchRutubeTrailer = function (title, originalTitle, releaseDate) {
+    if (typeof isRutubeDirect === 'function' && isRutubeDirect()) {
+      return _origFetchRutubeTrailer(title, originalTitle, releaseDate);
+    }
     return CatalogWorker.fetchRutubeTrailer(title, originalTitle, releaseDate).then(function (data) {
       if (data && data.url) return data;
       return _origFetchRutubeTrailer(title, originalTitle, releaseDate);

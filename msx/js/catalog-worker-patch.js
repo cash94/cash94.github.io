@@ -187,6 +187,11 @@
 
     // ==================== fetchRutubeTrailer ====================
     window.fetchRutubeTrailer = fetchRutubeTrailer = function (title, originalTitle, releaseDate) {
+        // Прямой режим Android держится на перехвате запросов страницы, из воркера
+        // ходить нельзя: ответ без заголовка CORS браузер не отдаст
+        if (typeof isRutubeDirect === 'function' && isRutubeDirect()) {
+            return _origFetchRutubeTrailer(title, originalTitle, releaseDate);
+        }
         return CatalogWorker.fetchRutubeTrailer(title, originalTitle, releaseDate)
             .then(function (data) {
                 if (data && data.url) return data;

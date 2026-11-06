@@ -611,6 +611,9 @@ function runPlaybackPreload(hash, fileId, title) {
 function isPlaybackPreloadActive() {
   return !!activePlaybackPreload;
 }
+function isPreloadScreenShown() {
+  return !!activePlaybackPreload || !!preloadHold;
+}
 window.fetchTorrentStatsForBuffer = fetchTorrentStatsForBuffer;
 window.updateTorrentStatsCache = updateTorrentStatsCache;
 window.formatSpeed = formatSpeed;
@@ -621,3 +624,4 @@ window.torrentStatsCache = torrentStatsCache;
 window.refreshTorrentStatsCadence = refreshTorrentStatsCadence;
 window.runPlaybackPreload = runPlaybackPreload;
 window.isPlaybackPreloadActive = isPlaybackPreloadActive;
+window.isPreloadScreenShown = isPreloadScreenShown;

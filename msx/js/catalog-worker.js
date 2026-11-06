@@ -1156,6 +1156,105 @@ function workerExtractBalancerUrl(playData) {
   return vb.default || vb.m3u8 || null;
 }
 
+// Копия отбора из catalog.js — воркер грузится отдельно, общего файла у них нет.
+// Правишь здесь — правь и там.
+/*
+ * Настоящий ли это трейлер нужного фильма.
+ *
+ * Раньше брали всё, где в заголовке есть название и год. Официальные ролики года
+ * обычно не пишут («Полураспад | Официальный трейлер» отбрасывался), зато год
+ * любят обзорщики — и на главной играл обзор сериала. Теперь заголовок разбираем:
+ * название целиком в начале, за ним не продолжение («Мир в огне» — другой фильм,
+ * «Дюна 2» — другая часть), есть слово «трейлер» или «тизер», нет обзоров и
+ * реакций. Год только уточняет: чужой год в заголовке — почти наверняка другой
+ * фильм с тем же названием. −1 — не подходит, иначе чем больше, тем лучше.
+ */
+var RUTUBE_TRAILER_WORDS = [' трейлер ', ' трейлеры ', ' тизер ', ' trailer ', ' teaser '];
+var RUTUBE_NOT_TRAILER = [' обзор ', ' разбор ', ' реакция ', ' рецензия ', ' review ', ' reaction ', ' пересказ ',
+    ' мнение ', ' смотреть онлайн ', ' все серии ', ' премьера ', ' как снимали ', ' фильм о фильме ', ' интервью ',
+    ' пародия ', ' фанатский ', ' fan made ', ' концепт ', ' нейросеть '];
+var RUTUBE_OFFICIAL_AUTHORS = [' okko ', ' кинопоиск ', ' start ', ' wink ', ' иви ', ' ivi ', ' kion ', ' premier ',
+    ' амедиатека ', ' more tv ', ' смотрим '];
+// Что может стоять перед названием и сразу за ним, не делая ролик другим фильмом
+var RUTUBE_NAME_BEFORE = { 'сериал': 1, 'сериала': 1, 'фильм': 1, 'фильма': 1, 'мультфильм': 1, 'мультфильма': 1,
+    'аниме': 1, 'к': 1, 'трейлер': 1, 'тизер': 1, 'русский': 1, 'официальный': 1, 'новый': 1 };
+var RUTUBE_NAME_AFTER = { 'трейлер': 1, 'трейлеры': 1, 'тизер': 1, 'trailer': 1, 'teaser': 1, 'русский': 1, 'русская': 1,
+    'официальный': 1, 'официальная': 1, 'дублированный': 1, 'дубляж': 1, 'сезон': 1, 'сериал': 1, 'фильм': 1,
+    'мультфильм': 1, 'hd': 1, '4k': 1, '4к': 1, 'на': 1, 'с': 1, 'season': 1, 'official': 1 };
+
+/** « полураспад официальный трейлер »: без регистра, ё и знаков, пробел по краям */
+function rutubeNorm(s) {
+    return ' ' + String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^0-9a-zа-я]+/g, ' ').trim() + ' ';
+}
+
+function rutubeHasAny(text, list) {
+    for (var i = 0; i < list.length; i++) if (text.indexOf(list[i]) !== -1) return true;
+    return false;
+}
+
+/** Название стоит в заголовке само по себе: перед ним и за ним нет другого фильма */
+function rutubeNameFits(text, name, otherName) {
+    var at = name.length > 3 ? text.indexOf(name) : -1;
+    if (at === -1) return false;
+    var before = text.slice(0, at + 1).trim();
+    var after = text.slice(at + name.length - 1).trim();
+    var other = otherName && otherName.length > 3 ? otherName.trim() : '';
+    if (other) {
+        before = before.replace(other, '').trim();
+        if (after.indexOf(other + ' ') === 0 || after === other) after = after.slice(other.length).trim();
+    }
+    // «Формула 1 — Русский трейлер / F1»: оригинальное название стоит в конце
+    if (before && !rutubeHasAny(' ' + before + ' ', RUTUBE_TRAILER_WORDS)) {
+        var words = before.split(' ');
+        for (var i = 0; i < words.length; i++) if (!RUTUBE_NAME_BEFORE[words[i]]) return false;
+    }
+    if (!after) return true;
+    var next = after.split(' ');
+    if (RUTUBE_NAME_AFTER[next[0]] || /^(19|20)\d{2}$/.test(next[0])) return true;
+    // «Полураспад | 1 сезон», но не «Дюна 2»
+    return /^\d{1,2}$/.test(next[0]) && (next[1] === 'сезон' || next[1] === 'season');
+}
+
+function rutubeTrailerScore(video, title, originalTitle, year) {
+    var text = rutubeNorm(video.title);
+    var ru = rutubeNorm(title);
+    var orig = originalTitle && originalTitle !== title ? rutubeNorm(originalTitle) : '';
+    var byRu = rutubeNameFits(text, ru, orig);
+    if (!byRu && !(orig && rutubeNameFits(text, orig, ru))) return -1;
+    if (!rutubeHasAny(text, RUTUBE_TRAILER_WORDS) || rutubeHasAny(text, RUTUBE_NOT_TRAILER)) return -1;
+    if (video.is_adult || video.is_hidden) return -1;
+    if (video.duration && (video.duration < 20 || video.duration > 420)) return -1;
+
+    var score = byRu ? 20 : 10;
+    if (text.indexOf(' официальн') !== -1) score += 15;
+    if (text.indexOf(' русск') !== -1 || text.indexOf(' дублир') !== -1) score += 10;
+    if (text.indexOf(' трейлер ') === -1 && text.indexOf(' trailer ') === -1) score -= 5;   // только тизер
+    if (video.author && rutubeHasAny(rutubeNorm(video.author.name), RUTUBE_OFFICIAL_AUTHORS)) score += 15;
+    var years = String(video.title || '').match(/(19|20)\d{2}/g);
+    if (year && years) {
+        var near = false;
+        for (var i = 0; i < years.length; i++) if (Math.abs(+years[i] - +year) <= 1) near = true;
+        score += near ? 15 : -40;
+    }
+    return score;
+}
+
+/** Подходящие ролики выдачи, лучшие первыми */
+function rutubeTrailerCandidates(results, title, originalTitle, year) {
+    var picked = [];
+    for (var i = 0; i < (results || []).length; i++) {
+        var score = rutubeTrailerScore(results[i], title, originalTitle, year);
+        if (score >= 0 && results[i].id) picked.push({ id: results[i].id, score: score, order: i });
+    }
+    picked.sort(function (a, b) { return (b.score - a.score) || (a.order - b.order); });
+    return picked;
+}
+
+function rutubeSearchUrl(name) {
+    return 'https://rutube.ru/api/search/combined/video_playlist?query=' +
+        encodeURIComponent(name + ' трейлер') + '&duration=short&client=wdp&page=1';
+}
+
 function workerFetchRutubeTrailer(payload) {
   var title = payload.title || '';
   var originalTitle = payload.originalTitle || '';
@@ -1163,70 +1262,47 @@ function workerFetchRutubeTrailer(payload) {
 
   if (!title) return Promise.resolve(null);
 
-  var year = '';
-  if (releaseDate) {
-    var yearMatch = String(releaseDate).match(/(19|20)\d{2}/);
-    if (yearMatch) year = yearMatch[0];
+  var yearMatch = String(releaseDate).match(/(19|20)\d{2}/);
+  var year = yearMatch ? yearMatch[0] : '';
+
+  function search(name) {
+    return safeFetch('/api/rutube/proxy?url=' + encodeURIComponent(rutubeSearchUrl(name)), { timeout: 10000 })
+      .then(function (data) {
+        return rutubeTrailerCandidates(data && data.results, title, originalTitle, year);
+      });
   }
 
-  var queryParts = ['Трейлер', title];
-  if (originalTitle && originalTitle !== title) {
-    queryParts.push('|', originalTitle);
-  }
-  if (year) queryParts.push(year);
-  var query = queryParts.join(' ');
+  return search(title).then(function (picked) {
+    if (picked.length || !originalTitle || originalTitle === title) return picked;
+    return search(originalTitle);
+  }).then(function (picked) {
+    if (!picked.length) return null;
 
-  var searchApiUrl = 'https://rutube.ru/api/search/combined/video_playlist?query=' +
-    encodeURIComponent(query) + '&duration=short&client=wdp&page=1';
-  var searchUrl = '/api/rutube/proxy?url=' + encodeURIComponent(searchApiUrl);
-
-  return safeFetch(searchUrl, { timeout: 10000 }).then(function (searchData) {
-    if (!searchData || !Array.isArray(searchData.results) || searchData.results.length === 0) {
-      return null;
-    }
-
-    var matchedIds = [];
-    var titleLower = title.toLowerCase().trim();
-    for (var i = 0; i < searchData.results.length; i++) {
-      if (matchedIds.length >= 3) break;
-      var resultTitle = (searchData.results[i].title || '').toLowerCase().trim();
-      var titleMatch = resultTitle.indexOf(titleLower) !== -1;
-      var yearMatch = year ? resultTitle.indexOf(year) !== -1 : true;
-      if (titleMatch && yearMatch) {
-        var id = searchData.results[i].id;
-        if (id) matchedIds.push(id);
-      }
-    }
-
-    if (matchedIds.length === 0) return null;
-
-    // Последовательные запросы play/options
+    // Лучшие ролики по порядку — первый от 720p, иначе самый чёткий из трёх
     var bestUrl = null;
     var bestQuality = null;
     var bestTitle = '';
 
     function fetchPlayOptions(index) {
-      if (index >= matchedIds.length) {
+      if (index >= picked.length || index >= 3) {
         if (!bestUrl) return null;
         return { url: bestUrl, quality: bestQuality, title: bestTitle };
       }
 
-      var playApiUrl = 'https://rutube.ru/api/play/options/' + matchedIds[index];
+      var playApiUrl = 'https://rutube.ru/api/play/options/' + picked[index].id;
       var playProxyUrl = '/api/rutube/proxy?url=' + encodeURIComponent(playApiUrl);
 
       return safeFetch(playProxyUrl, { timeout: 10000 }).then(function (playData) {
-        if (playData) {
-          var balancerUrl = workerExtractBalancerUrl(playData);
-          if (balancerUrl) {
-            var quality = workerParseMaxQualityFromM3u8Url(balancerUrl);
-            if (quality) {
-              if (!bestQuality || quality.pixels > bestQuality.pixels) {
-                bestUrl = balancerUrl;
-                bestQuality = quality;
-                bestTitle = playData.title || title;
-              }
-            }
+        var balancerUrl = playData ? workerExtractBalancerUrl(playData) : null;
+        var quality = balancerUrl ? workerParseMaxQualityFromM3u8Url(balancerUrl) : null;
+        if (quality) {
+          var enough = quality.height >= 720;
+          if (enough || !bestQuality || quality.pixels > bestQuality.pixels) {
+            bestUrl = balancerUrl;
+            bestQuality = quality;
+            bestTitle = playData.title || title;
           }
+          if (enough) return { url: bestUrl, quality: bestQuality, title: bestTitle };
         }
         return fetchPlayOptions(index + 1);
       });

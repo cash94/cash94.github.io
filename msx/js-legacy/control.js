@@ -2564,7 +2564,7 @@ function onBack() {
       window.backToCatalogList();
     } else clickEl(getEl('back-from-catalog'));
     setTimeout(function () {
-      ScreenStrategies.catalog.ensureFocus(true);
+      if (AppState.currentScreen === 'catalog') ScreenStrategies.catalog.ensureFocus(true);
     }, 180);
     return true;
   }

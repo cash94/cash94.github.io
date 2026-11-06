@@ -790,6 +790,11 @@ function isPlaybackPreloadActive() {
   return !!activePlaybackPreload;
 }
 
+/** Окно предзагрузки на экране: идёт набор буфера или оно ждёт первого кадра */
+function isPreloadScreenShown() {
+  return !!activePlaybackPreload || !!preloadHold;
+}
+
 // Экспортируем функции для использования в других модулях
 window.fetchTorrentStatsForBuffer = fetchTorrentStatsForBuffer;
 window.updateTorrentStatsCache = updateTorrentStatsCache;
@@ -801,3 +806,4 @@ window.torrentStatsCache = torrentStatsCache;
 window.refreshTorrentStatsCadence = refreshTorrentStatsCadence;
 window.runPlaybackPreload = runPlaybackPreload;
 window.isPlaybackPreloadActive = isPlaybackPreloadActive;
+window.isPreloadScreenShown = isPreloadScreenShown;

@@ -77,6 +77,9 @@
     if (document.hidden) return false;
     var st = window.AppState;
     if (!st) return false;
+    if (typeof window.isPreloadScreenShown === 'function' && window.isPreloadScreenShown()) return false;
+    var starting = document.getElementById('playback-overlay');
+    if (starting && starting.classList.contains('active')) return false;
     if (st.currentScreen === 'player') return playerPaused();
     if (st.isYoutubePlayback) return false;
     if (st.trailerPlay) return false;

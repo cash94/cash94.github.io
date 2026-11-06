@@ -1038,8 +1038,19 @@ function restoreFocusAfterNavigation(returnTo, context) {
       return;
     }
 
+    // Возвращаться не в чего: пустой ключ loadCatalog молча пропустит, и экран
+    // останется без сетки и без фокуса. Лучше домой, чем в пустоту
+    if (!AppState.backCurrentCatalog && !catalogState.items.length) {
+      hideDetailView();
+      if (typeof window.showCatalogList === 'function') window.showCatalogList();
+      return;
+    }
+
     // Только если каталог реально нужно загрузить заново
     window.loadCatalog(AppState.backCurrentCatalog).then(function () {
+      // Карточка могла быть глубже первой страницы
+      return typeof window.extendCatalogToSelected === 'function' ? window.extendCatalogToSelected() : null;
+    }).then(function () {
       // Восстанавливаем скролл ДО фокусировки
       var mc = getEl('main-container');
       if (mc && typeof context.savedScroll === 'number') {
@@ -1047,7 +1058,11 @@ function restoreFocusAfterNavigation(returnTo, context) {
       }
       hideDetailView();
       if (typeof window.ensureCatalogFocus === 'function') {
-        window.ensureCatalogFocus(true);
+        if (typeof window.withInstantScroll === 'function') {
+          window.withInstantScroll(function () { window.ensureCatalogFocus(true); });
+        } else {
+          window.ensureCatalogFocus(true);
+        }
       }
     });
     return;

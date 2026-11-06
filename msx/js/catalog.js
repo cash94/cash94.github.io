@@ -726,6 +726,144 @@ function extractBalancerUrl(playData) {
     return vb.default || vb.m3u8 || null;
 }
 
+/*
+ * Настоящий ли это трейлер нужного фильма.
+ *
+ * Раньше брали всё, где в заголовке есть название и год. Официальные ролики года
+ * обычно не пишут («Полураспад | Официальный трейлер» отбрасывался), зато год
+ * любят обзорщики — и на главной играл обзор сериала. Теперь заголовок разбираем:
+ * название целиком в начале, за ним не продолжение («Мир в огне» — другой фильм,
+ * «Дюна 2» — другая часть), есть слово «трейлер» или «тизер», нет обзоров и
+ * реакций. Год только уточняет: чужой год в заголовке — почти наверняка другой
+ * фильм с тем же названием. −1 — не подходит, иначе чем больше, тем лучше.
+ */
+var RUTUBE_TRAILER_WORDS = [' трейлер ', ' трейлеры ', ' тизер ', ' trailer ', ' teaser '];
+var RUTUBE_NOT_TRAILER = [' обзор ', ' разбор ', ' реакция ', ' рецензия ', ' review ', ' reaction ', ' пересказ ',
+    ' мнение ', ' смотреть онлайн ', ' все серии ', ' премьера ', ' как снимали ', ' фильм о фильме ', ' интервью ',
+    ' пародия ', ' фанатский ', ' fan made ', ' концепт ', ' нейросеть '];
+var RUTUBE_OFFICIAL_AUTHORS = [' okko ', ' кинопоиск ', ' start ', ' wink ', ' иви ', ' ivi ', ' kion ', ' premier ',
+    ' амедиатека ', ' more tv ', ' смотрим '];
+// Что может стоять перед названием и сразу за ним, не делая ролик другим фильмом
+var RUTUBE_NAME_BEFORE = { 'сериал': 1, 'сериала': 1, 'фильм': 1, 'фильма': 1, 'мультфильм': 1, 'мультфильма': 1,
+    'аниме': 1, 'к': 1, 'трейлер': 1, 'тизер': 1, 'русский': 1, 'официальный': 1, 'новый': 1 };
+var RUTUBE_NAME_AFTER = { 'трейлер': 1, 'трейлеры': 1, 'тизер': 1, 'trailer': 1, 'teaser': 1, 'русский': 1, 'русская': 1,
+    'официальный': 1, 'официальная': 1, 'дублированный': 1, 'дубляж': 1, 'сезон': 1, 'сериал': 1, 'фильм': 1,
+    'мультфильм': 1, 'hd': 1, '4k': 1, '4к': 1, 'на': 1, 'с': 1, 'season': 1, 'official': 1 };
+
+/** « полураспад официальный трейлер »: без регистра, ё и знаков, пробел по краям */
+function rutubeNorm(s) {
+    return ' ' + String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^0-9a-zа-я]+/g, ' ').trim() + ' ';
+}
+
+function rutubeHasAny(text, list) {
+    for (var i = 0; i < list.length; i++) if (text.indexOf(list[i]) !== -1) return true;
+    return false;
+}
+
+/** Название стоит в заголовке само по себе: перед ним и за ним нет другого фильма */
+function rutubeNameFits(text, name, otherName) {
+    var at = name.length > 3 ? text.indexOf(name) : -1;
+    if (at === -1) return false;
+    var before = text.slice(0, at + 1).trim();
+    var after = text.slice(at + name.length - 1).trim();
+    var other = otherName && otherName.length > 3 ? otherName.trim() : '';
+    if (other) {
+        before = before.replace(other, '').trim();
+        if (after.indexOf(other + ' ') === 0 || after === other) after = after.slice(other.length).trim();
+    }
+    // «Формула 1 — Русский трейлер / F1»: оригинальное название стоит в конце
+    if (before && !rutubeHasAny(' ' + before + ' ', RUTUBE_TRAILER_WORDS)) {
+        var words = before.split(' ');
+        for (var i = 0; i < words.length; i++) if (!RUTUBE_NAME_BEFORE[words[i]]) return false;
+    }
+    if (!after) return true;
+    var next = after.split(' ');
+    if (RUTUBE_NAME_AFTER[next[0]] || /^(19|20)\d{2}$/.test(next[0])) return true;
+    // «Полураспад | 1 сезон», но не «Дюна 2»
+    return /^\d{1,2}$/.test(next[0]) && (next[1] === 'сезон' || next[1] === 'season');
+}
+
+function rutubeTrailerScore(video, title, originalTitle, year) {
+    var text = rutubeNorm(video.title);
+    var ru = rutubeNorm(title);
+    var orig = originalTitle && originalTitle !== title ? rutubeNorm(originalTitle) : '';
+    var byRu = rutubeNameFits(text, ru, orig);
+    if (!byRu && !(orig && rutubeNameFits(text, orig, ru))) return -1;
+    if (!rutubeHasAny(text, RUTUBE_TRAILER_WORDS) || rutubeHasAny(text, RUTUBE_NOT_TRAILER)) return -1;
+    if (video.is_adult || video.is_hidden) return -1;
+    if (video.duration && (video.duration < 20 || video.duration > 420)) return -1;
+
+    var score = byRu ? 20 : 10;
+    if (text.indexOf(' официальн') !== -1) score += 15;
+    if (text.indexOf(' русск') !== -1 || text.indexOf(' дублир') !== -1) score += 10;
+    if (text.indexOf(' трейлер ') === -1 && text.indexOf(' trailer ') === -1) score -= 5;   // только тизер
+    if (video.author && rutubeHasAny(rutubeNorm(video.author.name), RUTUBE_OFFICIAL_AUTHORS)) score += 15;
+    var years = String(video.title || '').match(/(19|20)\d{2}/g);
+    if (year && years) {
+        var near = false;
+        for (var i = 0; i < years.length; i++) if (Math.abs(+years[i] - +year) <= 1) near = true;
+        score += near ? 15 : -40;
+    }
+    return score;
+}
+
+/** Подходящие ролики выдачи, лучшие первыми */
+function rutubeTrailerCandidates(results, title, originalTitle, year) {
+    var picked = [];
+    for (var i = 0; i < (results || []).length; i++) {
+        var score = rutubeTrailerScore(results[i], title, originalTitle, year);
+        if (score >= 0 && results[i].id) picked.push({ id: results[i].id, score: score, order: i });
+    }
+    picked.sort(function (a, b) { return (b.score - a.score) || (a.order - b.order); });
+    return picked;
+}
+
+function rutubeSearchUrl(name) {
+    return 'https://rutube.ru/api/search/combined/video_playlist?query=' +
+        encodeURIComponent(name + ' трейлер') + '&duration=short&client=wdp&page=1';
+}
+
+/*
+ * Прямой режим Android. Приложение (TrailerDirect.kt) само ходит на RuTube и
+ * добавляет заголовок CORS, поэтому API и плейлисты идут с устройства мимо прокси
+ * сервера. В браузере и в APK без метода trailerDirect — как раньше, через сервер.
+ */
+var rutubeDirectMode = null;
+
+function isRutubeDirect() {
+    if (rutubeDirectMode === null) {
+        try {
+            rutubeDirectMode = !!(window.AndroidJS && typeof AndroidJS.trailerDirect === 'function' &&
+                AndroidJS.trailerDirect());
+        } catch (e) { rutubeDirectMode = false; }
+    }
+    return rutubeDirectMode;
+}
+window.isRutubeDirect = isRutubeDirect;
+
+/** Ответ API RuTube: напрямую, если умеем, иначе (и при сбое) — через прокси сервера */
+async function rutubeApiJson(apiUrl) {
+    if (isRutubeDirect()) {
+        var controller = new AbortController();
+        var timer = setTimeout(function () { controller.abort(); }, 10000);
+        try {
+            // Обычный fetch, не bgFetch: перехват приложения видит запросы страницы
+            var resp = await fetch(apiUrl, { signal: controller.signal });
+            if (resp.ok) return await resp.json();
+        } catch (e) {
+            console.warn('RuTube напрямую не ответил:', e.message);
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+    return safeFetch('/api/rutube/proxy?url=' + encodeURIComponent(apiUrl), { timeout: 10000 });
+}
+
+function rutubeYear(releaseDate) {
+    var m = String(releaseDate || '').match(/(19|20)\d{2}/);
+    return m ? m[0] : '';
+}
+
 /**
  * Основная функция: поиск трейлера на RuTube
  * @param {string} title - название фильма
@@ -735,63 +873,27 @@ function extractBalancerUrl(playData) {
  */
 async function fetchRutubeTrailer(title, originalTitle, releaseDate) {
     if (!title) return null;
-
-    var year = '';
-    if (releaseDate) {
-        var yearMatch = String(releaseDate).match(/(19|20)\d{2}/);
-        if (yearMatch) year = yearMatch[0];
-    }
-
-    var queryParts = ['Трейлер', title];
-    if (originalTitle && originalTitle !== title) {
-        queryParts.push('|', originalTitle);
-    }
-    if (year) queryParts.push(year);
-    var query = queryParts.join(' ');
-
-    //   Запрос через прокси
-    var searchApiUrl = 'https://rutube.ru/api/search/combined/video_playlist?query=' +
-        encodeURIComponent(query) + '&duration=short&client=wdp&page=1';
-
-    var searchUrl = '/api/rutube/proxy?url=' + encodeURIComponent(searchApiUrl);
+    var year = rutubeYear(releaseDate);
 
     try {
-        // Шаг 1: Поиск
-        var searchData = await safeFetch(searchUrl, { timeout: 10000 });
-        if (!searchData || !Array.isArray(searchData.results) || searchData.results.length === 0) {
-            return null;
+        // Шаг 1: поиск и отбор. Только русское название: с годом и вторым
+        // названием в запросе выдача мутнела, а настоящий трейлер уезжал вниз
+        var searchData = await rutubeApiJson(rutubeSearchUrl(title));
+        var picked = rutubeTrailerCandidates(searchData && searchData.results, title, originalTitle, year);
+        if (!picked.length && originalTitle && originalTitle !== title) {
+            searchData = await rutubeApiJson(rutubeSearchUrl(originalTitle));
+            picked = rutubeTrailerCandidates(searchData && searchData.results, title, originalTitle, year);
         }
+        if (!picked.length) return null;
 
-        // Шаг 2: Фильтрация
-        var matchedIds = [];
-        var titleLower = title.toLowerCase().trim();
-
-        for (var i = 0; i < searchData.results.length; i++) {
-            if (matchedIds.length >= 3) break;
-            var resultTitle = (searchData.results[i].title || '').toLowerCase().trim();
-            var titleMatch = resultTitle.indexOf(titleLower) !== -1;
-            var yearMatch = year ? resultTitle.indexOf(year) !== -1 : true;
-
-            if (titleMatch && yearMatch) {
-                var id = searchData.results[i].id;
-                if (id) matchedIds.push(id);
-            }
-        }
-
-        if (matchedIds.length === 0) return null;
-
-        // Шаг 3: Запросы play/options через прокси
+        // Шаг 2: лучшие ролики по порядку — первый от 720p. Если все хуже,
+        // берём самый чёткий из трёх
         var bestUrl = null;
         var bestQuality = null;
         var bestTitle = '';
 
-        for (var j = 0; j < matchedIds.length; j++) {
-            var playApiUrl = 'https://rutube.ru/api/play/options/' + matchedIds[j];
-            var playProxyUrl = '/api/rutube/proxy?url=' + encodeURIComponent(playApiUrl);
-
-            var playData = await safeFetch(playProxyUrl, { timeout: 10000 });
-            if (!playData) continue;
-
+        for (var j = 0; j < picked.length && j < 3; j++) {
+            var playData = await rutubeApiJson('https://rutube.ru/api/play/options/' + picked[j].id);
             var balancerUrl = extractBalancerUrl(playData);
             if (!balancerUrl) continue;
 
@@ -802,6 +904,12 @@ async function fetchRutubeTrailer(title, originalTitle, releaseDate) {
                 bestUrl = balancerUrl;
                 bestQuality = quality;
                 bestTitle = playData.title || title;
+            }
+            if (quality.height >= 720) {
+                bestUrl = balancerUrl;
+                bestQuality = quality;
+                bestTitle = playData.title || title;
+                break;
             }
         }
 
@@ -834,8 +942,7 @@ function rutubeVideoIdFromUrl(url) {
 
 /** Трейлер по готовому id ролика — один play/options. null — ролика нет */
 async function rutubeTrailerById(videoId, title) {
-    var playApiUrl = 'https://rutube.ru/api/play/options/' + videoId;
-    var playData = await safeFetch('/api/rutube/proxy?url=' + encodeURIComponent(playApiUrl), { timeout: 10000 });
+    var playData = await rutubeApiJson('https://rutube.ru/api/play/options/' + videoId);
     var balancerUrl = extractBalancerUrl(playData);
     if (!balancerUrl) return null;
     return { url: balancerUrl, quality: parseMaxQualityFromM3u8Url(balancerUrl), title: (playData && playData.title) || title };
@@ -855,10 +962,14 @@ async function fetchRutubeTrailerCached(ref, title, originalTitle, releaseDate) 
     var cached = await safeFetch(TRAILER_CACHE_URL + query, { timeout: 4000 });
     if (cached && cached.cached) {
         if (!cached.videoId) return null;           // недавно искали — не нашли
-        var hit = await rutubeTrailerById(cached.videoId, cached.title || title);
-        if (hit) return hit;
-        // Ролик удалили или скрыли — забываем и ищем заново
-        (window.bgFetch || fetch)(TRAILER_CACHE_URL + query, { method: 'DELETE' })['catch'](function () { });
+        // Запись могла остаться от старого отбора, бравшего обзоры и чужие фильмы.
+        // Такую не показываем: ниже найдётся настоящий трейлер и заменит её
+        if (rutubeTrailerScore({ title: cached.title }, title, originalTitle, rutubeYear(releaseDate)) >= 0) {
+            var hit = await rutubeTrailerById(cached.videoId, cached.title || title);
+            if (hit) return hit;
+            // Ролик удалили или скрыли — забываем и ищем заново
+            (window.bgFetch || fetch)(TRAILER_CACHE_URL + query, { method: 'DELETE' })['catch'](function () { });
+        }
     }
 
     var found = await search(title, originalTitle, releaseDate);
@@ -881,6 +992,7 @@ function wrapRutubeHls(url) {
     if (!url) return url;
     // Уже обёрнут — не оборачиваем повторно
     if (url.indexOf('/api/rutube/hls/proxy') === 0) return url;
+    if (isRutubeDirect()) return url;
     return '/api/rutube/hls/proxy?u=' + encodeURIComponent(url);
 }
 
@@ -5805,48 +5917,6 @@ function renderDetailCollection(item, src) {
 }
 
 /**
- * Рендер трейлеров
- */
-function renderDetailTrailers(src) {
-    var vids = (src.videos && Array.isArray(src.videos) ?
-        src.videos.filter(function (v) {
-            var t = (v.type || '').toLowerCase();
-            return t.indexOf('trailer') !== -1 || t.indexOf('teaser') !== -1;
-        }).slice(0, CATALOG_CONSTANTS.MAX_TRAILERS) : []);
-    var tw = getEl('catalog-detail-trailers-wrap');
-    var te2 = getEl('catalog-detail-trailers');
-    if (vids.length > 0) {
-        tw.classList.remove('hidden');
-        tw.style.display = 'block';
-
-        te2.classList.remove('hidden');
-        te2.style.display = 'grid';
-
-        te2.classList.add('catalog-detail-trailers-grid');
-        te2.classList.remove('catalog-detail-trailers-links');
-        te2.style.cssText = 'display:grid;grid-template-columns:repeat(6,1fr);gap:16px;padding:10px;';
-        var frag = document.createDocumentFragment();
-        vids.forEach(function (v) {
-            var d = document.createElement('div');
-            d.className = 'catalog-trailer-card-item';
-            d.dataset.videoUrl = v.key;
-            d.dataset.videoTitle = v.name || 'Трейлер';
-            d.innerHTML = '<div class="catalog-trailer-poster" style="position:relative;aspect-ratio:4/3;overflow:hidden;border-radius:12px;background:linear-gradient(135deg,#1a1a2e,#16213e)"><img src="https://img.youtube.com/vi/' + v.key + '/mqdefault.jpg" alt="' + escapeHtml(v.name || 'Трейлер') + '" loading="lazy" decoding="async" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'<div class=\\\'no-poster\\\'></div>\'"><div class="catalog-trailer-play-overlay" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity 0.3s;cursor:pointer"><div style="width:60px;height:60px;background:rgba(74,158,255,0.9);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:30px;color:white">▶</div></div>' +
-                (v.duration ? '<div style="position:absolute;bottom:8px;right:8px;background:rgba(0,0,0,0.8);color:white;font-size:12px;padding:3px 8px;border-radius:12px;font-family:monospace">' + formatDuration(v.duration) + '</div>' : '') +
-                '</div><div class="catalog-trailer-info hidden" style="padding:10px"><div class="catalog-trailer-title" style="font-size:14px;font-weight:600;color:#fff;margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(v.name || 'Трейлер') + '</div><div class="catalog-trailer-meta fg-row-10" style="display:flex;gap:10px;font-size:12px;color:#aaa"><span>Трейлер</span>' + (v.duration ? '<span>⏱️ ' + formatDuration(v.duration) + '</span>' : '') + '</div></div>';
-            frag.appendChild(d);
-        });
-        te2.innerHTML = '';
-        te2.appendChild(frag);
-    } else {
-        tw.classList.add('hidden');
-        tw.style.display = 'none';
-        te2.classList.add('hidden');
-        te2.style.display = 'none';
-    }
-}
-
-/**
  * Делегированный обработчик кликов по деталям (рекомендации и трейлеры)
  */
 function setupDetailDelegation(dv) {
@@ -5875,12 +5945,6 @@ function setupDetailDelegation(dv) {
                 name: recCard.dataset.title
             }, 0, null);
             return;
-        }
-        // Клик по трейлеру
-        var trailerCard = e.target.closest('.catalog-trailer-card-item');
-        if (trailerCard) {
-            if (!window.AndroidJS) hideCatalogDetailView();
-            openYoutubeInPlayer(trailerCard.dataset.videoUrl, trailerCard.dataset.videoTitle);
         }
     };
     dv.addEventListener('click', dv._detailClickHandler);
@@ -6517,119 +6581,6 @@ function showCatalogSearch(q, pu, item) {
         return searching;
     }
     return Promise.resolve(0);
-}
-
-async function openYoutubeInPlayer(url, title) {
-    var po = getEl('playback-overlay');
-    if (po) {
-        po.classList.add('active');
-        var pt = po.querySelector('.playback-text');
-        if (pt) pt.textContent = 'Загрузка трейлера: ' + title + '...';
-    }
-    try {
-        var videoId = url;
-        var apiUrl = 'https://tube.vidaapp.cfd/api/v1/video?v=' + videoId + '&device=vidaa-968394708';
-        var data = await safeFetch(apiUrl);
-        if (!data) throw new Error('Не удалось получить данные видео');
-        var m3u8Url = null;
-        if (data.formats && Array.isArray(data.formats)) {
-            var format = data.formats.find(function (f) { return f.protocol === 'https' && f.label === '1080p'; });
-            if (format && format.url) {
-                m3u8Url = format.url.startsWith('https://') ? format.url : 'https://tube.vidaapp.cfd' + format.url;
-            } else {
-                var anyM3u8 = data.formats.find(function (f) { return f.protocol === 'https'; });
-                if (anyM3u8 && anyM3u8.url) {
-                    m3u8Url = anyM3u8.url.startsWith('https://') ? anyM3u8.url : 'https://tube.vidaapp.cfd' + anyM3u8.url;
-                }
-            }
-        }
-        if (!m3u8Url) throw new Error('Не найден HLS поток для видео');
-        if (window.AndroidJS) {
-            if (po) po.classList.remove('active');
-            var playerData = { url: m3u8Url, title: title || 'Видео', iptv: false };
-            AndroidJS.openPlayer(m3u8Url, JSON.stringify(playerData));
-        } else {
-            var cd = AppState.currentDetailItem, cn = catalogState.currentCatalog, ci = catalogState.lastSelectedIndex;
-            var dv = getEl('detail-view'), mc = getEl('main-container');
-            if (dv) { dv.style.display = 'none'; dv.style.pointerEvents = 'none'; }
-            if (mc) mc.style.pointerEvents = 'none';
-            var old = AppState.currentStreamId;
-            AppState.videoUrl = url;
-            AppState.isYoutubePlayback = true;
-            AppState.youtubeContext = { currentDetailItem: cd, catalogName: cn, itemIndex: ci };
-            AppState.currentDetailItem = { title: title, hash: null, isYoutube: true, youtubeUrl: url };
-            if (old) fetch(SERVER_URL + '/hls/stop/' + old, { method: 'POST' }).catch(function () { });
-            if (window.destroyHls) window.destroyHls();
-            var vp = getEl('video-player');
-            if (Hls.isSupported()) {
-                AppState.hls = new Hls({
-                    maxBufferSize: 80 * 1024 * 1024,
-                    maxBufferLength: 30,
-                    backBufferLength: 20,
-                    startLevel: -1,
-                    abrEwmaDefaultEstimate: 500000,
-                    fragLoadingTimeOut: 10000,
-                    manifestLoadingTimeOut: 10000,
-                    enableWorker: true,
-                    progressive: true
-                });
-                AppState.hls.loadSource(m3u8Url);
-                AppState.hls.attachMedia(vp);
-                var started = false;
-                AppState.hls.on(Hls.Events.MANIFEST_PARSED, function () {
-                    if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title);
-                    vp.currentTime = 0;
-                    vp.pause();
-                    var iv = setInterval(function () {
-                        if (started) return clearInterval(iv);
-                        if (vp.buffered && vp.buffered.length > 0 && vp.buffered.end(vp.buffered.length - 1) - vp.currentTime >= 3) {
-                            clearInterval(iv);
-                            if (po) po.classList.remove('active');
-                            vp.play().catch(function () {
-                                vp.muted = true;
-                                vp.play().catch(function () { });
-                                if (typeof window.updateMuteButton === 'function') window.updateMuteButton();
-                            });
-                            started = true;
-                            getEl('player-screen').style.display = 'block';
-                            getEl('config-screen').style.display = 'none';
-                            getEl('torrserver-section').style.display = 'none';
-                            var focused = document.querySelectorAll('.focused');
-                            for (var i = 0; i < focused.length; i++) focused[i].classList.remove('focused');
-                            if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
-                        }
-                    }, 500);
-                });
-                AppState.hls.on(Hls.Events.ERROR, function (ev, d) {
-                    if (d.fatal) {
-                        if (po) po.classList.remove('active');
-                        alert('Ошибка воспроизведения');
-                    }
-                });
-            } else if (vp.canPlayType('application/vnd.apple.mpegurl')) {
-                vp.src = m3u8Url;
-                vp.addEventListener('loadedmetadata', function () {
-                    if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title);
-                    if (po) po.classList.remove('active');
-                    vp.play().catch(function () { });
-                    getEl('player-screen').style.display = 'block';
-                });
-            } else {
-                throw new Error('Браузер не поддерживает HLS');
-            }
-            AppState.currentScreen = 'player';
-            // Плеер трейлера открывается мимо transitionToPlayerScreen (player.js),
-            // поэтому тик буфера заводим здесь
-            if (typeof window.startBufferUpdates === 'function') window.startBufferUpdates();
-        }
-    } catch (e) {
-        console.error('YouTube error:', e);
-        if (po) po.classList.remove('active');
-        alert('Ошибка: ' + e.message);
-        var dv = getEl('detail-view'), mc = getEl('main-container');
-        if (dv) { dv.style.display = 'block'; dv.style.pointerEvents = 'auto'; }
-        if (mc) mc.style.pointerEvents = 'auto';
-    }
 }
 
 function exitYoutubePlayer() {
@@ -8261,11 +8212,14 @@ function hideCatalogLoading() { }
  *
  * Пока смотрели фильмографию, на экране каталога жила она, а под карточкой
  * лежит другое: категория, другая фильмография, ряды или вовсе главная. under —
- * запись стека под карточкой; для сетки в ней снимок (Nav.register('grid')),
- * сделанный, когда из неё уходили в карточку. Сетку не рисуем — только
- * выставляем состояние, по которому её поднимет restoreFocusAfterNavigation
- * (items пуст → loadCatalog заново). Не сетка — показываем ряды: так каталог не
- * останется с осиротевшей фильмографией.
+ * ближайшая запись сетки в стеке (Nav.find('grid')), а не запись прямо под
+ * карточкой: карточку могли открыть из рекомендаций другой карточки, и тогда
+ * сетка лежит под целой цепочкой — смотреть только на соседа значило забыть
+ * категорию, и последнее «назад» приходило в пустой экран. В записи сетки
+ * снимок (Nav.register('grid')), сделанный, когда из неё уходили в карточку.
+ * Сетку не рисуем — только выставляем состояние, по которому её поднимет
+ * restoreFocusAfterNavigation (items пуст → loadCatalog заново). Сетки в стеке
+ * нет — показываем ряды: так каталог не останется с осиротевшей фильмографией.
  */
 function prepareGridUnderDetail(under) {
     var r = (under && under.screen === 'grid' && under.restore) || null;
@@ -8309,6 +8263,26 @@ if (window.Nav) Nav.register('grid', {
     }
 });
 
+/**
+ * Сетку собрали заново (возврат из фильмографии), а в ней только первая
+ * страница. Карточка, из которой уходили, могла лежать намного глубже: без
+ * догрузки её нет в DOM, и фокус с прокруткой уезжали в начало списка.
+ * Догружаем страницы до неё; ensureCatalogFocus дальше найдёт её как обычно.
+ */
+function extendCatalogToSelected() {
+    var key = catalogState.currentCatalog;
+    var target = catalogState.lastSelectedIndex || 0;
+    function step() {
+        if (catalogState.currentCatalog !== key) return false;
+        if (catalogState.items.length > target || !catalogState.hasMore) return true;
+        return Promise.resolve(window.loadMoreCatalogItems()).then(function (more) {
+            return more ? step() : true;
+        });
+    }
+    return Promise.resolve(step());
+}
+window.extendCatalogToSelected = extendCatalogToSelected;
+
 function backToCatalogList() {
     // Назад из сетки — по стеку переходов (nav.js). Фильмографию открывали из
     // карточки: возвращаемся в неё, а сетку под ней готовим заранее, чтобы
@@ -8317,7 +8291,7 @@ function backToCatalogList() {
     if (navTo && navTo.screen === 'detail' && navTo.data && navTo.data.item &&
         typeof showCatalogDetail === 'function') {
         abortCatalogRequests();
-        prepareGridUnderDetail(Nav.prev());
+        prepareGridUnderDetail(Nav.find('grid'));
         showCatalogDetail(navTo.data.item, navTo.data.index || 0, null);
         return;
     }

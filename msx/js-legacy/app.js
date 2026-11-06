@@ -772,14 +772,27 @@ function restoreFocusAfterNavigation(returnTo, context) {
       }
       return;
     }
+    if (!AppState.backCurrentCatalog && !catalogState.items.length) {
+      hideDetailView();
+      if (typeof window.showCatalogList === 'function') window.showCatalogList();
+      return;
+    }
     window.loadCatalog(AppState.backCurrentCatalog).then(function () {
+      return typeof window.extendCatalogToSelected === 'function' ? window.extendCatalogToSelected() : null;
+    }).then(function () {
       var mc = getEl('main-container');
       if (mc && typeof context.savedScroll === 'number') {
         mc.scrollTop = context.savedScroll;
       }
       hideDetailView();
       if (typeof window.ensureCatalogFocus === 'function') {
-        window.ensureCatalogFocus(true);
+        if (typeof window.withInstantScroll === 'function') {
+          window.withInstantScroll(function () {
+            window.ensureCatalogFocus(true);
+          });
+        } else {
+          window.ensureCatalogFocus(true);
+        }
       }
     });
     return;

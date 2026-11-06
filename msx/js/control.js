@@ -2767,7 +2767,9 @@ function onBack() {
         if (window.catalogState) { window.catalogState.lastSelectedIndex = 0; window.catalogState.lastSelectedId = null; localStorage.removeItem('lastCatalogCardIndex'); }
         if (typeof window.backToCatalogList === 'function') { AppState.currentScreen = 'catalog'; window.backToCatalogList(); }
         else clickEl(getEl('back-from-catalog'));
-        setTimeout(function () { ScreenStrategies.catalog.ensureFocus(true); }, 180);
+        // Из фильмографии «назад» ведёт в карточку: фокусом там занимается она,
+        // а здесь он уехал бы на карточку сетки, спрятанную под ней
+        setTimeout(function () { if (AppState.currentScreen === 'catalog') ScreenStrategies.catalog.ensureFocus(true); }, 180);
         return true;
     }
     if (c && _isScreenVisible(c)) {
