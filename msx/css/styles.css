@@ -13063,7 +13063,7 @@ html.apple-device {
 @media screen and (orientation: landscape) and (max-height: 500px) {
   #detail-view.detail-cinema {
     --cu: 2.9vh;
-    --cs: var(--cu);
+    --cs: calc(var(--cu) * 1.2);
   }
 
   /* Вертикаль сцены листает свайп «страницами» (control.js: CINEMA_SWIPE_MQ,
@@ -13208,7 +13208,7 @@ html.apple-device {
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn {
     -webkit-flex: none;
     flex: none;
-    width: calc(var(--cu) * 2.9);
+    width: calc(var(--cs) * 2.9);
     padding: 0 !important;
     font-size: 0 !important;
     border-radius: 50% !important;
@@ -13218,7 +13218,7 @@ html.apple-device {
     content: "\ec79" !important;
     margin: 0;
     font-family: "uicons-regular-rounded";
-    font-size: calc(var(--cu) * 1.2);
+    font-size: calc(var(--cs) * 1.2);
     font-weight: normal;
     line-height: 1;
     vertical-align: middle;
@@ -13226,7 +13226,7 @@ html.apple-device {
 
   /* Подпись под кнопкой — для мыши и пульта; на касание фокуса нет */
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions {
-    margin-bottom: calc(var(--cu) * 1.4) !important;
+    margin-bottom: calc(var(--cs) * 1.4) !important;
   }
 }
 
