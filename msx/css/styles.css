@@ -12002,6 +12002,19 @@ html.apple-device {
   }
 }
 
+/* То же для выбранного «Разрешения интерфейса» (index.html: apple-tv-ui). Единица
+   от высоты экрана при меньшей раскладке не растёт: 1,852vh всегда одна доля
+   экрана, и карточка осталась бы мелкой, когда всё вокруг укрупнилось. 20px
+   растут вместе с раскладкой. Правило выше — для старого index.html из пакета
+   сервера: там этого класса нет */
+html.apple-tv-ui {
+  --popup-u: 20px;
+}
+
+html.apple-tv-ui #detail-view.detail-cinema {
+  --cu: 20px;
+}
+
 .detail-cinema-head,
 .detail-cinema-below .catalog-detail-episodes-wrap,
 .detail-cinema-below .catalog-detail-crew-wrap,

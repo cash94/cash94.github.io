@@ -15,14 +15,25 @@
        uiResolution). До таблиц стилей: иначе страница разложится дважды. -->
   <script>
     (function () {
-      if (!window.AndroidJS || screen.width < screen.height) return;
+      // Apple TV: клиент называет себя Mac или iPad с сенсором, а окно шире любого
+      // iPad. Экран там всегда 1920 точек (на 4K — ×2), окно ниже экрана, поэтому
+      // размеры берём у окна. Авто нет: без выбора всё остаётся 1920
+      var ua = navigator.userAgent.toLowerCase();
+      var winW = window.innerWidth >= 1900 ? window.innerWidth : screen.width;
+      var appleTv = !window.AndroidJS && /macintosh|ipad/.test(ua) && winW >= 1900 &&
+        (('ontouchstart' in window) || navigator.maxTouchPoints > 0);
+      if ((!window.AndroidJS && !appleTv) || screen.width < screen.height) return;
       var dpr = window.devicePixelRatio || 1;
-      var info = { native: screen.width, phys: Math.round(screen.width * dpr), auto: 0, width: screen.width };
+      var nativeW = appleTv ? winW : screen.width;
+      var nativeH = appleTv ? (window.innerHeight || screen.height) : screen.height;
+      var info = { native: nativeW, height: nativeH, phys: Math.round(nativeW * dpr), auto: 0, width: nativeW, apple: appleTv };
       window.uiViewport = info;
+      // styles.css: размеры «сцены» на Apple TV
+      if (appleTv) document.documentElement.className += ' apple-tv-ui';
       // Авто — только на телевизоре (у телефона и планшета сенсорный экран)
       // и только если в физических точках 1280 помещается без растяжения
       var touch = window.matchMedia && matchMedia('(any-pointer: coarse)').matches;
-      if (!touch && info.native < 1280 && info.phys >= 1280) info.auto = 1280;
+      if (!appleTv && !touch && info.native < 1280 && info.phys >= 1280) info.auto = 1280;
       var want = 0;
       try { want = parseInt(localStorage.getItem('uiResolution'), 10) || 0; } catch (e) { }
       var w = want || info.auto;
@@ -116,14 +127,14 @@
       "css/flex-gap-fallback.css": "8acd2bbb",
       "css/inter.css": "2caa5b93",
       "css/legacy.css": "100d5c5a",
-      "css/styles.css": "4ef80ef1",
+      "css/styles.css": "befb17fa",
       "css/uicons-regular-rounded.css": "feee56fb",
       "css/uicons-thin-chubby.css": "1d6159cb",
       "css/uicons-thin-rounded.css": "365fbd61",
       "js-legacy/legacy-polyfills.js": "e0e9de38",
       "js/account.js": "65c22e09",
       "js/animations.js": "538e1ff5",
-      "js/app.js": "0b2e5b73",
+      "js/app.js": "2b1a1c07",
       "js/best-torrents-pick.js": "cd63487a",
       "js/best-torrents.js": "297e0c5a",
       "js/catalog-idb-patch.js": "7cf849b3",
@@ -159,7 +170,7 @@
       "js/torrents-worker.js": "f0d520c9",
       "js/torrents.js": "b417f94e",
       "js/torrserverstats.js": "5787ab47",
-      "js/ui-customizer.js": "ab310609"
+      "js/ui-customizer.js": "9fe4ccb6"
       // ASSET_V:end
     };
     function assetV(p) {

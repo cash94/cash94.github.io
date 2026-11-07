@@ -2865,7 +2865,7 @@ function renderDeviceInfo() {
   // уменьшена масштабом — показываем настоящий множитель и исходную ширину
   var vp = window.uiViewport;
   var dpr = (window.devicePixelRatio || 1) * (vp ? vp.native / vp.width : 1);
-  var vpNote = vp && vp.width !== vp.native ? ' · у системы ' + vp.native + '×' + screen.height : '';
+  var vpNote = vp && vp.width !== vp.native ? ' · у системы ' + vp.native + '×' + (vp.height || screen.height) : '';
   var rows = [
     ['Приложение', deviceAppName()],
     ['Платформа', APPLE_PLATFORM_NAMES[AppState.applePlatform] || PLATFORM_NAMES[AppState.platform] || AppState.platform || '—'],

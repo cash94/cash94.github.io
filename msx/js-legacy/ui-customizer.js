@@ -603,6 +603,10 @@
   }
   var RESOLUTION_KEY = 'uiResolution';
   var RESOLUTIONS = [[960, '960 × 540'], [1280, '1280 × 720'], [1920, '1920 × 1080']];
+  var RESOLUTIONS_APPLE = [1600, 1280];
+  function resolutionLabel(vp, w) {
+    return w + ' × ' + Math.round(w * (vp.height || screen.height) / vp.native);
+  }
   function resolutionChoice() {
     try {
       return String(parseInt(localStorage.getItem(RESOLUTION_KEY), 10) || 'auto');
@@ -614,9 +618,12 @@
     var vp = window.uiViewport;
     if (!vp) return '';
     var autoW = vp.auto || vp.native;
-    var opts = [['auto', 'Авто (' + autoW + ' × ' + Math.round(autoW * screen.height / screen.width) + ')']];
-    for (var i = 0; i < RESOLUTIONS.length; i++) {
+    var opts = [['auto', 'Авто (' + resolutionLabel(vp, autoW) + ')']];
+    for (var i = 0; !vp.apple && i < RESOLUTIONS.length; i++) {
       if (RESOLUTIONS[i][0] <= Math.max(vp.phys, 1280)) opts.push([String(RESOLUTIONS[i][0]), RESOLUTIONS[i][1]]);
+    }
+    for (var j = 0; vp.apple && j < RESOLUTIONS_APPLE.length; j++) {
+      opts.push([String(RESOLUTIONS_APPLE[j]), resolutionLabel(vp, RESOLUTIONS_APPLE[j])]);
     }
     return '<div class="ui-customizer-group"><h3>Разрешение интерфейса</h3>' + '<div class="ui-customizer-hint">На сколько точек раскладывать экран. Больше — мельче элементы и больше помещается; чёткость та же. После выбора приложение перезагрузит страницу.</div>' + '<div class="ui-customizer-options">' + optionRow(RESOLUTION_KEY, opts) + '</div></div>';
   }
