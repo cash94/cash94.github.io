@@ -1,6 +1,12 @@
 {
  "images": [
   {
+   "url": "https://www.bing.com/th?id=OHR.DakotaBison_ROW7172064410_1920x1080.jpg",
+   "title": "A bison in the grasslands of Theodore Roosevelt National Park, North Dakota, USA",
+   "copyright": "© Tandem Stock/Adobe Stock",
+   "date": "20261107"
+  },
+  {
    "url": "https://www.bing.com/th?id=OHR.PipiwaiTrail_ROW7076353112_1920x1080.jpg",
    "title": "Bamboo forest, Pīpīwai Trail, Haleakalā National Park, Maui, Hawaii, USA",
    "copyright": "© MNStudio/Getty Images",
@@ -83,12 +89,6 @@
    "title": "Green-headed tanager",
    "copyright": "© Juan Carlos Vindas/Getty Images",
    "date": "20261024"
-  },
-  {
-   "url": "https://www.bing.com/th?id=OHR.YellowstoneWolves_ROW0688697251_1920x1080.jpg",
-   "title": "Two grey wolves, Yellowstone National Park, Wyoming, United States",
-   "copyright": "© John Morrison/Getty Images",
-   "date": "20261023"
   }
  ]
 }
