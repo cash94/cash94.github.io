@@ -12513,6 +12513,60 @@ html.apple-device {
   opacity: 1;
 }
 
+/* Apple TV: движок клиента не даёт шрифту стать меньше ~16px, font-size: 0
+   там не работает — подпись оставалась в круге рядом со значком и вылезала за
+   края. Текст прячем цветом, а значок снимаем с потока и ставим по центру
+   круга: надпись его больше не сдвигает. Цвет значков и индикатора «Лучших»
+   теперь задан явно — от кнопки им достался бы прозрачный */
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn,
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn,
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-best-btn,
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn,
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn {
+  color: transparent !important;
+  text-shadow: none;
+}
+
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn::before,
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn::before,
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-best-btn::before,
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn .favorite-btn-icon,
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn .trailer-btn-icon {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  color: #fff;
+}
+
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-best-btn .catalog-best-caret {
+  color: #fff;
+}
+
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn.focused::before,
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn.focused::before,
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-best-btn.focused::before,
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn.focused .favorite-btn-icon,
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn.focused .trailer-btn-icon,
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-best-btn.focused .catalog-best-caret {
+  color: #000;
+}
+
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn.is-favorite .favorite-btn-icon {
+  color: #ffc107;
+}
+
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn.focused.is-favorite .favorite-btn-icon {
+  color: #d99a00;
+}
+
 /* --- ОПИСАНИЕ ------------------------------------------------------------ */
 /* В «сцене» описание не показываем вовсе — ни на ТВ, ни на телефоне: его
    открывает кнопка «Подробнее» окном (openDetailOverviewPopup в catalog.js).
