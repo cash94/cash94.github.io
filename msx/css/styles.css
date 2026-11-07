@@ -11986,6 +11986,22 @@ html.apple-device {
   --cs: calc(var(--cu) * 1.5);
 }
 
+/* Apple TV: окно клиента ниже экрана (1920×966, а не 1080), и всё, что считается
+   от высоты, выходило на десятую часть мельче, чем на обычном телевизоре 1080.
+   Единица как на 1080 — ровно 20px. --popup-u — то же для окна описания сцены:
+   оно живёт вне #detail-view. Места хватает: колонка прижата к низу и поднимается
+   лишь на пару десятков пикселей. iPad и iPhone сюда не попадают — шире 1900 они
+   не бывают */
+@media screen and (min-width: 1900px) and (min-height: 900px) and (max-height: 1079px) {
+  html.apple-device {
+    --popup-u: 20px;
+  }
+
+  html.apple-device #detail-view.detail-cinema {
+    --cu: 20px;
+  }
+}
+
 .detail-cinema-head,
 .detail-cinema-below .catalog-detail-episodes-wrap,
 .detail-cinema-below .catalog-detail-crew-wrap,
@@ -12617,11 +12633,11 @@ html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail
   -webkit-flex-direction: column;
   flex-direction: column;
   width: 62%;
-  max-width: calc(1.852vh * 70);
+  max-width: calc(var(--popup-u, 1.852vh) * 70);
   max-height: 78vh;
-  padding: calc(1.852vh * 2) calc(1.852vh * 2.4);
+  padding: calc(var(--popup-u, 1.852vh) * 2) calc(var(--popup-u, 1.852vh) * 2.4);
   box-sizing: border-box;
-  border-radius: calc(1.852vh * 1.1);
+  border-radius: calc(var(--popup-u, 1.852vh) * 1.1);
   /* Полупрозрачный серый без backdrop-filter и без размытой тени: размытие
      на слабых ТВ пересчитывается каждый кадр и тормозит. Плотности хватает,
      чтобы белый текст читался и поверх светлого кадра */
@@ -12632,8 +12648,8 @@ html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail
 .detail-overview-popup-title {
   -webkit-flex: none;
   flex: none;
-  margin-bottom: calc(1.852vh * 1);
-  font-size: calc(1.852vh * 1.45 * var(--detail-text-scale, 1));
+  margin-bottom: calc(var(--popup-u, 1.852vh) * 1);
+  font-size: calc(var(--popup-u, 1.852vh) * 1.45 * var(--detail-text-scale, 1));
   font-weight: 700;
   line-height: 1.25;
   color: #fff;
@@ -12651,8 +12667,8 @@ html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding-right: calc(1.852vh * 0.6);
-  font-size: calc(1.852vh * 1.05 * var(--detail-text-scale, 1));
+  padding-right: calc(var(--popup-u, 1.852vh) * 0.6);
+  font-size: calc(var(--popup-u, 1.852vh) * 1.05 * var(--detail-text-scale, 1));
   line-height: 1.6;
   color: rgba(255, 255, 255, 0.88);
   white-space: pre-line;
@@ -12661,8 +12677,8 @@ html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail
 .detail-overview-popup-hint {
   -webkit-flex: none;
   flex: none;
-  margin-top: calc(1.852vh * 1.2);
-  font-size: calc(1.852vh * 0.75);
+  margin-top: calc(var(--popup-u, 1.852vh) * 1.2);
+  font-size: calc(var(--popup-u, 1.852vh) * 0.75);
   color: rgba(255, 255, 255, 0.45);
 }
 
