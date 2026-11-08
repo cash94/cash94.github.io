@@ -805,6 +805,21 @@
         return parts.join('  •  ');
     }
 
+    /** Строка о фильме в баннер; оценка («★ 7.5») — отдельным span, оранжевым */
+    function setHeroMeta(m, text) {
+        if (!m) return;
+        var i = text.indexOf('★');
+        if (i === -1) { m.textContent = text; return; }
+        var j = text.indexOf('  •  ', i);
+        if (j === -1) j = text.length;
+        m.textContent = text.slice(0, i);
+        var s = document.createElement('span');
+        s.className = 'home-meta-rating';
+        s.textContent = text.slice(i, j);
+        m.appendChild(s);
+        if (j < text.length) m.appendChild(document.createTextNode(text.slice(j)));
+    }
+
     // Поколение загрузки кадра: сменился элемент баннера — ответы прошлой
     // цепочки (у неё несколько попыток) должны молча уйти в никуда
     var backdropLoad = 0;
@@ -1014,7 +1029,7 @@
         var t = el('home-hero-title');
         if (t) t.textContent = itemTitle(src) !== 'Без названия' ? itemTitle(src) : itemTitle(item);
         var m = el('home-hero-meta');
-        if (m) m.textContent = heroMetaText(item, details);
+        setHeroMeta(m, heroMetaText(item, details));
         var o = el('home-hero-overview');
         if (o) o.textContent = src.overview || (item && item.overview) || '';
         var btn = el('home-play-btn');
@@ -1628,7 +1643,7 @@
         renderHero(item, item, onBackdrop);
         // Категория первой: на этом баннере фильм — пример того, что внутри
         var m = el('home-hero-meta');
-        if (m) m.textContent = categoryName(c.key) + '  •  ' + heroMetaText(item, item);
+        setHeroMeta(m, categoryName(c.key) + '  •  ' + heroMetaText(item, item));
         applyHeroLogo(item, k);
         renderCategoryDots();
         setCategoryArrows(c.list.length > 1);
@@ -2518,11 +2533,18 @@
         return row;
     }
 
+    // Счётчик «3 / 6» и перед ним подсказка, какой ряд откроет «вниз»: соседних
+    // рядов на экране не видно, и без названия следующего «вниз» — вслепую
     function updateRowCounters() {
         var total = homeState.rowEls.length;
         for (var i = 0; i < total; i++) {
             var c = homeState.rowEls[i].querySelector('.home-row-counter');
-            if (c) c.textContent = total > 1 ? (i + 1) + ' / ' + total : '';
+            if (!c) continue;
+            if (total < 2) { c.textContent = ''; continue; }
+            var next = i + 1 < total ? homeState.rowEls[i + 1].querySelector('.catalog-row-title') : null;
+            var hint = next ? next.textContent : '';
+            c.innerHTML = (hint ? '<span class="home-row-next">Дальше: ' + esc(hint) + '</span>' : '') +
+                (i + 1) + ' / ' + total;
         }
     }
 
@@ -3265,7 +3287,7 @@
     // ==================== «ПРОДОЛЖИТЬ» В БАННЕРЕ ====================
     //
     // На карточке ряда «Продолжить просмотр» кнопка баннера — не «Смотреть»
-    // (поиск раздачи), а «Продолжить · С1 Е3 · 20:15»: запуск с того места,
+    // (поиск раздачи), а «Продолжить · S1 E3 · 20:15»: запуск с того места,
     // где остановились, без захода в карточку (resumeWatching в player.js).
     // Место — поле resume записи истории (общий таймкод фильма/серии, сервер
     // 1.0.56). Нет его, или фильм досмотрен — кнопка обычная.
@@ -3322,7 +3344,8 @@
 
     function resumeLabel(item, r) {
         var finished = typeof window.isResumeFinished === 'function' && window.isResumeFinished(r);
-        var ep = r.season !== undefined && r.episode ? 'С' + r.season + ' Е' + r.episode : '';
+        // Латиницей, как принято у раздач: «S1 E3»
+        var ep = r.season !== undefined && r.episode ? 'S' + r.season + ' E' + r.episode : '';
         // Досмотренная серия — дальше следующая; номер её знает только список
         // файлов раздачи, поэтому без номера
         if (finished) return 'Следующая серия';

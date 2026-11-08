@@ -3578,24 +3578,13 @@ var CINEMA_STATUS = {
     'Canceled': 'Отменён'
   }
 };
-var CINEMA_SCORE_INLINE_MQ = '(max-width: 600px) and (orientation: portrait)';
-var cinemaScoreMql = null;
 function placeCinemaScore() {
   var box = getEl('detail-cinema-score'),
-    chips = getEl('detail-cinema-chips');
-  var panel = getEl('detail-cinema-head') && getEl('detail-cinema-head').parentElement;
-  if (!box || !chips || !panel || !panel.parentElement) return;
-  var inline = !!(cinemaScoreMql && cinemaScoreMql.matches);
-  if (inline) {
-    if (box.previousSibling !== chips) chips.parentNode.insertBefore(box, chips.nextSibling);
-  } else if (box.parentNode !== panel.parentElement) {
-    panel.parentElement.insertBefore(box, panel.nextSibling);
-  }
+    meta = getEl('detail-cinema-meta');
+  if (!box || !meta) return;
+  if (box.previousSibling !== meta) meta.parentNode.insertBefore(box, meta.nextSibling);
 }
 function watchCinemaScorePlace() {
-  if (cinemaScoreMql || !window.matchMedia) return;
-  cinemaScoreMql = window.matchMedia(CINEMA_SCORE_INLINE_MQ);
-  if (cinemaScoreMql.addListener) cinemaScoreMql.addListener(placeCinemaScore);
   placeCinemaScore();
 }
 function formatCinemaVotes(n) {
@@ -3717,10 +3706,7 @@ function renderCinemaHead(item, src) {
   }
   renderCinemaScore(item, src);
 }
-function renderDetailCrew(item, src) {
-  var wrap = getEl('catalog-detail-crew-wrap'),
-    grid = getEl('catalog-detail-crew');
-  if (!wrap || !grid) return;
+function detailCrewPeople(item, src) {
   var tv = (item.media_type || 'movie') === 'tv';
   var people = [],
     seen = {};
@@ -3732,6 +3718,37 @@ function renderDetailCrew(item, src) {
     seen[p.id || p.name] = 1;
     people.push(p);
   }
+  return people;
+}
+function cinemaPeopleMerged() {
+  return isCinemaCatalogDetail();
+}
+function cinemaCrewAsActors(item, src) {
+  var role = (item.media_type || 'movie') === 'tv' ? 'Создатель' : 'Режиссёр';
+  var people = detailCrewPeople(item, src),
+    out = [];
+  for (var i = 0; i < people.length; i++) {
+    out.push({
+      id: people[i].id ? 'crew:' + people[i].id : '',
+      name: people[i].name,
+      character: role,
+      profilePath: people[i].profile_path || '',
+      crew: true
+    });
+  }
+  return out;
+}
+function renderDetailCrew(item, src, merged) {
+  var wrap = getEl('catalog-detail-crew-wrap'),
+    grid = getEl('catalog-detail-crew');
+  if (!wrap || !grid) return;
+  if (merged) {
+    if (grid._pool) for (var h = 0; h < grid._pool.length; h++) hideDetailCard(grid._pool[h]);
+    wrap.classList.add('hidden');
+    return;
+  }
+  var tv = (item.media_type || 'movie') === 'tv';
+  var people = detailCrewPeople(item, src);
   var title = wrap.firstChild;
   if (title) title.textContent = tv ? people.length > 1 ? 'Создатели' : 'Создатель' : people.length > 1 ? 'Режиссёры' : 'Режиссёр';
   var role = tv ? 'Создатель' : 'Режиссёр';
@@ -4508,6 +4525,9 @@ function buildRecommendationCard() {
   var titleText = document.createElement('span');
   title.appendChild(titleText);
   info.appendChild(title);
+  var sub = document.createElement('div');
+  sub.className = 'catalog-rec-sub';
+  info.appendChild(sub);
   card.appendChild(posterBox);
   card.appendChild(info);
   card._img = img;
@@ -4516,6 +4536,7 @@ function buildRecommendationCard() {
   card._bar = bar;
   card._title = titleText;
   card._year = year;
+  card._sub = sub;
   return card;
 }
 function renderDetailActorCards(grid, actors, noPhotoText) {
@@ -4534,12 +4555,15 @@ function renderDetailActorCards(grid, actors, noPhotoText) {
     card.dataset.personName = a.name;
     card._name.textContent = a.name;
     card._character.textContent = a.character || '';
+    card.classList.toggle('is-crew', !!a.crew);
     card._placeholder.textContent = noPhotoText || 'Нет фото';
     setDetailCardPoster(card, a.profilePath ? getTmdbImageUrl(a.profilePath, CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL) : '');
     card.classList.remove('hidden');
     shown++;
   }
   if (shown) hideDetailRowMessage(grid);else showDetailRowMessage(grid, '<div class="catalog-empty">Актеры не найдены</div>');
+  var head = grid.parentNode && grid.parentNode.querySelector('.catalog-detail-section-title');
+  if (head) head.textContent = list.length && list[0] && list[0].crew ? list[0].character + ' и актёры' : 'В главных ролях';
   return shown;
 }
 function clearDetailActorCards(grid) {
@@ -4608,7 +4632,11 @@ function fillRecommendationCard(card, r, mt) {
   card._rating.style.color = rating ? getRatingColor(rating) : '';
   card._bar.classList.toggle('hidden', !rating);
   var date = r.release_date || r.first_air_date;
-  card._year.textContent = date ? String(date).substring(0, 4) : '';
+  var yearText = date ? String(date).substring(0, 4) : '';
+  card._year.textContent = yearText;
+  if (card._sub) {
+    card._sub.innerHTML = escapeHtml(yearText) + (rating ? (yearText ? '<span class="catalog-rec-dot">·</span>' : '') + '<span class="catalog-rec-star">★ ' + escapeHtml(String(rating)) + '</span>' : '');
+  }
   setDetailCardPoster(card, r.poster_path ? getTmdbImageUrl(r.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM) : '');
   card.classList.remove('hidden');
 }
@@ -4957,9 +4985,14 @@ function _showCatalogDetail() {
     renderDetailHeader(item, posterUrl, details);
     var actors = yield actorsPromise;
     if (!isDetailStillCurrent(item)) return;
-    renderDetailActors(item, aw, actors);
     var src = details || item || {};
-    renderDetailCrew(item, src);
+    var peopleMerged = cinemaPeopleMerged();
+    if (peopleMerged) {
+      var crewFirst = cinemaCrewAsActors(item, src);
+      if (crewFirst.length) actors = crewFirst.concat(actors || []);
+    }
+    renderDetailActors(item, aw, actors);
+    renderDetailCrew(item, src, peopleMerged);
     renderDetailCollection(item, src);
     renderDetailRecommendations(src, rw, mt);
     if (episodesPromise) episodesPromise.then(function (data) {

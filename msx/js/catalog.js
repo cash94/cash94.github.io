@@ -4645,34 +4645,19 @@ var CINEMA_STATUS = {
     }
 };
 /*
- * Где стоит блок оценки. На ТВ, ПК и телефоне боком — справа внизу сцены,
- * прямым потомком #detail-view (position: absolute от него). На телефоне
- * книжно — строкой под жанрами, внутри шапки колонки: там он в потоке и
- * сдвигает кнопки вниз. Абсолютный блок внутри шапки считался бы от неё,
- * поэтому узел переносим, а не только перекрашиваем. Медиазапрос тот же,
- * что у правил книжного телефона в styles.css.
+ * Где стоит блок оценки — на любом экране сразу за строкой меты, в одну
+ * строку с ней: возраст, КП и IMDb рядом с годом и длительностью (блок
+ * «Сцена: редизайн, все экраны» в styles.css). Раньше он стоял справа внизу
+ * сцены, а на телефоне книжно — строкой под жанрами; узел переносим, а не
+ * только перекрашиваем: в потоке шапки он должен идти за метой.
  */
-var CINEMA_SCORE_INLINE_MQ = '(max-width: 600px) and (orientation: portrait)';
-var cinemaScoreMql = null;
-
 function placeCinemaScore() {
-    var box = getEl('detail-cinema-score'), chips = getEl('detail-cinema-chips');
-    var panel = getEl('detail-cinema-head') && getEl('detail-cinema-head').parentElement;
-    if (!box || !chips || !panel || !panel.parentElement) return;
-    var inline = !!(cinemaScoreMql && cinemaScoreMql.matches);
-    if (inline) {
-        if (box.previousSibling !== chips) chips.parentNode.insertBefore(box, chips.nextSibling);
-    } else if (box.parentNode !== panel.parentElement) {
-        panel.parentElement.insertBefore(box, panel.nextSibling);
-    }
+    var box = getEl('detail-cinema-score'), meta = getEl('detail-cinema-meta');
+    if (!box || !meta) return;
+    if (box.previousSibling !== meta) meta.parentNode.insertBefore(box, meta.nextSibling);
 }
 
 function watchCinemaScorePlace() {
-    if (cinemaScoreMql || !window.matchMedia) return;
-    cinemaScoreMql = window.matchMedia(CINEMA_SCORE_INLINE_MQ);
-    // addListener, а не addEventListener('change'): в Chrome 66 у MediaQueryList
-    // его ещё нет
-    if (cinemaScoreMql.addListener) cinemaScoreMql.addListener(placeCinemaScore);
     placeCinemaScore();
 }
 
@@ -4817,10 +4802,13 @@ function renderCinemaHead(item, src) {
  * у актёров. ОК открывает режиссёрскую фильмографию: id персоны с префиксом
  * «crew:» (см. parsePersonRef) — клик-обработчик актёров (setupDetailDelegation)
  * отрабатывает её без отдельной ветки.
+ *
+ * В «сцене» (cinemaPeopleMerged) отдельного ряда нет — ни на ТВ, ни на
+ * телефоне: режиссёр — первой плиткой в ленте актёров (cinemaCrewAsActors),
+ * один ряд «Режиссёр и актёры» и для глаз, и для пульта (ленты в control.js —
+ * по одной на сетку).
  */
-function renderDetailCrew(item, src) {
-    var wrap = getEl('catalog-detail-crew-wrap'), grid = getEl('catalog-detail-crew');
-    if (!wrap || !grid) return;
+function detailCrewPeople(item, src) {
     var tv = (item.media_type || 'movie') === 'tv';
     var people = [], seen = {};
     var list = tv ? (src.created_by || []) : ((src.credits && src.credits.crew) || src.crew || []);
@@ -4831,6 +4819,41 @@ function renderDetailCrew(item, src) {
         seen[p.id || p.name] = 1;
         people.push(p);
     }
+    return people;
+}
+
+/** Режиссёр в ленте актёров — во всей «сцене» (блок «Сцена: редизайн, все экраны» в styles.css) */
+function cinemaPeopleMerged() {
+    return isCinemaCatalogDetail();
+}
+
+/** Режиссёры (создатели) в формате renderDetailActorCards — в начало ленты актёров */
+function cinemaCrewAsActors(item, src) {
+    var role = (item.media_type || 'movie') === 'tv' ? 'Создатель' : 'Режиссёр';
+    var people = detailCrewPeople(item, src), out = [];
+    for (var i = 0; i < people.length; i++) {
+        out.push({
+            id: people[i].id ? 'crew:' + people[i].id : '',
+            name: people[i].name,
+            character: role,
+            profilePath: people[i].profile_path || '',
+            crew: true
+        });
+    }
+    return out;
+}
+
+function renderDetailCrew(item, src, merged) {
+    var wrap = getEl('catalog-detail-crew-wrap'), grid = getEl('catalog-detail-crew');
+    if (!wrap || !grid) return;
+    if (merged) {
+        // Режиссёр уже в ленте актёров — свой ряд гасим вместе с карточками
+        if (grid._pool) for (var h = 0; h < grid._pool.length; h++) hideDetailCard(grid._pool[h]);
+        wrap.classList.add('hidden');
+        return;
+    }
+    var tv = (item.media_type || 'movie') === 'tv';
+    var people = detailCrewPeople(item, src);
     var title = wrap.firstChild;
     if (title) title.textContent = tv
         ? (people.length > 1 ? 'Создатели' : 'Создатель')
@@ -5799,6 +5822,11 @@ function buildRecommendationCard() {
     var titleText = document.createElement('span');
     title.appendChild(titleText);
     info.appendChild(title);
+    // «2024 · ★ 6.4» под названием — видна только в «сцене» (styles.css:
+    // .catalog-rec-sub), там с постера год и оценку убирают
+    var sub = document.createElement('div');
+    sub.className = 'catalog-rec-sub';
+    info.appendChild(sub);
 
     card.appendChild(posterBox);
     card.appendChild(info);
@@ -5808,6 +5836,7 @@ function buildRecommendationCard() {
     card._bar = bar;
     card._title = titleText;
     card._year = year;
+    card._sub = sub;
     return card;
 }
 
@@ -5837,6 +5866,8 @@ function renderDetailActorCards(grid, actors, noPhotoText) {
         card.dataset.personName = a.name;
         card._name.textContent = a.name;
         card._character.textContent = a.character || '';
+        // Режиссёр в общей ленте (cinemaCrewAsActors) — роль оранжевым (styles.css)
+        card.classList.toggle('is-crew', !!a.crew);
         card._placeholder.textContent = noPhotoText || 'Нет фото';
         setDetailCardPoster(card, a.profilePath
             ? getTmdbImageUrl(a.profilePath, CATALOG_CONSTANTS.IMG_SIZES.POSTER_SMALL)
@@ -5847,6 +5878,13 @@ function renderDetailActorCards(grid, actors, noPhotoText) {
 
     if (shown) hideDetailRowMessage(grid);
     else showDetailRowMessage(grid, '<div class="catalog-empty">Актеры не найдены</div>');
+    // Заголовок ленты: с режиссёром впереди — «Режиссёр и актёры». Обёртка общая
+    // с карточкой торрента, и та тоже рисует через эту функцию — заголовок
+    // возвращается сам
+    var head = grid.parentNode && grid.parentNode.querySelector('.catalog-detail-section-title');
+    if (head) head.textContent = list.length && list[0] && list[0].crew
+        ? list[0].character + ' и актёры'
+        : 'В главных ролях';
     return shown;
 }
 
@@ -5951,7 +5989,14 @@ function fillRecommendationCard(card, r, mt) {
     card._bar.classList.toggle('hidden', !rating);
 
     var date = r.release_date || r.first_air_date;
-    card._year.textContent = date ? String(date).substring(0, 4) : '';
+    var yearText = date ? String(date).substring(0, 4) : '';
+    card._year.textContent = yearText;
+    if (card._sub) {
+        card._sub.innerHTML = escapeHtml(yearText) + (rating
+            ? (yearText ? '<span class="catalog-rec-dot">·</span>' : '') +
+              '<span class="catalog-rec-star">★ ' + escapeHtml(String(rating)) + '</span>'
+            : '');
+    }
 
     setDetailCardPoster(card, r.poster_path
         ? getTmdbImageUrl(r.poster_path, CATALOG_CONSTANTS.IMG_SIZES.POSTER_MEDIUM)
@@ -6398,11 +6443,17 @@ async function showCatalogDetail(item, index, posterUrl) {
     // Ждём актёров (уже загружаются параллельно с деталями)
     var actors = await actorsPromise;
     if (!isDetailStillCurrent(item)) return;
+    var src = details || item || {};
+    // ТВ 16:9: режиссёр — первой плиткой ленты актёров, отдельного ряда нет
+    var peopleMerged = cinemaPeopleMerged();
+    if (peopleMerged) {
+        var crewFirst = cinemaCrewAsActors(item, src);
+        if (crewFirst.length) actors = crewFirst.concat(actors || []);
+    }
     renderDetailActors(item, aw, actors);
 
     // Рекомендации — рендерим сразу из details
-    var src = details || item || {};
-    renderDetailCrew(item, src);
+    renderDetailCrew(item, src, peopleMerged);
     renderDetailCollection(item, src);
     renderDetailRecommendations(src, rw, mt);
     if (episodesPromise) episodesPromise.then(function (data) {

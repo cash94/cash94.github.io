@@ -6556,10 +6556,13 @@ html.legacy-browser #home-hero.home-hero-playing #home-hero-backdrop {
    и кнопка висела бы на баннере до появления первого элемента.
    button по умолчанию inline-block, ширина и так по содержимому. */
 .home-hero-btn {
-  padding: 9px 26px;
+  padding: 12px 28px;
   background: #fff;
   border: 0;
-  border-radius: 4px;
+  /* Радиус в em — от кегля кнопки, который меняют медиазапросы ниже */
+  border-radius: 0.5em;
+  /* Фокус — scale (.home-hero-btn.focused в блоке «Главная: редизайн») */
+  transition: transform 0.16s cubic-bezier(0.2, 0, 0, 1);
   color: #000;
   cursor: pointer;
   font-family: inherit;
@@ -6589,7 +6592,8 @@ html.legacy-browser #home-hero.home-hero-playing #home-hero-backdrop {
    работает. Длина окружности 2π·19 ≈ 119.4 — то же число в HOME.RING_LEN. */
 .home-hero-ring {
   position: absolute;
-  right: 40px;
+  /* По правому краю контента — над счётчиком ряда */
+  right: 56px;
   bottom: 18px;
   z-index: 4;
   width: 44px;
@@ -9471,6 +9475,203 @@ html.kbd-540 .voice-search-btn {
    отступом поверх, margin'ом. Картинка баннера под вырез уходит, как и задумано */
 #home-hero-body {
   margin-left: var(--safe-left, env(safe-area-inset-left, 0px));
+}
+
+/* ── Главная: редизайн по макету в Figma («Главная — редизайн») ────────────
+   Только то, что не стоит лишней работы слабому ТВ: ни теней, ни размытия,
+   анимация — один transform у кнопки в фокусе. Числа ниже — под 1280×720
+   (Android TV); 1920×1080 — тот же экран ×1.5 в блоке min-width: 1600px. */
+
+/* Шапка — по одной линии с рядом: логотип над заголовком ряда, часы над
+   счётчиком (у ряда 16px #home-rows + 40px .catalog-row-header). Правило
+   выреза выше ставит шапке 12px — здесь свой отступ, вырез в нём учтён.
+   Телефон в книжной ориентации сюда не попадает — у него своя шапка. */
+@media screen and (min-width: 720px) and (orientation: landscape) {
+  #home-topbar {
+    padding-left: calc(56px + var(--safe-left, env(safe-area-inset-left, 0px)));
+    padding-right: calc(56px + var(--safe-right, env(safe-area-inset-right, 0px)));
+  }
+}
+
+/* Низкий ТВ-профиль (960×540): у ряда там 16px + 20px — по той же линии
+   шапка, текст баннера и кругляшок трейлера */
+@media screen and (min-width: 720px) and (max-width: 1024px) and (max-height: 620px) {
+  #home-topbar {
+    padding-left: calc(36px + var(--safe-left, env(safe-area-inset-left, 0px)));
+    padding-right: calc(36px + var(--safe-right, env(safe-area-inset-right, 0px)));
+  }
+
+  #home-hero-body {
+    left: 36px;
+  }
+
+  .home-hero-ring {
+    right: 36px;
+  }
+}
+
+/* Текущий раздел — оранжевая черта под подписью. Фирменный оранжевый, как у
+   «Stream» в логотипе: это не фокус, и от цвета фокуса во «Внешнем виде» не
+   зависит. В режиме «Шапка: иконки» своя полоска — там правило не нужно. */
+html:not(.topbar-icons) #home-topbar .home-nav-btn.active {
+  position: relative;
+}
+
+html:not(.topbar-icons) #home-topbar .home-nav-btn.active::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -3px;
+  width: 1.2em;
+  height: 3px;
+  margin-left: -0.6em;
+  border-radius: 2px;
+  background: #ff8c00;
+}
+
+/* Оценка в строке о фильме (home.js: setHeroMeta) */
+.home-meta-rating {
+  color: #ff8c00;
+  font-weight: 700;
+}
+
+/* Кнопка баннера в фокусе чуть подрастает — только transform, композитор
+   (размер и углы кнопки — в основном правиле .home-hero-btn) */
+.home-hero-btn.focused {
+  transform: scale(1.05);
+  /* Общее `.focused{transition:none!important}` гасило бы подъём; два класса
+     специфичнее, и при равном !important побеждают */
+  transition: transform 0.16s cubic-bezier(0.2, 0, 0, 1) !important;
+}
+
+/* Стрелки категории — второстепенные: полупрозрачная подложка вместо белой.
+   Обычный цвет, не backdrop-filter — размытие под кнопкой ТВ пересчитывал бы
+   на каждом кадре трейлера */
+.home-hero-arrow:not(.focused) {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+/* Подсказка у счётчика: какой ряд откроет «вниз» (home.js: updateRowCounters).
+   Только на широком альбомном экране: на телефоне книжно она отъедала место у
+   заголовка ряда («Категор…»), а свайп вверх-вниз там и так очевиден */
+.home-row-next {
+  display: none;
+  margin-right: 20px;
+}
+
+@media screen and (min-width: 720px) and (orientation: landscape) {
+  .home-row-next {
+    display: inline;
+  }
+}
+
+/* 1920×1080: всё выше — в пикселях под 1280×720, и на 1080p текст баннера и
+   шапки выходил в полтора раза мельче, чем на ТВ 720p (карточки ряда растут
+   сами — их размер считает home.js от высоты экрана). Здесь ×1.5. */
+@media screen and (min-width: 1600px) and (min-height: 880px) {
+  #home-topbar .section-title-header {
+    margin-right: 48px;
+    font-size: calc(40px * var(--topbar-scale, 1));
+  }
+
+  .home-nav-btn {
+    font-size: calc(27px * var(--topbar-scale, 1));
+  }
+
+  .home-nav-btn.home-nav-icon {
+    padding: 10px;
+    font-size: calc(30px * var(--topbar-scale, 1));
+  }
+
+  html.topbar-icons #home-topbar .home-nav-btn {
+    font-size: calc(30px * var(--topbar-scale, 1));
+  }
+
+  #home-nav-drawer > .home-nav-btn + .home-nav-btn,
+  #home-topbar #settings-btn {
+    margin-left: 32px;
+  }
+
+  #home-topbar #home-clock {
+    margin-left: 36px;
+  }
+
+  #home-clock-time {
+    font-size: calc(46px * var(--topbar-scale, 1));
+  }
+
+  #home-clock-date {
+    margin-left: 16px;
+  }
+
+  /* Две строки даты — не выше строки кнопок (27px × 1.2 + 12px) */
+  #home-clock-day {
+    font-size: calc(20px * var(--topbar-scale, 1));
+  }
+
+  #home-clock-weekday {
+    font-size: calc(19px * var(--topbar-scale, 1));
+  }
+
+  #home-hero-title,
+  #home-hero-head,
+  #home-hero-logo {
+    --hero-size: 56px;
+  }
+
+  #home-hero-head {
+    margin-bottom: 12px;
+  }
+
+  #home-hero-meta {
+    margin-bottom: 12px;
+    --hero-size: 22px;
+  }
+
+  #home-hero-overview {
+    margin-bottom: 22px;
+    --hero-size: 22px;
+  }
+
+  .home-hero-btn {
+    padding: 18px 42px;
+    font-size: 24px;
+  }
+
+  .home-hero-btn-icon {
+    margin-right: 12px;
+    font-size: 20px;
+  }
+
+  .home-hero-ring {
+    bottom: 24px;
+    width: 60px;
+    height: 60px;
+  }
+
+  .home-ring-icon {
+    font-size: 18px;
+    line-height: 60px;
+  }
+
+  .home-hero-dots span {
+    width: 10px;
+    height: 10px;
+    margin-right: 10px;
+  }
+
+  #home-rows .catalog-row-title {
+    font-size: 34px;
+  }
+
+  .home-row-counter {
+    font-size: 20px;
+  }
+
+  .home-row-next {
+    margin-right: 28px;
+  }
 }
 
 /* Главная неподвижна (home.js: жесты и lockHomeScroll): вертикальный свайп
@@ -13205,6 +13406,103 @@ html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail
   }
 }
 
+/* Строка «год · ★ оценка» под постером похожих — видна только в «сцене»
+   (блок ниже); в сетках и в карточке торрента год и оценка — на постере */
+.catalog-rec-sub {
+  display: none;
+}
+
+/* ── «Сцена»: редизайн по макету в Figma — только ТВ и ПК 16:9 ─────────────
+   Размеры под пульт: плитки, отступы лент и «страницы» прокрутки. Общая
+   часть редизайна (оценки в строке меты, жанры текстом, описание, подписи
+   под кнопками, режиссёр в ряду актёров, постеры без надписей) — блок
+   «Сцена: редизайн, все экраны» ниже по файлу. */
+@media screen and (orientation: landscape) and (min-height: 501px) and (min-aspect-ratio: 155/100) {
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-overview {
+    max-width: calc(var(--cs) * 40);
+  }
+
+  /* Нижняя часть — отдельная «страница» не ниже экрана. Иначе у фильма с
+     короткими лентами (режиссёр теперь в ряду актёров) прокрутка упиралась в
+     конец карточки раньше, чем сцена уходила за верхний край, и кнопки
+     оставались видны над лентами */
+  #detail-view.catalog-detail-mode.detail-cinema .detail-cinema-below {
+    min-height: 100vh;
+    box-sizing: border-box;
+  }
+
+  /* Нижняя часть: заголовки разделов крупнее (14px → 20px на 720p) */
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-detail-section-title {
+    font-size: calc(var(--cu) * 1.5) !important;
+    margin: 0 0 calc(var(--cu) * 0.8) 0 !important;
+  }
+
+  /* Ленты плотнее: у сериала с «Сериями», «Создателем и актёрами» и
+     «Похожими» все три должны встать на одну страницу под сценой (страницы
+     считает cinemaLaneScrollTarget в control.js). Замер на 720p: было 791px
+     при странице 720 — отступы между лентами, плитки серий и постеры чуть
+     меньше, вместе ~85px */
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-episodes-wrap,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew-wrap,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-collection-wrap,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actors-wrap,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-recommendations-wrap {
+    padding: calc(var(--cu) * 0.8) 0 0 !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-detail-section-title {
+    margin-bottom: calc(var(--cu) * 0.45) !important;
+  }
+
+  /* Сверху и снизу — место под рамку фокуса (3px), не больше */
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-episodes,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actors,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-collection,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-recommendations {
+    padding: calc(var(--cu) * 0.35) calc(var(--cu) * 3.2) calc(var(--cu) * 0.55) !important;
+  }
+
+  /* У ленты серий слева своя обрезка: обёртка сдвинута на 2,9 --cu (правило
+     выше по файлу), внутри — только 0,3 под рамку фокуса. Без этого серии
+     стояли правее актёров и фильмов на 3,2 --cu */
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-episodes {
+    padding-left: calc(var(--cu) * 0.3) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-episode-card {
+    width: calc(var(--cu) * 14.6);
+    height: calc(var(--cu) * 9.6);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-recommendation-card {
+    width: calc(var(--cu) * 13) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-recommendation-poster {
+    width: calc(var(--cu) * 13) !important;
+    height: calc(var(--cu) * 19.5) !important;
+  }
+
+  /* Плитки людей — те же прямоугольные, крупнее */
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-actor-card {
+    width: calc(var(--cu) * 18) !important;
+    height: calc(var(--cu) * 6.2);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-actor-photo {
+    width: calc(var(--cu) * 4.7) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-actor-name {
+    font-size: calc(var(--cu) * 1) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-actor-character {
+    font-size: calc(var(--cu) * 0.82) !important;
+  }
+}
+
 /* --- ТЕЛЕФОН книжно: блок оценки — строкой между жанрами и кнопками ------
    Узел переносит в шапку колонки placeCinemaScore (catalog.js), здесь он в
    потоке: слева кругляш TMDB с голосами, за ним КП и IMDb, справа плашки
@@ -13310,6 +13608,259 @@ html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail
   /* Подпись под кнопкой — для мыши и пульта; на касание фокуса нет */
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions {
     margin-bottom: calc(var(--cs) * 1.4) !important;
+  }
+}
+
+/* ── «Сцена»: редизайн, все экраны (макет в Figma «Карточка фильма») ──────
+   ТВ, ПК, планшет и телефон в обеих ориентациях. Стоит после правил телефона,
+   чтобы их перебивать. Размеры под пульт — в блоке «только ТВ и ПК 16:9»
+   выше по файлу. Для слабых ТВ: ни теней, ни размытия, новых анимаций нет.
+     • описание на первом экране, строго 3 строки; полный текст — «Подробнее»;
+     • оценки (возраст, КП, IMDb) — в строке меты: узел переносит
+       placeCinemaScore (catalog.js), кругляш TMDB скрыт — его оценка звездой
+       в мете;
+     • жанры и страны — текстом через точку вместо плашек;
+     • круглые кнопки подписаны все, а не только та, что в фокусе;
+     • режиссёр — первой плиткой ленты актёров (cinemaCrewAsActors);
+     • на постерах похожих ничего поверх: год и оценка строкой под названием. */
+/* Порядок колонки: шапка (логотип, мета, жанры) → описание → кнопки */
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-overview {
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  -webkit-order: 2;
+  order: 2;
+  margin: 0 0 calc(var(--cs) * 1.4) !important;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions {
+  -webkit-order: 3;
+  order: 3;
+  /* Под кругами — подписи всех кнопок (ниже): телефону его 1,4 --cs мало */
+  margin-bottom: calc(var(--cs) * 2) !important;
+}
+
+/* Мета и оценки — одной строкой. Оценка TMDB — звездой в мете (кругляш
+   скрыт), за ней возраст, КП и IMDb из перенесённого блока */
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head > .detail-cinema-meta {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: calc(var(--cs) * 0.9);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-meta-star {
+  display: inline;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head > .detail-cinema-score {
+  /* !important — против display: none !important у экранов уже 16:10 и
+     display: flex у телефона книжно (правила выше по файлу) */
+  display: -webkit-inline-box !important;
+  display: -webkit-inline-flex !important;
+  display: inline-flex !important;
+  -webkit-flex-wrap: wrap;
+  flex-wrap: wrap;
+  text-align: left;
+  -webkit-align-items: center;
+  align-items: center;
+  position: static;
+  top: auto;
+  right: auto;
+  -webkit-transform: none;
+  transform: none;
+  vertical-align: middle;
+  margin: 0 0 calc(var(--cs) * 0.85);
+}
+
+/* !important — против style.display, который ставит renderCinemaScore */
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head .detail-cinema-vote {
+  display: none !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head .detail-cinema-badges {
+  -webkit-order: -1;
+  order: -1;
+  margin: 0;
+  padding-left: 0;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head .detail-cinema-score > div {
+  margin-bottom: 0;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head .detail-cinema-badge {
+  margin: 0 calc(var(--cs) * 0.6) 0 0;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head .detail-cinema-ratings {
+  margin: 0;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head .detail-cinema-rating {
+  margin: 0 calc(var(--cs) * 0.9) 0 0;
+}
+
+/* Жанры и страны — строкой через точку */
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-chip {
+  font-size: calc(var(--cs) * 0.95);
+  color: rgba(255, 255, 255, 0.82);
+  background: none;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-chip + .detail-cinema-chip::before {
+  content: "·";
+  margin: 0 0.5em;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Кнопки — круглые значки, как раньше, но подпись под КАЖДОЙ, а не только
+   под той, что в фокусе: значок без слова на ТВ не всегда понятен.
+   Широкие кнопки с текстом не подошли — с «Лучшими» и «Продолжить» ряд в
+   ширину колонки не влезал. Между кругами шире, чем было (0,8 --cs), чтобы
+   подписи соседей не наезжали друг на друга. Подпись в фокусе — белая,
+   остальные приглушены */
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-best-btn,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn {
+  margin-right: calc(var(--cs) * 2) !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn::after,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn::after,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-best-btn::after,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn::after,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn::after {
+  opacity: 1;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn.focused::after,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn.focused::after,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-best-btn.focused::after,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn.focused::after,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn.focused::after {
+  color: #fff;
+}
+
+/* Режиссёр — первой плиткой ленты актёров (cinemaCrewAsActors в catalog.js),
+   роль оранжевым; на белой плитке в фокусе — темнее */
+#detail-view.catalog-detail-mode.detail-cinema .catalog-actor-card.is-crew .catalog-actor-character {
+  color: #ff8c00 !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-actor-card.is-crew.focused .catalog-actor-character {
+  color: #b85f00 !important;
+}
+
+/* Постеры похожих — без надписей поверх: год и оценка строкой под названием */
+#detail-view.catalog-detail-mode.detail-cinema .catalog-recommendation-poster .poster-year,
+#detail-view.catalog-detail-mode.detail-cinema .catalog-recommendation-poster .poster-bar {
+  display: none !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-rec-sub {
+  display: block;
+  margin-top: calc(var(--cu) * 0.15);
+  font-size: calc(var(--cu) * 0.76);
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-rec-sub:empty {
+  display: none;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-rec-dot {
+  margin: 0 0.4em;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-rec-star {
+  color: #ff8c00;
+  font-weight: 700;
+}
+
+/* ── «Сцена» на телефоне: ряд кнопок ──────────────────────────────────────
+   «Продолжить» на телефоне была кругом без подписи (правило «ТЕЛЕФОН:
+   „Продолжить“ — круглый значок» выше по файлу), а с подписями под всеми
+   кругами шесть кнопок в ширину книжного экрана не влезали.
+   Книжно — «Продолжить» первой строкой во всю ширину, с текстом («Продолжить
+   · S1 E3 · 12:40»), круги — под ней, от края до края колонки.
+   Боком — «Продолжить» широкой кнопкой с текстом в начале ряда, как на ТВ:
+   по ширине места хватает, а лишняя строка съела бы и так низкий экран.
+   Промежутки между кругами одинаковые (до «Торрентов» он был вдвое меньше). */
+@media screen and (max-width: 600px) and (orientation: portrait) {
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions {
+    display: -webkit-box;
+    display: -webkit-flex;
+    display: flex;
+    -webkit-flex-wrap: wrap;
+    flex-wrap: wrap;
+    -webkit-justify-content: space-between;
+    justify-content: space-between;
+    white-space: normal;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-best-btn,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn {
+    margin-right: 0 !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-resume-btn {
+    -webkit-flex: 0 0 100%;
+    flex: 0 0 100%;
+    width: 100%;
+    padding: 0 calc(var(--cs) * 1.4) !important;
+    margin: 0 0 calc(var(--cs) * 1.1) 0 !important;
+    font-size: calc(var(--cs) * 0.95) !important;
+    border-radius: calc(var(--cs) * 1.45) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-resume-btn::before {
+    margin: 0 0.5em 0 0;
+    font-size: 1em;
+  }
+}
+
+@media screen and (orientation: landscape) and (max-height: 500px) {
+  /* Колонка тут 70vw без полей (~540px на 844): с промежутками 2 --cs ряд из
+     «Продолжить» и пяти кругов не влезал. 1,5 --cs — подписи соседей ещё не
+     сталкиваются */
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions {
+    -webkit-flex-wrap: nowrap;
+    flex-wrap: nowrap;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-watch-btn,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-toggle-overview-btn,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-best-btn,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-favorite-btn,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-trailer-btn {
+    margin-right: calc(var(--cs) * 1.5) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-resume-btn {
+    width: auto;
+    padding: 0 calc(var(--cs) * 1.4) !important;
+    margin-right: calc(var(--cs) * 1.5) !important;
+    font-size: calc(var(--cs) * 0.95) !important;
+    border-radius: calc(var(--cs) * 1.45) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > #catalog-resume-btn::before {
+    margin: 0 0.5em 0 0;
+    font-size: 1em;
   }
 }
 
