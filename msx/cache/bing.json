@@ -1,6 +1,12 @@
 {
  "images": [
   {
+   "url": "https://www.bing.com/th?id=OHR.DeltaEbro_ROW7248981899_1920x1080.jpg",
+   "title": "Flamingos in Ebro Delta Natural Park, Catalonia, Spain",
+   "copyright": "© mafrmcfa/Getty Images",
+   "date": "20261108"
+  },
+  {
    "url": "https://www.bing.com/th?id=OHR.DakotaBison_ROW7172064410_1920x1080.jpg",
    "title": "A bison in the grasslands of Theodore Roosevelt National Park, North Dakota, USA",
    "copyright": "© Tandem Stock/Adobe Stock",
@@ -83,12 +89,6 @@
    "title": "Maligne Lake, Jasper National Park, Alberta, Canada",
    "copyright": "© Andrey Popov/Getty Images",
    "date": "20261025"
-  },
-  {
-   "url": "https://www.bing.com/th?id=OHR.Tanager_ROW0977269473_1920x1080.jpg",
-   "title": "Green-headed tanager",
-   "copyright": "© Juan Carlos Vindas/Getty Images",
-   "date": "20261024"
   }
  ]
 }
