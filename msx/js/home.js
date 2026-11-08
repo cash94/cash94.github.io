@@ -3597,7 +3597,14 @@
      */
     function goHome() {
         if (window.Nav) Nav.reset('home');
-        if (!isHomeVisible()) return showHome({ restoreFocus: true });
+        // Главная может быть «видна» (hidden снят), а экраном числиться другое:
+        // «Главная» в шапке поверх карточки (exitDetailForSectionNav в catalog.js
+        // оставляет переход нам) — под карточкой главная только прикрыта. Без
+        // showHome AppState.currentScreen оставался 'detail', и openCategory
+        // молча бросал открытие категории: «пока гасли, ушли в другое место»
+        if (!isHomeVisible() || (window.AppState && AppState.currentScreen !== 'home')) {
+            return showHome({ restoreFocus: true });
+        }
         if (!homeState.rowEls.length) return true;
         return focusRow(0);
     }

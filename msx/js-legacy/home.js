@@ -2753,9 +2753,11 @@
   }
   function goHome() {
     if (window.Nav) Nav.reset('home');
-    if (!isHomeVisible()) return showHome({
-      restoreFocus: true
-    });
+    if (!isHomeVisible() || window.AppState && AppState.currentScreen !== 'home') {
+      return showHome({
+        restoreFocus: true
+      });
+    }
     if (!homeState.rowEls.length) return true;
     return focusRow(0);
   }
