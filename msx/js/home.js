@@ -120,6 +120,9 @@
         // но не дольше этого после появления ряда: медленное зеркало не должно
         // держать пользователя перед заставкой. Опрос готовности — с этим шагом
         LOADER_POSTERS_MAX_MS: 6000,
+        // Сколько от старта заставка ждёт проверку обновления каталогов
+        // (catalog-idb-patch.js: CatalogStartup); дальше она идёт в фоне
+        LOADER_CATALOGS_MAX_MS: 8000,
         LOADER_POLL_MS: 100,
         // Столько заполняется кругляшок; заполнился — включаем трейлер
         TRAILER_DELAY_MS: 5000,
@@ -453,8 +456,9 @@
         var started = Date.now();
         (function check() {
             if (!moduleLoaderUp()) return;
-            if (!isHomeVisible() || (visiblePostersReady() && heroBackdropReady()) ||
-                Date.now() - started >= HOME.LOADER_POSTERS_MAX_MS) {
+            var postersPart = (visiblePostersReady() && heroBackdropReady()) ||
+                Date.now() - started >= HOME.LOADER_POSTERS_MAX_MS;
+            if (!isHomeVisible() || (postersPart && catalogsStartupReady())) {
                 dismissModuleLoader();
                 // Под заглушкой отсчёт трейлера не заводится (startTrailerCountdown),
                 // а фокус на первую карточку встал раньше — заводим его теперь
@@ -463,6 +467,20 @@
             }
             setTimeout(check, HOME.LOADER_POLL_MS);
         })();
+    }
+
+    /**
+     * Проверка обновления каталогов закончилась или ждать её дольше нельзя
+     * (HOME.LOADER_CATALOGS_MAX_MS от её старта). Нет самого модуля (старая
+     * копия catalog-idb-patch.js на зеркале) или проверка не запускалась —
+     * считаем готовым: заставку из-за этого не держим.
+     */
+    function catalogsStartupReady() {
+        var cs = window.CatalogStartup;
+        if (!cs || typeof cs.isDone !== 'function') return true;
+        var at = cs.startedAt();
+        if (!at || cs.isDone()) return true;
+        return Date.now() - at >= HOME.LOADER_CATALOGS_MAX_MS;
     }
 
     /** Карточки показанного ряда, попадающие в экран: постер вставлен или не нашёлся */
@@ -3539,6 +3557,13 @@
         // он приходит раньше постеров, их грузим мы. Снимет dismissLoaderWhenReady
         if (moduleLoaderUp() && typeof window.holdModuleLoader === 'function') {
             window.holdModuleLoader();
+        }
+        // Проверка обновления каталогов (фильмы, сериалы и т.д.) — на старте, пока
+        // идёт заставка, а не при открытии каталога: там обновление перерисовывало
+        // сетку под пользователем. Один раз за запуск; заставку держит
+        // dismissLoaderWhenReady
+        if (window.CatalogStartup && typeof window.CatalogStartup.start === 'function') {
+            window.CatalogStartup.start();
         }
 
         container.innerHTML = '<div class="catalog-rows-loading">' +

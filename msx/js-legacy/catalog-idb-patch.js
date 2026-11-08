@@ -566,22 +566,47 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       grid.appendChild(header);
       return header;
     }
-    var cfg = window.CATALOG_CONFIG && CATALOG_CONFIG[key];
-    if (!cfg || !cfg.url) return null;
-    fetchCatalogsWithCache().then(function (catalogs) {
-      if (catalogState.currentCatalog !== key) return;
-      for (var i = 0; i < catalogs.length; i++) {
-        if (catalogs[i].id === key && catalogs[i].lastModifiedISO) {
-          if (typeof checkAndUpdateCatalogIfNeeded === 'function') {
-            checkAndUpdateCatalogIfNeeded(key, catalogs[i].lastModifiedISO);
-          }
-          return;
-        }
-      }
-    }).catch(function (error) {
-      console.warn('⚠️ Failed to load catalogs list:', error);
-    });
     return null;
+  };
+  var _startupCheck = null;
+  function startupCatalogCheck() {
+    if (_startupCheck) return _startupCheck.promise;
+    var state = _startupCheck = {
+      startedAt: Date.now(),
+      done: false,
+      promise: null
+    };
+    state.promise = fetchCatalogsWithCache().then(function (catalogs) {
+      var chain = Promise.resolve();
+      getFullCatalogEntries().forEach(function (entry) {
+        chain = chain.then(function () {
+          for (var i = 0; i < catalogs.length; i++) {
+            if (catalogs[i].id === entry.key && catalogs[i].lastModifiedISO) {
+              return checkAndUpdateCatalogIfNeeded(entry.key, catalogs[i].lastModifiedISO);
+            }
+          }
+        }).catch(function (error) {
+          console.warn('⚠️ Startup catalog check "' + entry.key + '":', error);
+        });
+      });
+      return chain;
+    }).catch(function (error) {
+      console.warn('⚠️ Startup catalog check failed:', error);
+    }).then(function () {
+      return prefetchAllFullCatalogs();
+    }).catch(function () {}).then(function () {
+      state.done = true;
+    });
+    return state.promise;
+  }
+  window.CatalogStartup = {
+    start: startupCatalogCheck,
+    isDone: function () {
+      return !!(_startupCheck && _startupCheck.done);
+    },
+    startedAt: function () {
+      return _startupCheck ? _startupCheck.startedAt : 0;
+    }
   };
   console.log('✅ Catalog IndexedDB patch applied: limit=' + CATALOG_FULL_LIMIT + ', ttl=6h');
 })();

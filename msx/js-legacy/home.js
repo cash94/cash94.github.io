@@ -34,6 +34,7 @@
     STARTUP_BACKDROPS: 2,
     STARTUP_CAT_BANNERS: 2,
     LOADER_POSTERS_MAX_MS: 6000,
+    LOADER_CATALOGS_MAX_MS: 8000,
     LOADER_POLL_MS: 100,
     TRAILER_DELAY_MS: 5000,
     RING_LEN: 119.4,
@@ -278,13 +279,21 @@
     var started = Date.now();
     (function check() {
       if (!moduleLoaderUp()) return;
-      if (!isHomeVisible() || visiblePostersReady() && heroBackdropReady() || Date.now() - started >= HOME.LOADER_POSTERS_MAX_MS) {
+      var postersPart = visiblePostersReady() && heroBackdropReady() || Date.now() - started >= HOME.LOADER_POSTERS_MAX_MS;
+      if (!isHomeVisible() || postersPart && catalogsStartupReady()) {
         dismissModuleLoader();
         rearmHeroTrailer();
         return;
       }
       setTimeout(check, HOME.LOADER_POLL_MS);
     })();
+  }
+  function catalogsStartupReady() {
+    var cs = window.CatalogStartup;
+    if (!cs || typeof cs.isDone !== 'function') return true;
+    var at = cs.startedAt();
+    if (!at || cs.isDone()) return true;
+    return Date.now() - at >= HOME.LOADER_CATALOGS_MAX_MS;
   }
   function visiblePostersReady() {
     var cards = homeState.rows[homeState.activeRow];
@@ -2722,6 +2731,9 @@
     resetPosterQueue();
     if (moduleLoaderUp() && typeof window.holdModuleLoader === 'function') {
       window.holdModuleLoader();
+    }
+    if (window.CatalogStartup && typeof window.CatalogStartup.start === 'function') {
+      window.CatalogStartup.start();
     }
     container.innerHTML = '<div class="catalog-rows-loading">' + '<div class="loading-spinner" style="margin:0 auto 20px"></div>' + '<div style="font-size:16px;color:#aaa">Загрузка подборок...</div></div>';
     invalidateFocus();

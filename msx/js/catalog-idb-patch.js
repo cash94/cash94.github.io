@@ -937,28 +937,67 @@
             return header;
         }
 
-        var cfg = window.CATALOG_CONFIG && CATALOG_CONFIG[key];
+        // Проверка «каталог старше 6 часов?» здесь больше не живёт: она уходила в
+        // POST /update, перекачку и перерисовку сетки прямо под открытым каталогом —
+        // человек видел, как список моргает. Теперь она идёт на старте приложения,
+        // под заставкой загрузки (startupCatalogCheck ниже).
+        return null;
+    };
 
-        // История, избранное — серверного каталога нет, проверять нечего
-        if (!cfg || !cfg.url) return null;
+    // ==================== Проверка обновления каталогов на старте ====================
+    //
+    // Основные каталоги (фильмы, сериалы, мультфильмы и т.д.) проверяются один раз
+    // за запуск, пока крутится заставка: дата с /api/catalogs старше порога —
+    // обновляем на сервере и перекачиваем в IndexedDB (checkAndUpdateCatalogIfNeeded),
+    // затем прогреваем остальные записи, у которых вышел TTL (prefetchAllFullCatalogs).
+    // К тому, как человек откроет каталог, в IndexedDB уже свежее, и сетка не
+    // перерисовывается. Каталоги идут по одному: checkAndUpdateCatalogIfNeeded
+    // держит общий флаг _catalogIdbUpdating и параллельный вызов просто отказал бы.
+    // Заставку home.js держит не дольше HOME.LOADER_CATALOGS_MAX_MS от startedAt;
+    // если сервер медленный, проверка дойдёт в фоне.
+    var _startupCheck = null;
 
-        fetchCatalogsWithCache()
+    function startupCatalogCheck() {
+        if (_startupCheck) return _startupCheck.promise;
+
+        var state = _startupCheck = { startedAt: Date.now(), done: false, promise: null };
+
+        state.promise = fetchCatalogsWithCache()
             .then(function (catalogs) {
-                if (catalogState.currentCatalog !== key) return;
-                for (var i = 0; i < catalogs.length; i++) {
-                    if (catalogs[i].id === key && catalogs[i].lastModifiedISO) {
-                        if (typeof checkAndUpdateCatalogIfNeeded === 'function') {
-                            checkAndUpdateCatalogIfNeeded(key, catalogs[i].lastModifiedISO);
+                var chain = Promise.resolve();
+
+                getFullCatalogEntries().forEach(function (entry) {
+                    chain = chain.then(function () {
+                        for (var i = 0; i < catalogs.length; i++) {
+                            if (catalogs[i].id === entry.key && catalogs[i].lastModifiedISO) {
+                                return checkAndUpdateCatalogIfNeeded(entry.key, catalogs[i].lastModifiedISO);
+                            }
                         }
-                        return;
-                    }
-                }
+                    }).catch(function (error) {
+                        console.warn('⚠️ Startup catalog check "' + entry.key + '":', error);
+                    });
+                });
+
+                return chain;
             })
             .catch(function (error) {
-                console.warn('⚠️ Failed to load catalogs list:', error);
+                console.warn('⚠️ Startup catalog check failed:', error);
+            })
+            .then(function () {
+                return prefetchAllFullCatalogs();
+            })
+            .catch(function () { })
+            .then(function () {
+                state.done = true;
             });
 
-        return null;
+        return state.promise;
+    }
+
+    window.CatalogStartup = {
+        start: startupCatalogCheck,
+        isDone: function () { return !!(_startupCheck && _startupCheck.done); },
+        startedAt: function () { return _startupCheck ? _startupCheck.startedAt : 0; }
     };
 
     console.log('✅ Catalog IndexedDB patch applied: limit=' + CATALOG_FULL_LIMIT + ', ttl=6h');
