@@ -3390,6 +3390,11 @@
         });
         homeState.data.history = list;
 
+        // Главная не собрана (с неё ушли, пока грузились ряды, или её ещё не
+        // открывали): данные выше нужны карточке фильма (resumeFor), а ряды
+        // соберутся заново при возврате — со свежей историей
+        if (!homeState.built) return;
+
         // Ряда ещё нет (истории не было при сборке главной) — ставим его сейчас,
         // а не ждём следующей сборки: иначе первый же просмотр не появлялся на
         // главной до перезагрузки страницы
@@ -3433,7 +3438,9 @@
      */
     function updateHistoryResume() {
         if (homeState.historySync) return homeState.historySync;
-        if (!homeState.data || !homeState.built) return Promise.resolve();
+        // Не только для собранной главной: сборку прерывает уход с неё, пока
+        // грузятся ряды (built остаётся false), а карточке фильма история нужна всё равно
+        if (!homeState.data) return Promise.resolve();
         var saved = typeof awaitPendingTimecodeSave === 'function' ? awaitPendingTimecodeSave() : Promise.resolve();
         var sync = saved.then(function () {
             return homeFetch(withClientId(serverUrl() + '/api/history'));

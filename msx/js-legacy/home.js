@@ -2600,6 +2600,7 @@
       return was || it;
     });
     homeState.data.history = list;
+    if (!homeState.built) return;
     var ri = homeState.rowKeys.indexOf('history');
     if (ri === -1) {
       if (list.length) insertHistoryRow(list);
@@ -2633,7 +2634,7 @@
   }
   function updateHistoryResume() {
     if (homeState.historySync) return homeState.historySync;
-    if (!homeState.data || !homeState.built) return Promise.resolve();
+    if (!homeState.data) return Promise.resolve();
     var saved = typeof awaitPendingTimecodeSave === 'function' ? awaitPendingTimecodeSave() : Promise.resolve();
     var sync = saved.then(function () {
       return homeFetch(withClientId(serverUrl() + '/api/history'));
