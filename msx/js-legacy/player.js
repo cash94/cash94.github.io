@@ -2633,6 +2633,15 @@ function biggestFileIndex(files) {
   for (var i = 1; i < files.length; i++) if ((files[i].length || 0) > (files[best].length || 0)) best = i;
   return best;
 }
+function bestPickTitle(item) {
+  var t = item && (item.title || item.name);
+  if (!t && item && item.torrent && item.torrent[0]) t = item.torrent[0].name;
+  if (!t) {
+    var head = getEl('detail-title-text');
+    t = head ? String(head.textContent || '').trim() : '';
+  }
+  return t || '';
+}
 function playBestPick(_x25, _x26, _x27, _x28) {
   return _playBestPick.apply(this, arguments);
 }
@@ -2652,7 +2661,7 @@ function _playBestPick() {
       };
     });
     if (withWindow) {
-      runPlaybackPreload(hash, null, item.title || item.name).then(function (ok) {
+      runPlaybackPreload(hash, null, bestPickTitle(item)).then(function (ok) {
         if (ok === false && seriesStartCancel) seriesStartCancel();
       });
     } else {
@@ -2702,7 +2711,7 @@ function _playBestPick() {
       seriesStartCancel = null;
       overlay.classList.remove('active');
       if (window.addToWatchHistory) {
-        Promise.resolve(window.addToWatchHistory(String(item.id), item.title || item.name, item.media_type, poster))['catch'](function () {});
+        Promise.resolve(window.addToWatchHistory(String(item.id), bestPickTitle(item), item.media_type, poster))['catch'](function () {});
       }
       var started = yield playOpenedTorrent(item, torrent, files, start.index, start.seek, from);
       if (withWindow) endPlaybackPreloadWait();

@@ -2566,6 +2566,27 @@
   function historyKey(item) {
     return String(item.id) + '_' + item.media_type;
   }
+  function insertHistoryRow(list) {
+    var container = el('home-rows');
+    var cfg = null;
+    for (var i = 0; i < HOME_ROWS.length; i++) if (HOME_ROWS[i].key === 'history') {
+      cfg = HOME_ROWS[i];
+      break;
+    }
+    if (!container || !cfg) return;
+    var hadRows = homeState.rowEls.length > 0;
+    var row = createHomeRow(cfg, list);
+    if (!row) return;
+    homeState.rows.unshift(homeState.rows.pop());
+    homeState.rowEls.unshift(homeState.rowEls.pop());
+    homeState.rowKeys.unshift(homeState.rowKeys.pop());
+    homeState.rowCols.unshift(homeState.rowCols.pop());
+    if (!hadRows) container.innerHTML = '';
+    container.insertBefore(row, container.firstChild);
+    updateRowCounters();
+    if (hadRows) homeState.activeRow++;else setActiveRow(0);
+    invalidateFocus();
+  }
   function syncHistoryRow(fresh) {
     var old = homeState.data.history || [];
     var known = {},
@@ -2580,7 +2601,10 @@
     });
     homeState.data.history = list;
     var ri = homeState.rowKeys.indexOf('history');
-    if (ri === -1) return;
+    if (ri === -1) {
+      if (list.length) insertHistoryRow(list);
+      return;
+    }
     var cards = homeState.rows[ri];
     if (!same) {
       var track = homeState.rowEls[ri].querySelector('.catalog-row-track');

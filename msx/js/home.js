@@ -3345,6 +3345,32 @@
     }
 
     /**
+     * Ряд «Продолжить просмотр» поверх уже собранной главной. createHomeRow
+     * дописывает ряд в конец списков — переносим его в начало, как в HOME_ROWS.
+     * Показанный ряд остаётся тем же (activeRow сдвигается вместе с ним).
+     */
+    function insertHistoryRow(list) {
+        var container = el('home-rows');
+        var cfg = null;
+        for (var i = 0; i < HOME_ROWS.length; i++) if (HOME_ROWS[i].key === 'history') { cfg = HOME_ROWS[i]; break; }
+        if (!container || !cfg) return;
+        var hadRows = homeState.rowEls.length > 0;
+        var row = createHomeRow(cfg, list);
+        if (!row) return;
+        homeState.rows.unshift(homeState.rows.pop());
+        homeState.rowEls.unshift(homeState.rowEls.pop());
+        homeState.rowKeys.unshift(homeState.rowKeys.pop());
+        homeState.rowCols.unshift(homeState.rowCols.pop());
+        // Без рядов в контейнере заглушка («Подборки недоступны») — её убираем
+        if (!hadRows) container.innerHTML = '';
+        container.insertBefore(row, container.firstChild);
+        updateRowCounters();
+        if (hadRows) homeState.activeRow++;
+        else setActiveRow(0);
+        invalidateFocus();
+    }
+
+    /**
      * Привести ряд к ответу сервера. Смотрели не с баннера, а из поиска или
      * другой раздачи — у записи новые раздача и таймкод, фильм мог подняться
      * в начало ряда, а новый — появиться. Известные записи остаются теми же
@@ -3364,9 +3390,14 @@
         });
         homeState.data.history = list;
 
-        // Ряда ещё нет (истории не было при сборке главной) — появится со следующей сборкой
+        // Ряда ещё нет (истории не было при сборке главной) — ставим его сейчас,
+        // а не ждём следующей сборки: иначе первый же просмотр не появлялся на
+        // главной до перезагрузки страницы
         var ri = homeState.rowKeys.indexOf('history');
-        if (ri === -1) return;
+        if (ri === -1) {
+            if (list.length) insertHistoryRow(list);
+            return;
+        }
         var cards = homeState.rows[ri];
         if (!same) {
             var track = homeState.rowEls[ri].querySelector('.catalog-row-track');

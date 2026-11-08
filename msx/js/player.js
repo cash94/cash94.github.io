@@ -3034,6 +3034,23 @@ function biggestFileIndex(files) {
 }
 
 /**
+ * Название фильма для истории и окна предзагрузки. У элементов категорий
+ * (каталоги сервера) нет title/name — название лежит в torrent[0].name, как
+ * его и берёт карточка (getCatalogItemTitle). Без него /api/history/add
+ * отвечал 400 (title обязателен), сериал в историю не попадал, и после плеера
+ * не было ни «Продолжить» в карточке, ни записи в ряду главной.
+ */
+function bestPickTitle(item) {
+  var t = item && (item.title || item.name);
+  if (!t && item && item.torrent && item.torrent[0]) t = item.torrent[0].name;
+  if (!t) {
+    var head = getEl('detail-title-text');
+    t = head ? String(head.textContent || '').trim() : '';
+  }
+  return t || '';
+}
+
+/**
  * Запуск из списка «Лучшие» прямо из карточки, как «Продолжить»: поиск не
  * открывается, из плеера возвращаемся в карточку (AppState.cardPlayback).
  *
@@ -3061,7 +3078,7 @@ async function playBestPick(item, row, season, from) {
     seriesStartCancel = function () { cancelled = true; resolve('cancelled'); };
   });
   if (withWindow) {
-    runPlaybackPreload(hash, null, item.title || item.name).then(function (ok) {
+    runPlaybackPreload(hash, null, bestPickTitle(item)).then(function (ok) {
       if (ok === false && seriesStartCancel) seriesStartCancel();
     });
   } else {
@@ -3110,7 +3127,7 @@ async function playBestPick(item, row, season, from) {
     seriesStartCancel = null;
     overlay.classList.remove('active');
     if (window.addToWatchHistory) {
-      Promise.resolve(window.addToWatchHistory(String(item.id), item.title || item.name, item.media_type, poster))['catch'](function () { });
+      Promise.resolve(window.addToWatchHistory(String(item.id), bestPickTitle(item), item.media_type, poster))['catch'](function () { });
     }
     var started = await playOpenedTorrent(item, torrent, files, start.index, start.seek, from);
     // Плеер упал раньше предзагрузки — окно ожидания само не закроется
