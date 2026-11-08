@@ -6012,6 +6012,40 @@ function fillRecommendationCard(card, r, mt) {
  */
 var detailCollectionCache = {};
 
+/*
+ * Сколько лент под сценой. Когда их не больше двух (фильм: «Режиссёр и актёры»
+ * и «Похожие»), на ТВ под ними оставалась пустая треть экрана — класс
+ * cinema-roomy на #detail-view делает плитки людей и постеры крупнее (блок
+ * «Сцена: редизайн — только ТВ» в styles.css). С сериями или коллекцией лент
+ * больше, и плитки остаются плотными, чтобы ленты уместились на страницу.
+ * Зовётся после каждой отрисовки ленты: серии и коллекция приходят позже.
+ */
+var CINEMA_LANE_WRAP_IDS = ['catalog-detail-episodes-wrap', 'catalog-detail-crew-wrap', 'catalog-detail-actors-wrap',
+    'catalog-detail-collection-wrap', 'catalog-detail-recommendations-wrap'];
+
+function updateCinemaLaneDensity(pending) {
+    var dv = getEl('detail-view');
+    if (!dv) return;
+    // pending — ленты, которые ещё в пути (коллекция, серии): без них карточка
+    // показалась бы крупной и через мгновение сжалась бы
+    var n = pending || 0;
+    for (var i = 0; i < CINEMA_LANE_WRAP_IDS.length; i++) {
+        var w = getEl(CINEMA_LANE_WRAP_IDS[i]);
+        if (w && !w.classList.contains('hidden') && w.style.display !== 'none') n++;
+    }
+    dv.classList.toggle('cinema-roomy', n > 0 && n <= 2);
+}
+
+/** Коллекция уже загружалась и в ней только этот фильм — ленты не будет */
+function collectionKnownEmpty(item, bc) {
+    var d = detailCollectionCache[String(bc.id)];
+    if (!d || !Array.isArray(d.items)) return false;
+    for (var i = 0; i < d.items.length; i++) {
+        if (String(d.items[i].id) !== String(item.id)) return false;
+    }
+    return true;
+}
+
 function renderDetailCollection(item, src) {
     var wrap = getEl('catalog-detail-collection-wrap'), grid = getEl('catalog-detail-collection');
     if (!wrap || !grid) return;
@@ -6031,7 +6065,8 @@ function renderDetailCollection(item, src) {
         for (var i = 0; i < d.items.length; i++) {
             if (String(d.items[i].id) !== String(item.id)) parts.push(d.items[i]);
         }
-        if (!parts.length) return;
+        // Коллекция из одного этого фильма — ленты не будет, плотность пересчитать
+        if (!parts.length) { updateCinemaLaneDensity(); return; }
 
         // «28 дней (Коллекция)» → «Коллекция: 28 дней»
         var name = String(d.name || bc.name || '').replace(/\s*\((?:коллекция|collection)\)\s*$/i, '');
@@ -6045,6 +6080,7 @@ function renderDetailCollection(item, src) {
         }
         resetDetailRowScroll(grid);
         wrap.classList.remove('hidden');
+        updateCinemaLaneDensity();
         // Ряд пришёл после того, как фокус и список фокусируемого собраны
         if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
     });
@@ -6243,6 +6279,7 @@ function renderDetailEpisodes(data, keepScroll) {
         card.classList.remove('hidden');
     }
     wrap.classList.toggle('hidden', !files.length);
+    updateCinemaLaneDensity();
     if (files.length && !keepScroll) {
         // Лента открывается на текущей серии: к сороковой пульт шёл бы долго.
         // Целым числом плиток — она встаёт по линии остальных блоков
@@ -6456,6 +6493,9 @@ async function showCatalogDetail(item, index, posterUrl) {
     renderDetailCrew(item, src, peopleMerged);
     renderDetailCollection(item, src);
     renderDetailRecommendations(src, rw, mt);
+    var bc = src.belongs_to_collection;
+    updateCinemaLaneDensity((mt === 'movie' && bc && bc.id && !collectionKnownEmpty(item, bc) ? 1 : 0) +
+        (episodesPromise ? 1 : 0));
     if (episodesPromise) episodesPromise.then(function (data) {
         if (isDetailStillCurrent(item)) renderDetailEpisodes(data, false);
     });

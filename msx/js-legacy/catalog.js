@@ -4641,6 +4641,25 @@ function fillRecommendationCard(card, r, mt) {
   card.classList.remove('hidden');
 }
 var detailCollectionCache = {};
+var CINEMA_LANE_WRAP_IDS = ['catalog-detail-episodes-wrap', 'catalog-detail-crew-wrap', 'catalog-detail-actors-wrap', 'catalog-detail-collection-wrap', 'catalog-detail-recommendations-wrap'];
+function updateCinemaLaneDensity(pending) {
+  var dv = getEl('detail-view');
+  if (!dv) return;
+  var n = pending || 0;
+  for (var i = 0; i < CINEMA_LANE_WRAP_IDS.length; i++) {
+    var w = getEl(CINEMA_LANE_WRAP_IDS[i]);
+    if (w && !w.classList.contains('hidden') && w.style.display !== 'none') n++;
+  }
+  dv.classList.toggle('cinema-roomy', n > 0 && n <= 2);
+}
+function collectionKnownEmpty(item, bc) {
+  var d = detailCollectionCache[String(bc.id)];
+  if (!d || !Array.isArray(d.items)) return false;
+  for (var i = 0; i < d.items.length; i++) {
+    if (String(d.items[i].id) !== String(item.id)) return false;
+  }
+  return true;
+}
 function renderDetailCollection(item, src) {
   var wrap = getEl('catalog-detail-collection-wrap'),
     grid = getEl('catalog-detail-collection');
@@ -4661,7 +4680,10 @@ function renderDetailCollection(item, src) {
     for (var i = 0; i < d.items.length; i++) {
       if (String(d.items[i].id) !== String(item.id)) parts.push(d.items[i]);
     }
-    if (!parts.length) return;
+    if (!parts.length) {
+      updateCinemaLaneDensity();
+      return;
+    }
     var name = String(d.name || bc.name || '').replace(/\s*\((?:коллекция|collection)\)\s*$/i, '');
     wrap.firstChild.textContent = name ? 'Коллекция: ' + name : 'Коллекция';
     var pool = ensureDetailRowPool(grid, CATALOG_CONSTANTS.MAX_RECOMMENDATIONS, buildRecommendationCard);
@@ -4675,6 +4697,7 @@ function renderDetailCollection(item, src) {
     }
     resetDetailRowScroll(grid);
     wrap.classList.remove('hidden');
+    updateCinemaLaneDensity();
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
   });
 }
@@ -4867,6 +4890,7 @@ function renderDetailEpisodes(data, keepScroll) {
     card.classList.remove('hidden');
   }
   wrap.classList.toggle('hidden', !files.length);
+  updateCinemaLaneDensity();
   if (files.length && !keepScroll) {
     var step = files.length > 1 ? tiles[1].getBoundingClientRect().left - tiles[0].getBoundingClientRect().left : 0;
     if (typeof setScrollXImmediate === 'function') setScrollXImmediate(grid, step * currentIdx);
@@ -4995,6 +5019,8 @@ function _showCatalogDetail() {
     renderDetailCrew(item, src, peopleMerged);
     renderDetailCollection(item, src);
     renderDetailRecommendations(src, rw, mt);
+    var bc = src.belongs_to_collection;
+    updateCinemaLaneDensity((mt === 'movie' && bc && bc.id && !collectionKnownEmpty(item, bc) ? 1 : 0) + (episodesPromise ? 1 : 0));
     if (episodesPromise) episodesPromise.then(function (data) {
       if (isDetailStillCurrent(item)) renderDetailEpisodes(data, false);
     });

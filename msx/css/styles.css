@@ -13611,6 +13611,46 @@ html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail
   }
 }
 
+/* Лент под сценой не больше двух (cinema-roomy — updateCinemaLaneDensity в
+   catalog.js): у фильма это «Режиссёр и актёры» и «Похожие», и под ними
+   оставалась пустая треть экрана. Плитки людей и постеры крупнее — заполняют
+   страницу. С сериями или коллекцией класса нет, и ленты остаются плотными */
+@media screen and (orientation: landscape) and (min-height: 501px) and (min-aspect-ratio: 155/100) {
+  #detail-view.catalog-detail-mode.detail-cinema.cinema-roomy .catalog-actor-card {
+    width: calc(var(--cu) * 21) !important;
+    height: calc(var(--cu) * 8);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema.cinema-roomy .catalog-actor-photo {
+    width: calc(var(--cu) * 6) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema.cinema-roomy .catalog-actor-name {
+    font-size: calc(var(--cu) * 1.15) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema.cinema-roomy .catalog-actor-character {
+    font-size: calc(var(--cu) * 0.92) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema.cinema-roomy .catalog-recommendation-card {
+    width: calc(var(--cu) * 17) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema.cinema-roomy .catalog-recommendation-poster {
+    width: calc(var(--cu) * 17) !important;
+    height: calc(var(--cu) * 25.5) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema.cinema-roomy .catalog-recommendation-title {
+    font-size: calc(var(--cu) * 1.15) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema.cinema-roomy .catalog-rec-sub {
+    font-size: calc(var(--cu) * 0.86);
+  }
+}
+
 /* ── «Сцена»: редизайн, все экраны (макет в Figma «Карточка фильма») ──────
    ТВ, ПК, планшет и телефон в обеих ориентациях. Стоит после правил телефона,
    чтобы их перебивать. Размеры под пульт — в блоке «только ТВ и ПК 16:9»
