@@ -5047,6 +5047,21 @@ function setupFocusRescue() {
                     }
                     return;
                 }
+                // Остальные карточки фильмов (ряды, сетки категорий и
+                // «Избранного») — долгое OK добавляет в избранное или убирает
+                // оттуда (toggleFavoriteCard, catalog.js); обычное — на отпускании
+                if (hf && typeof window.getCardCatalogItem === 'function' && window.getCardCatalogItem(hf)) {
+                    if (!okRepeat) {
+                        okHoldHandled = false;
+                        okHoldFocused = hf;
+                        clearOkHold();
+                        okHoldTimer = setTimeout(function () {
+                            okHoldHandled = true;
+                            if (okHoldFocused && typeof window.toggleFavoriteCard === 'function') window.toggleFavoriteCard(okHoldFocused);
+                        }, OK_HOLD_DELETE_MS);
+                    }
+                    return;
+                }
             }
             onOk();
             return;

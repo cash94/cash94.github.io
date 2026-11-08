@@ -2069,9 +2069,12 @@ function getHistoryCardEntry(card) {
     return null;
 }
 
-/** Убирает запись из ряда «История» каталога на месте, без перезагрузки рядов */
-function removeHistoryRowItem(id, mediaType, focusNext) {
-    var row = document.querySelector('.catalog-row[data-catalog-key="history"]');
+/**
+ * Убирает запись из ряда каталога («История», «Избранное») на месте, без
+ * перезагрузки рядов
+ */
+function removeCatalogRowItem(key, id, mediaType, focusNext) {
+    var row = document.querySelector('.catalog-row[data-catalog-key="' + key + '"]');
     if (!row) return false;
     var target = null;
     var cards = row.querySelectorAll('.catalog-row-card[data-item-id]');
@@ -2081,7 +2084,7 @@ function removeHistoryRowItem(id, mediaType, focusNext) {
     if (!target) return false;
     var idx = parseInt(target.dataset.itemIndex, 10);
     var next = target.nextElementSibling || target.previousElementSibling;
-    var data = window.catalogRowsData && window.catalogRowsData.history;
+    var data = window.catalogRowsData && window.catalogRowsData[key];
     if (data && !isNaN(idx)) data.splice(idx, 1);
     // Номера за удалённой — на одну меньше: по ним клик находит запись в catalogRowsData
     for (var k = 0; k < cards.length; k++) {
@@ -2098,10 +2101,10 @@ function removeHistoryRowItem(id, mediaType, focusNext) {
         break;
     }
     if (target.parentNode) target.parentNode.removeChild(target);
-    if (window.catalogRowTotals && window.catalogRowTotals.history) {
-        window.catalogRowTotals.history--;
+    if (window.catalogRowTotals && window.catalogRowTotals[key]) {
+        window.catalogRowTotals[key]--;
         var cnt = row.querySelector('.show-all-count');
-        if (cnt) cnt.textContent = window.catalogRowTotals.history ? 'Всего: ' + window.catalogRowTotals.history : '';
+        if (cnt) cnt.textContent = window.catalogRowTotals[key] ? 'Всего: ' + window.catalogRowTotals[key] : '';
     }
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
     if (focusNext) {
@@ -2109,6 +2112,10 @@ function removeHistoryRowItem(id, mediaType, focusNext) {
         else if (window.ScreenStrategies && ScreenStrategies.catalog) ScreenStrategies.catalog.ensureFocus(true);
     }
     return true;
+}
+
+function removeHistoryRowItem(id, mediaType, focusNext) {
+    return removeCatalogRowItem('history', id, mediaType, focusNext);
 }
 
 /**
@@ -2160,6 +2167,74 @@ async function removeHistoryCard(card) {
 
 window.getHistoryCardEntry = getHistoryCardEntry;
 window.removeHistoryCard = removeHistoryCard;
+
+/* ===== ИЗБРАННОЕ ДОЛГИМ OK =====
+ * Долгое OK на карточке фильма (ряды главной и каталога, сетки категорий и
+ * «Избранного») добавляет её в избранное или убирает оттуда — как звёздочка в
+ * карточке фильма. У карточек истории долгое OK своё — убрать из истории
+ * (removeHistoryCard), оно главнее. */
+
+/** Элемент каталога за карточкой или null (плитки категорий, «Показать все») */
+function getCardCatalogItem(card) {
+    if (!card || !card.dataset) return null;
+    var d = card.dataset, list = null, idx = NaN;
+    if (d.homeCat !== undefined) return null;
+    if (d.homeKey) {
+        var hs = window.HomeScreen && HomeScreen.state;
+        list = hs && hs.data ? hs.data[d.homeKey] : null;
+        idx = parseInt(d.itemIndex, 10);
+    } else if (d.catalogKey) {
+        list = window.catalogRowsData ? window.catalogRowsData[d.catalogKey] : null;
+        idx = parseInt(d.itemIndex, 10);
+    } else if (d.catalogIndex !== undefined) {
+        var g = getCatalogGridEl();
+        if (!g || !g.contains(card)) return null;
+        list = catalogState.items;
+        idx = parseInt(d.catalogIndex, 10);
+    }
+    var it = list && !isNaN(idx) ? list[idx] : null;
+    if (!it || it.catKey || it.id === undefined || it.id === null || it.id === '') return null;
+    return it;
+}
+
+/**
+ * Переключить избранное за карточкой. Снятая с избранного карточка уходит из
+ * сетки и ряда «Избранное», фокус — на соседнюю.
+ * @returns {Promise<boolean>} удалось ли
+ */
+function toggleFavoriteCard(card) {
+    var item = getCardCatalogItem(card);
+    if (!item || !window.FavoritesDB) return Promise.resolve(false);
+    var rec = buildFavoriteRecord(item);
+    var wasFocused = card.classList.contains('focused');
+    var inFavGrid = catalogState.currentCatalog === 'favorites' && card.dataset.catalogIndex !== undefined &&
+        !card.dataset.catalogKey && !card.dataset.homeKey;
+    var inFavRow = card.dataset.catalogKey === 'favorites';
+    return FavoritesDB.ready().then(function () {
+        return FavoritesDB.toggle(rec);
+    }).then(function (nowFav) {
+        invalidateFavoritesRow();
+        // Открытая карточка этого фильма — звёздочка в ней тоже
+        var cur = AppState.currentDetailItem;
+        if (cur && String(cur.id) === String(rec.id)) syncFavoriteButton(cur);
+        if (typeof showToast === 'function') {
+            showToast((nowFav ? 'Добавлено в избранное: ' : 'Убрано из избранного: ') + rec.title);
+        }
+        if (!nowFav && inFavRow) removeCatalogRowItem('favorites', rec.id, rec.media_type, wasFocused);
+        if (!nowFav && inFavGrid) {
+            catalogState.lastSelectedIndex = parseInt(card.dataset.catalogIndex, 10) || 0;
+            reloadFavoritesGrid();
+        }
+        return true;
+    }, function (e) {
+        console.warn('Избранное: не переключено', e);
+        if (typeof showToast === 'function') showToast('Не удалось изменить избранное');
+        return false;
+    });
+}
+
+window.getCardCatalogItem = getCardCatalogItem;
+window.toggleFavoriteCard = toggleFavoriteCard;
 
 /**
  * Вся история просмотра — DELETE /api/history/clear, затем убираем её со
@@ -2240,12 +2315,19 @@ window.clearAllHistory = clearAllHistory;
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', setupClearHistoryButton);
 else setupClearHistoryButton();
 
-// Мышь и тач: правая кнопка / долгий тап по карточке истории
+// Мышь и тач: правая кнопка / долгий тап по карточке истории — убрать из
+// истории, по остальным карточкам фильмов — избранное
 document.addEventListener('contextmenu', function (e) {
     var card = e.target && e.target.closest ? e.target.closest('.torrent-card') : null;
-    if (!card || !getHistoryCardEntry(card)) return;
+    if (!card) return;
+    if (getHistoryCardEntry(card)) {
+        e.preventDefault();
+        removeHistoryCard(card);
+        return;
+    }
+    if (!getCardCatalogItem(card)) return;
     e.preventDefault();
-    removeHistoryCard(card);
+    toggleFavoriteCard(card);
 });
 
 async function loadMoreCatalogItems(reset) {

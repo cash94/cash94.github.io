@@ -236,7 +236,11 @@
         rowCols: [],             // на какой карточке стояли в каждом ряду
         activeRow: 0,            // единственный показанный ряд
         data: {},                // key → items
-        lastRowKey: null,        // куда вернуть фокус (возврат из detail/поиска)
+        historySync: null,       // идущий запрос истории (updateHistoryResume)
+        historyAgain: null,      // повтор следом за ним
+        historyGen: 0,           // счётчик удалений из ряда «Продолжить просмотр»
+        historyMore: false,      // в истории на сервере записей больше, чем в ряду
+        lastRowKey: null,       // куда вернуть фокус (возврат из detail/поиска)
         lastColIndex: 0,
         lastNavBtnId: 'home-nav-home',
         posterQueue: [],
@@ -640,6 +644,7 @@
     function loadHistoryItems() {
         return homeFetch(withClientId(serverUrl() + '/api/history')).then(function (data) {
             if (!data || !data.success || !data.history || !data.history.length) return [];
+            homeState.historyMore = data.history.length > HOME.ITEMS_PER_ROW;
             return data.history.slice(0, HOME.ITEMS_PER_ROW).map(historyRowItem);
         });
     }
@@ -2986,6 +2991,11 @@
             if (String(cards[i].dataset.itemId) === String(id) && cards[i].dataset.mediaType === mediaType) { ci = i; break; }
         }
         if (ci === -1) return false;
+        // На сервере записей больше, чем в ряду, — дочитываем историю, и
+        // syncHistoryRow допишет следующую в конец (запрос на удаление уже
+        // завершён, ответ придёт без убранной записи)
+        var refill = homeState.historyMore;
+        homeState.historyGen++;
         var card = cards[ci];
         if (card.parentNode) card.parentNode.removeChild(card);
         cards.splice(ci, 1);
@@ -2998,6 +3008,7 @@
             homeState.rowCols[ri] = Math.min(ci, cards.length - 1);
             if (homeState.lastRowKey === 'history') homeState.lastColIndex = homeState.rowCols[ri];
             if (focusNext) focusCard(ri, homeState.rowCols[ri]);
+            if (refill) updateHistoryResume();
             return true;
         }
 
@@ -3433,19 +3444,35 @@
     /**
      * Перечитать историю после просмотра и при каждом приходе на главную: ряд
      * собирается один раз, а смотреть могли откуда угодно. Сначала дожидаемся
-     * таймкода выхода из плеера, иначе сервер ответит прежним местом. Запрос
-     * один на все, кто попросил, пока он идёт.
+     * таймкода выхода из плеера, иначе сервер ответит прежним местом.
+     *
+     * Попросили, пока запрос идёт, — его ответ может не знать о том, что
+     * случилось после отправки (удалили ещё карточку, сохранился таймкод),
+     * поэтому следом ещё один, общий для всех, кто попросил за это время.
+     * Ответ на запрос, отправленный до удаления из ряда (historyGen сменился),
+     * не применяем: он вернул бы убранную карточку.
      */
     function updateHistoryResume() {
-        if (homeState.historySync) return homeState.historySync;
+        if (homeState.historySync) {
+            if (!homeState.historyAgain) {
+                homeState.historyAgain = homeState.historySync.then(function () {
+                    homeState.historyAgain = null;
+                    return updateHistoryResume();
+                });
+            }
+            return homeState.historyAgain;
+        }
         // Не только для собранной главной: сборку прерывает уход с неё, пока
         // грузятся ряды (built остаётся false), а карточке фильма история нужна всё равно
         if (!homeState.data) return Promise.resolve();
+        var gen = homeState.historyGen;
         var saved = typeof awaitPendingTimecodeSave === 'function' ? awaitPendingTimecodeSave() : Promise.resolve();
         var sync = saved.then(function () {
             return homeFetch(withClientId(serverUrl() + '/api/history'));
         }).then(function (data) {
+            if (gen !== homeState.historyGen) return;
             if (!data || !data.success || !data.history || !data.history.length) return;
+            homeState.historyMore = data.history.length > HOME.ITEMS_PER_ROW;
             syncHistoryRow(data.history.slice(0, HOME.ITEMS_PER_ROW).map(historyRowItem));
             if (homeState.hero.item) setPlayLabel(homeState.hero.item);
         })['catch'](function () { }).then(function () {

@@ -135,6 +135,10 @@
     rowCols: [],
     activeRow: 0,
     data: {},
+    historySync: null,
+    historyAgain: null,
+    historyGen: 0,
+    historyMore: false,
     lastRowKey: null,
     lastColIndex: 0,
     lastNavBtnId: 'home-nav-home',
@@ -470,6 +474,7 @@
   function loadHistoryItems() {
     return homeFetch(withClientId(serverUrl() + '/api/history')).then(function (data) {
       if (!data || !data.success || !data.history || !data.history.length) return [];
+      homeState.historyMore = data.history.length > HOME.ITEMS_PER_ROW;
       return data.history.slice(0, HOME.ITEMS_PER_ROW).map(historyRowItem);
     });
   }
@@ -2295,6 +2300,8 @@
       }
     }
     if (ci === -1) return false;
+    var refill = homeState.historyMore;
+    homeState.historyGen++;
     var card = cards[ci];
     if (card.parentNode) card.parentNode.removeChild(card);
     cards.splice(ci, 1);
@@ -2305,6 +2312,7 @@
       homeState.rowCols[ri] = Math.min(ci, cards.length - 1);
       if (homeState.lastRowKey === 'history') homeState.lastColIndex = homeState.rowCols[ri];
       if (focusNext) focusCard(ri, homeState.rowCols[ri]);
+      if (refill) updateHistoryResume();
       return true;
     }
     var rowEl = homeState.rowEls[ri];
@@ -2633,13 +2641,24 @@
     for (i = 0; i < cards.length; i++) setCardProgress(cards[i], list[i].resume);
   }
   function updateHistoryResume() {
-    if (homeState.historySync) return homeState.historySync;
+    if (homeState.historySync) {
+      if (!homeState.historyAgain) {
+        homeState.historyAgain = homeState.historySync.then(function () {
+          homeState.historyAgain = null;
+          return updateHistoryResume();
+        });
+      }
+      return homeState.historyAgain;
+    }
     if (!homeState.data) return Promise.resolve();
+    var gen = homeState.historyGen;
     var saved = typeof awaitPendingTimecodeSave === 'function' ? awaitPendingTimecodeSave() : Promise.resolve();
     var sync = saved.then(function () {
       return homeFetch(withClientId(serverUrl() + '/api/history'));
     }).then(function (data) {
+      if (gen !== homeState.historyGen) return;
       if (!data || !data.success || !data.history || !data.history.length) return;
+      homeState.historyMore = data.history.length > HOME.ITEMS_PER_ROW;
       syncHistoryRow(data.history.slice(0, HOME.ITEMS_PER_ROW).map(historyRowItem));
       if (homeState.hero.item) setPlayLabel(homeState.hero.item);
     })['catch'](function () {}).then(function () {

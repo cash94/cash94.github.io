@@ -4343,6 +4343,18 @@ function setupFocusRescue() {
           }
           return;
         }
+        if (hf && typeof window.getCardCatalogItem === 'function' && window.getCardCatalogItem(hf)) {
+          if (!okRepeat) {
+            okHoldHandled = false;
+            okHoldFocused = hf;
+            clearOkHold();
+            okHoldTimer = setTimeout(function () {
+              okHoldHandled = true;
+              if (okHoldFocused && typeof window.toggleFavoriteCard === 'function') window.toggleFavoriteCard(okHoldFocused);
+            }, OK_HOLD_DELETE_MS);
+          }
+          return;
+        }
       }
       onOk();
       return;
