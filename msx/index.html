@@ -134,7 +134,7 @@
       "js-legacy/legacy-polyfills.js": "e0e9de38",
       "js/account.js": "65c22e09",
       "js/animations.js": "538e1ff5",
-      "js/app.js": "2b1a1c07",
+      "js/app.js": "3eac872e",
       "js/best-torrents-pick.js": "cd63487a",
       "js/best-torrents.js": "297e0c5a",
       "js/catalog-idb-patch.js": "7cf849b3",
@@ -146,13 +146,13 @@
       "js/catalog.js": "6929d9de",
       "js/category-banners.js": "46ea538e",
       "js/config.js": "8832f0c8",
-      "js/control.js": "69d09415",
+      "js/control.js": "05593494",
       "js/donate.js": "14adc57a",
       "js/favorites-db.js": "8772a3b7",
       "js/home.js": "73299fe2",
       "js/magnet-store.js": "773f87d4",
       "js/nav.js": "02a98d5e",
-      "js/osk.js": "acd5c812",
+      "js/osk.js": "a9e73b09",
       "js/perf-probe.js": "7143cc61",
       "js/player-memory-fix.js": "2fbf8c05",
       "js/player.js": "ef550bce",
@@ -166,9 +166,9 @@
       "js/tizen-avplay.js": "0e36f4e6",
       "js/tmdb.js": "14f83980",
       "js/torrents-worker-bridge.js": "84a127e9",
-      "js/torrents-worker-patch.js": "1bab9f71",
+      "js/torrents-worker-patch.js": "632c58aa",
       "js/torrents-worker.js": "f0d520c9",
-      "js/torrents.js": "b417f94e",
+      "js/torrents.js": "2a52755c",
       "js/torrserverstats.js": "5787ab47",
       "js/ui-customizer.js": "9fe4ccb6"
       // ASSET_V:end
@@ -800,9 +800,15 @@
             <div class="settings-section">
               <h2>Трекеры</h2>
               <p class="settings-lead">Поиск раздач идёт через парсер Jacred — свой или общедоступный.</p>
-              <div class="settings-field">
-                <div class="field-label">Адрес Jacred</div>
-                <input type="text" class="text-input" id="jacred-url" placeholder="jac.red">
+              <div class="settings-field-row">
+                <div class="settings-field">
+                  <div class="field-label">Адрес Jacred</div>
+                  <input type="text" class="text-input" id="jacred-url" placeholder="jac.red">
+                </div>
+                <div class="settings-field">
+                  <div class="field-label">API ключ</div>
+                  <input type="text" class="text-input" id="jacred-apikey" placeholder="Необязательно" autocomplete="off">
+                </div>
               </div>
               <div class="settings-list">
                 <div class="checkbox-container">

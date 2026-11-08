@@ -5923,6 +5923,11 @@ function buildJacredSearchUrl(query, hints) {
         }
     }
 
+    // API ключ из настроек — только если задан
+    var keyEl = getEl('jacred-apikey');
+    var apiKey = keyEl ? keyEl.value.trim() : '';
+    if (apiKey) url += '&apikey=' + encodeURIComponent(apiKey);
+
     return { url: url, host: host };
 }
 window.buildJacredSearchUrl = buildJacredSearchUrl;

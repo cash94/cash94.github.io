@@ -3051,25 +3051,31 @@ function setupSpeedTest() {
 
 // ==================== JACRED URL ====================
 function initJacredUrlStorage() {
-  var jacredUrlInput = getEl('jacred-url');
-  if (!jacredUrlInput) return;
+  bindJacredField('jacred-url', 'jacred URL');
+  // API ключ — поле рядом с адресом; в запрос уходит как &apikey=
+  // (torrents.js: buildJacredSearchUrl). Значение в лог не пишем.
+  bindJacredField('jacred-apikey', null);
+}
 
-  var savedUrl = localStorage.getItem('jacred-url');
-  if (savedUrl) {
-    jacredUrlInput.value = savedUrl;
-    console.log('📦 Загружен jacred URL:', savedUrl);
+function bindJacredField(id, logName) {
+  var input = getEl(id);
+  if (!input) return;
+
+  var saved = localStorage.getItem(id);
+  if (saved) {
+    input.value = saved;
+    if (logName) console.log('📦 Загружен ' + logName + ':', saved);
   }
 
   var debouncedSave = debounce(function () {
-    var value = jacredUrlInput.value.trim();
-    localStorage.setItem('jacred-url', value);
-    console.log('💾 Сохранён jacred URL:', value);
+    var value = input.value.trim();
+    localStorage.setItem(id, value);
+    if (logName) console.log('💾 Сохранён ' + logName + ':', value);
   }, APP_CONSTANTS.JACRED_SAVE_DELAY_MS);
 
-  jacredUrlInput.addEventListener('input', debouncedSave);
-  jacredUrlInput.addEventListener('blur', function () {
-    var value = jacredUrlInput.value.trim();
-    localStorage.setItem('jacred-url', value);
+  input.addEventListener('input', debouncedSave);
+  input.addEventListener('blur', function () {
+    localStorage.setItem(id, input.value.trim());
   });
 }
 // ==================== ПРОВЕРКА DOLBY VISION ====================

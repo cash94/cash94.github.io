@@ -314,7 +314,7 @@ var OSK = function () {
       lang: forced,
       mode: 'letters'
     };
-    if (el.type === 'url' || el.type === 'email' || el.type === 'password' || ['torrserver-url', 'jacred-url', 'auth-login'].indexOf(el.id) !== -1) {
+    if (el.type === 'url' || el.type === 'email' || el.type === 'password' || ['torrserver-url', 'jacred-url', 'jacred-apikey', 'auth-login'].indexOf(el.id) !== -1) {
       return {
         lang: 'en',
         mode: 'letters'

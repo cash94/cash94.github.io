@@ -42,6 +42,8 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         var jacred = getEl('jacred-url');
         jacDefault = jacred && jacred.value !== '' ? jacred.value : 'jac.red';
         searchUrl = AppState.protocol + '//' + jacDefault + '/api/v2.0/indexers/all/results?Query=' + encodeURIComponent(query.trim()) + '&exact=true';
+        var keyEl = getEl('jacred-apikey');
+        if (keyEl && keyEl.value.trim()) searchUrl += '&apikey=' + encodeURIComponent(keyEl.value.trim());
       }
       showLoading('Поиск...');
       if (typeof window.setJacredSearchFailure === 'function') window.setJacredSearchFailure(null);

@@ -724,7 +724,7 @@ function belongsToScreen(el, screen) {
     }
     if (screen === 'config') {
         return !!(el.closest('#config-screen') ||
-            ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'sync-clients-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db', 'multi-channel-audio', 'torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'account-tab', 'sync-tab', 'other-tab', 'device-tab', 'jacred-url'].indexOf(el.id) !== -1 ||
+            ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'sync-clients-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db', 'multi-channel-audio', 'torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'account-tab', 'sync-tab', 'other-tab', 'device-tab', 'jacred-url', 'jacred-apikey'].indexOf(el.id) !== -1 ||
             el.classList.contains('settings-btn') || el.classList.contains('menu-item'));
     }
     return false;
@@ -1323,7 +1323,7 @@ function getConfigMenuItems() {
 }
 
 function getConfigItems() {
-    var ids = ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'jacred-url', '.settings-btn', 'sync-clients-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db', 'multi-channel-audio'];
+    var ids = ['torrserver-url', 'auth-checkbox', 'auth-login', 'auth-password', 'jacred-url', 'jacred-apikey', '.settings-btn', 'sync-clients-btn', 'speedtest-btn', 'auto-fullscreen', 'hide-clock', 'add-to-db', 'multi-channel-audio'];
     var visibleItems = [];
     for (var i = 0; i < ids.length; i++) {
         var element = getEl(ids[i]);
@@ -2424,7 +2424,7 @@ function setFocus(index) {
         window.lastSelectedTorrentIndex = lastSelectedTorrentIndex;
     }
     if (document.activeElement && document.activeElement.tagName === 'INPUT') {
-        var allowed = ['search-query', 'torrserver-url', 'auth-login', 'auth-password', 'jacred-url'];
+        var allowed = ['search-query', 'torrserver-url', 'auth-login', 'auth-password', 'jacred-url', 'jacred-apikey'];
         if (allowed.indexOf(element.id) === -1) document.activeElement.blur();
     }
 }

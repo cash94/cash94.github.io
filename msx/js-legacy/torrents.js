@@ -4649,6 +4649,9 @@ function buildJacredSearchUrl(query, hints) {
       url += '&Category[]=' + (hints.isSerial === 2 ? 5000 : 2000);
     }
   }
+  var keyEl = getEl('jacred-apikey');
+  var apiKey = keyEl ? keyEl.value.trim() : '';
+  if (apiKey) url += '&apikey=' + encodeURIComponent(apiKey);
   return {
     url: url,
     host: host
