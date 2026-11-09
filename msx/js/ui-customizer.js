@@ -600,6 +600,9 @@
         //    высотой под два ряда строк, и крупный шрифт в неё не влезал бы.
         css.push('.torrent-title{font-size:' + titleSize + 'px!important;' +
             'height:auto!important;max-height:none!important;}');
+        // Строка «год · ★ оценка» под названием в сетке категории — тем же
+        // кеглем, что и название: отдельным, мельче, она читалась с трудом
+        css.push('#catalog-grid .catalog-card-sub{font-size:' + titleSize + 'px!important;}');
         css.push('.rating-badge,.card-modern .torrent-playing,.card-modern .torrent-size{' +
             'font-size:' + ratingSize + 'px!important;}');
         css.push('.torrent-meta,.torrent-badge{font-size:' + typeSize + 'px!important;}');
@@ -631,10 +634,14 @@
         // 6. Рейтинги / год
         // У «похожих» в карточке фильма в полосе только оценка — без неё
         // гасим полосу целиком, иначе под постером висела бы пустая плашка
-        if (!currentSettings.showRatings) css.push('.rating-badge,' +
+        // .catalog-sub-dot-r — точка после оценки в строке под названием сетки
+        if (!currentSettings.showRatings) css.push('.rating-badge,.catalog-sub-dot-r,' +
             '.catalog-recommendation-card .poster-bar{display:none!important;}');
-        // .catalog-badge — год у карточек рядов, .poster-year — у карточек сетки
-        if (!currentSettings.showYear) css.push('.catalog-badge,.card-modern .poster-year{display:none!important;}');
+        // .catalog-badge — год у карточек рядов, .poster-year — у карточек сетки,
+        // .catalog-sub-year — в строке под названием у сетки категории
+        // (catalog.js: appendCatalogCardSub) вместе с точкой после него
+        if (!currentSettings.showYear) css.push('.catalog-badge,.card-modern .poster-year,' +
+            '.catalog-sub-year,.catalog-sub-dot-y{display:none!important;}');
 
         // 7. Яркость постеров.
         //    При «Обычной» фильтра нет вовсе: brightness(1) ничего не меняет в

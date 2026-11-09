@@ -2568,6 +2568,28 @@ function ensureCatalogGridVisible(el) {
 // сетка встала бы под рядами. Поэтому уходящий прячем через display:none.
 // Вертикальный скролл (#main-container) у видов общий.
 
+/**
+ * Название открытой категории — над сеткой (#catalog-grid::before в styles.css,
+ * текст из data-title). Отдельным элементом в сетку его не кладём: сетку режут
+ * на чанки с распорками (insertChunkCards, trimGridChunks), и лишний ребёнок
+ * сбил бы им счёт карточек и строк. Псевдоэлемент с position: absolute в
+ * раскладку сетки не попадает, а прокручивается вместе с ней.
+ */
+function catalogGridTitle() {
+    var key = catalogState.currentCatalog;
+    if (!key) return '';
+    if (key === 'person') return (catalogState.person && catalogState.person.name) || 'Фильмография';
+    return (CATALOG_CONFIG[key] && CATALOG_CONFIG[key].name) || '';
+}
+
+function updateCatalogGridTitle(grid) {
+    grid = grid || getCatalogGridEl();
+    if (!grid) return;
+    var t = catalogGridTitle();
+    if (t) grid.setAttribute('data-title', t);
+    else grid.removeAttribute('data-title');
+}
+
 function showCatalogGridView() {
     var rows = getCatalogRowsEl(), grid = getCatalogGridEl();
     if (rows && rows.style.display !== 'none') {
@@ -2577,7 +2599,10 @@ function showCatalogGridView() {
         if (catalogFadedEl === rows) catalogFadedEl = null;
         rows.style.display = 'none';
     }
-    if (grid) grid.style.display = '';
+    if (grid) {
+        grid.style.display = '';
+        updateCatalogGridTitle(grid);
+    }
     // Сменился видимый контейнер → сменился состав фокусируемых элементов
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
 }
@@ -3496,6 +3521,62 @@ function appendCatalogItems(newItems) {
     }
 }
 
+/*
+ * Строка под названием карточки сетки: «2026 · ★ 8 · Сериал». В сетке
+ * категории год и оценку с постера убирают (styles.css: #catalog-grid), и они
+ * переезжают сюда — на картинке не остаётся полупрозрачных плашек.
+ * Классы для «Внешнего вида»: оценка — .rating-badge (её прячет «Показывать
+ * рейтинги», размер — ползунок оценки), год — .catalog-sub-year («Показывать
+ * год»). Тип — только если в списке есть и фильмы, и сериалы: в «Фильмах»
+ * слово «Фильм» под каждой карточкой ничего не сообщает.
+ */
+function catalogItemsMixed() {
+    var items = catalogState.items || [];
+    if (catalogState._mixedOf === items && catalogState._mixedLen === items.length) return catalogState._mixed;
+    var tv = false, movie = false;
+    for (var i = 0; i < items.length && !(tv && movie); i++) {
+        if ((items[i] && items[i].media_type) === 'tv') tv = true; else movie = true;
+    }
+    catalogState._mixedOf = items;
+    catalogState._mixedLen = items.length;
+    catalogState._mixed = tv && movie;
+    return catalogState._mixed;
+}
+
+function appendCatalogCardSub(card, year, rating, mt) {
+    var info = card.querySelector('.torrent-info');
+    if (!info) return;
+    // Плашки года и полосы с оценкой и типом с постера — вон из DOM, а не только
+    // display: none: их больше никто не трогает (createCardElement заполняет их
+    // при сборке и забывает), а карточек в сетке сотни
+    var poster = card.firstChild;
+    var py = poster && poster.querySelector('.poster-year');
+    var pb = poster && poster.querySelector('.poster-bar');
+    if (py) poster.removeChild(py);
+    if (pb) poster.removeChild(pb);
+    var sub = document.createElement('div');
+    sub.className = 'catalog-card-sub';
+    var add = function (cls, text) {
+        var s = document.createElement('span');
+        s.className = cls;
+        s.textContent = text;
+        sub.appendChild(s);
+    };
+    var mixed = catalogItemsMixed();
+    // Точки — отдельными элементами: «Внешний вид» прячет год или оценку, и
+    // точка уходит вместе с ними (.catalog-sub-dot-y / -r в ui-customizer.js)
+    if (year) add('catalog-sub-year', year);
+    // Точка между годом и оценкой уходит, если спрятан любой из них
+    if (year && rating) add('catalog-sub-dot catalog-sub-dot-y catalog-sub-dot-r', '·');
+    if (rating) add('rating-badge', rating);
+    if (mixed) {
+        if (rating) add('catalog-sub-dot catalog-sub-dot-r', '·');
+        else if (year) add('catalog-sub-dot catalog-sub-dot-y', '·');
+        add('catalog-sub-type', mt === 'tv' ? 'Сериал' : 'Фильм');
+    }
+    if (sub.firstChild) info.appendChild(sub);
+}
+
 function createCatalogCard(item, index) {
     var title = getCatalogItemTitle(item);
     var mt = item.media_type || 'movie';
@@ -3539,6 +3620,7 @@ function createCatalogCard(item, index) {
         metaType: mt === 'tv' ? 'Сериал' : 'Фильм',
         metaBadge: year || 'Каталог'
     });
+    appendCatalogCardSub(card, year, rating, mt);
     // Вернувшийся постер: снимаем скелет, когда картинка встала, и откатываемся
     // на обычный конвейер, если адрес из кэша больше не отдаётся (умерло
     // зеркало) — конвейер умеет перебирать зеркала, а мы здесь нет.

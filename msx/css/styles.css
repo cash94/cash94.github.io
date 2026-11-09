@@ -1111,6 +1111,111 @@ textarea {
   display: inline-block;
 }
 
+/* ── Сетка категории: редизайн по макету в Figma («Сетка категории») ──────
+   Только #catalog-grid: «Мои торренты» (#torrents-grid) и «Похожие» в карточке
+   фильма живут на тех же .card-modern и остаются как были.
+   Для слабых ТВ: на постере ни одной полупрозрачной плашки (год, полоса с
+   оценкой и типом) — карточка из 10 элементов становится картинкой с
+   подписью, браузеру нечего смешивать поверх постеров.
+   Масштаб 0.97 → 1 под фокусом остаётся: увеличить постер больше карточки
+   нельзя — его обрезал бы contain: content у карточки, а он для скорости
+   нужнее. */
+
+/* Название категории — над сеткой. Псевдоэлемент, а не элемент в сетке: её
+   режут на чанки с распорками, лишний ребёнок сбил бы им счёт (см.
+   updateCatalogGridTitle в catalog.js). position: absolute — в раскладку
+   сетки не попадает; relative — для Chrome 66 без contain. Слева — тот же
+   отступ, что у карточек (padding сетки). */
+#catalog-grid[data-title] {
+  position: relative;
+  padding-top: 52px;
+}
+
+#catalog-grid[data-title]::before {
+  content: attr(data-title);
+  position: absolute;
+  top: 6px;
+  left: 0;
+  right: 0;
+  padding-left: inherit;
+  padding-right: inherit;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.2;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+/* На постере ничего поверх — год и оценка переехали под название */
+#catalog-grid .card-modern .poster-year,
+#catalog-grid .card-modern .poster-bar {
+  display: none !important;
+}
+
+/* «2026 · ★ 8 · Сериал» под названием (catalog.js: appendCatalogCardSub) */
+.catalog-card-sub {
+  display: none;
+}
+
+#catalog-grid .catalog-card-sub {
+  display: block;
+  margin-top: 3px;
+  /* Кегль — как у названия: его ставит ui-customizer.js с ползунка «Название»
+     (там же !important), здесь — только до первого применения настроек */
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: #a3a3ad;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Размер оценки обычно задаёт свой ползунок (.rating-badge{font-size…!important}
+   в ui-customizer.js) — в строке под названием она идёт кеглем строки */
+#catalog-grid .catalog-card-sub .rating-badge {
+  display: inline;
+  color: #ff8c00;
+  font-size: inherit !important;
+  font-weight: 700;
+}
+
+#catalog-grid .catalog-card-sub .catalog-sub-dot {
+  margin: 0 0.45em;
+}
+
+/* 1920×1080: как 1280×720, ×1.5 (так же, как текст главной) */
+@media screen and (min-width: 1600px) and (min-height: 880px) {
+  #catalog-grid[data-title] {
+    padding-top: 78px;
+  }
+
+  #catalog-grid[data-title]::before {
+    top: 9px;
+    font-size: 39px;
+  }
+
+  #catalog-grid .catalog-card-sub {
+    margin-top: 4px;
+  }
+}
+
+/* Телефон */
+@media (max-width: 768px) {
+  #catalog-grid[data-title] {
+    padding-top: 44px;
+  }
+
+  #catalog-grid[data-title]::before {
+    top: 4px;
+    font-size: 22px;
+  }
+
+}
+
 /* Бегущая строка. Класс marquee-text носит любая подпись, которую имеет смысл
    прокручивать: название карточки сетки, имя актёра и название «похожего» в
    detail-view. Двигается transform, то есть композитингом, без пересчёта

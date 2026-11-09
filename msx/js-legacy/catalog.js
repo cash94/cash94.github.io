@@ -2280,6 +2280,18 @@ function ensureCatalogGridVisible(el) {
     target.style.opacity = '';
   }
 }
+function catalogGridTitle() {
+  var key = catalogState.currentCatalog;
+  if (!key) return '';
+  if (key === 'person') return catalogState.person && catalogState.person.name || 'Фильмография';
+  return CATALOG_CONFIG[key] && CATALOG_CONFIG[key].name || '';
+}
+function updateCatalogGridTitle(grid) {
+  grid = grid || getCatalogGridEl();
+  if (!grid) return;
+  var t = catalogGridTitle();
+  if (t) grid.setAttribute('data-title', t);else grid.removeAttribute('data-title');
+}
 function showCatalogGridView() {
   var rows = getCatalogRowsEl(),
     grid = getCatalogGridEl();
@@ -2290,7 +2302,10 @@ function showCatalogGridView() {
     if (catalogFadedEl === rows) catalogFadedEl = null;
     rows.style.display = 'none';
   }
-  if (grid) grid.style.display = '';
+  if (grid) {
+    grid.style.display = '';
+    updateCatalogGridTitle(grid);
+  }
   if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
 }
 var catalogRowsRevealPending = false;
@@ -2809,6 +2824,45 @@ function appendCatalogItems(newItems) {
     if (typeof updateFocusableElements === 'function') updateFocusableElements();
   }
 }
+function catalogItemsMixed() {
+  var items = catalogState.items || [];
+  if (catalogState._mixedOf === items && catalogState._mixedLen === items.length) return catalogState._mixed;
+  var tv = false,
+    movie = false;
+  for (var i = 0; i < items.length && !(tv && movie); i++) {
+    if ((items[i] && items[i].media_type) === 'tv') tv = true;else movie = true;
+  }
+  catalogState._mixedOf = items;
+  catalogState._mixedLen = items.length;
+  catalogState._mixed = tv && movie;
+  return catalogState._mixed;
+}
+function appendCatalogCardSub(card, year, rating, mt) {
+  var info = card.querySelector('.torrent-info');
+  if (!info) return;
+  var poster = card.firstChild;
+  var py = poster && poster.querySelector('.poster-year');
+  var pb = poster && poster.querySelector('.poster-bar');
+  if (py) poster.removeChild(py);
+  if (pb) poster.removeChild(pb);
+  var sub = document.createElement('div');
+  sub.className = 'catalog-card-sub';
+  var add = function (cls, text) {
+    var s = document.createElement('span');
+    s.className = cls;
+    s.textContent = text;
+    sub.appendChild(s);
+  };
+  var mixed = catalogItemsMixed();
+  if (year) add('catalog-sub-year', year);
+  if (year && rating) add('catalog-sub-dot catalog-sub-dot-y catalog-sub-dot-r', '·');
+  if (rating) add('rating-badge', rating);
+  if (mixed) {
+    if (rating) add('catalog-sub-dot catalog-sub-dot-r', '·');else if (year) add('catalog-sub-dot catalog-sub-dot-y', '·');
+    add('catalog-sub-type', mt === 'tv' ? 'Сериал' : 'Фильм');
+  }
+  if (sub.firstChild) info.appendChild(sub);
+}
 function createCatalogCard(item, index) {
   var title = getCatalogItemTitle(item);
   var mt = item.media_type || 'movie';
@@ -2836,6 +2890,7 @@ function createCatalogCard(item, index) {
     metaType: mt === 'tv' ? 'Сериал' : 'Фильм',
     metaBadge: year || 'Каталог'
   });
+  appendCatalogCardSub(card, year, rating, mt);
   var readyImg = cached ? card.querySelector('img.catalog-poster-img') : null;
   if (readyImg) {
     card.dataset.posterRequested = '1';

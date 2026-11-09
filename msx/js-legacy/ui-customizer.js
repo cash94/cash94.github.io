@@ -432,6 +432,7 @@
     css.push('.torrent-card{border-radius:' + radius + '!important;}');
     css.push('.torrent-info{padding:' + density.info + '!important;}');
     css.push('.torrent-title{font-size:' + titleSize + 'px!important;' + 'height:auto!important;max-height:none!important;}');
+    css.push('#catalog-grid .catalog-card-sub{font-size:' + titleSize + 'px!important;}');
     css.push('.rating-badge,.card-modern .torrent-playing,.card-modern .torrent-size{' + 'font-size:' + ratingSize + 'px!important;}');
     css.push('.torrent-meta,.torrent-badge{font-size:' + typeSize + 'px!important;}');
     css.push('.card-modern .poster-year{font-size:' + yearSize + 'px!important;}');
@@ -441,8 +442,8 @@
     css.push(':root{--settings-zoom:' + (1.2 * settingsScale / 100).toFixed(3) + ';}');
     css.push(':root{--search-scale:' + searchScale / 100 + ';}');
     css.push('.card-modern .poster-bar{height:' + (Math.max(ratingSize, typeSize) + 14) + 'px!important;}');
-    if (!currentSettings.showRatings) css.push('.rating-badge,' + '.catalog-recommendation-card .poster-bar{display:none!important;}');
-    if (!currentSettings.showYear) css.push('.catalog-badge,.card-modern .poster-year{display:none!important;}');
+    if (!currentSettings.showRatings) css.push('.rating-badge,.catalog-sub-dot-r,' + '.catalog-recommendation-card .poster-bar{display:none!important;}');
+    if (!currentSettings.showYear) css.push('.catalog-badge,.card-modern .poster-year,' + '.catalog-sub-year,.catalog-sub-dot-y{display:none!important;}');
     if (bright !== BRIGHTNESS.normal) {
       css.push('.torrent-poster img,.row-poster-img>img,img.catalog-poster-img{filter:brightness(' + bright + ')!important;}');
     }
