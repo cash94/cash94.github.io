@@ -2578,9 +2578,10 @@ function createTorrentCard(torrent) {
     // Тип — общей функцией с detail, чтобы бейдж и запросы TMDB не расходились
     var cardMediaType = getTorrentMediaTypeFromCard(torrent);
 
-    // Статус: идёт просмотр или размер раздачи. Размер живёт в полосе внизу
-    // постера — на месте оценки у карточек каталога; «Идет просмотр» заменяет
-    // его целиком, чтобы полоса оставалась в одну строку.
+    // Статус: идёт просмотр или размер раздачи — в строке под названием, как
+    // год и оценка у сетки категории («5.68 GB · Сериал»); «Идет просмотр»
+    // встаёт на место размера (markTorrentStopped меняет их местами обратно).
+    // На постере ничего поверх: полосы с полупрозрачной подложкой больше нет.
     var isPlaying = torrent.stat_string === 'Torrent working';
     var statusHtml = isPlaying
         ? '<span class="torrent-playing">Идет просмотр</span>'
@@ -2607,12 +2608,12 @@ function createTorrentCard(torrent) {
     //attachTorrentDeleteLongPress(card, torrent);
 
     card.innerHTML =
-        '<div class="torrent-poster">' + posterHtml +
-        '<div class="poster-bar">' + statusHtml +
-        '<span class="torrent-badge">' + (cardMediaType === 'tv' ? 'Сериал' : 'Фильм') + '</span></div>' +
-        '</div>' +
+        '<div class="torrent-poster">' + posterHtml + '</div>' +
         '<div class="torrent-info">' +
         '<div class="torrent-title marquee-text"><span>' + escapeHtml(title) + '</span></div>' +
+        '<div class="catalog-card-sub">' + statusHtml +
+        '<span class="catalog-sub-dot">·</span>' +
+        '<span class="catalog-sub-type">' + (cardMediaType === 'tv' ? 'Сериал' : 'Фильм') + '</span></div>' +
         '</div>';
 
     return card;

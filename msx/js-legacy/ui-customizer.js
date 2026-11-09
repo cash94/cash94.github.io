@@ -432,7 +432,7 @@
     css.push('.torrent-card{border-radius:' + radius + '!important;}');
     css.push('.torrent-info{padding:' + density.info + '!important;}');
     css.push('.torrent-title{font-size:' + titleSize + 'px!important;' + 'height:auto!important;max-height:none!important;}');
-    css.push('#catalog-grid .catalog-card-sub{font-size:' + titleSize + 'px!important;}');
+    css.push('#catalog-grid .catalog-card-sub,#torrents-grid .catalog-card-sub{font-size:' + titleSize + 'px!important;}');
     css.push('.rating-badge,.card-modern .torrent-playing,.card-modern .torrent-size{' + 'font-size:' + ratingSize + 'px!important;}');
     css.push('.torrent-meta,.torrent-badge{font-size:' + typeSize + 'px!important;}');
     css.push('.card-modern .poster-year{font-size:' + yearSize + 'px!important;}');

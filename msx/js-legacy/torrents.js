@@ -2205,7 +2205,7 @@ function createTorrentCard(torrent) {
   card.className = 'torrent-card card-modern';
   card.dataset.hash = torrent.hash;
   card.dataset.mediaType = cardMediaType;
-  card.innerHTML = '<div class="torrent-poster">' + posterHtml + '<div class="poster-bar">' + statusHtml + '<span class="torrent-badge">' + (cardMediaType === 'tv' ? 'Сериал' : 'Фильм') + '</span></div>' + '</div>' + '<div class="torrent-info">' + '<div class="torrent-title marquee-text"><span>' + escapeHtml(title) + '</span></div>' + '</div>';
+  card.innerHTML = '<div class="torrent-poster">' + posterHtml + '</div>' + '<div class="torrent-info">' + '<div class="torrent-title marquee-text"><span>' + escapeHtml(title) + '</span></div>' + '<div class="catalog-card-sub">' + statusHtml + '<span class="catalog-sub-dot">·</span>' + '<span class="catalog-sub-type">' + (cardMediaType === 'tv' ? 'Сериал' : 'Фильм') + '</span></div>' + '</div>';
   return card;
 }
 function setupTorrentGridDelegation() {

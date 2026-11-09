@@ -1112,8 +1112,9 @@ textarea {
 }
 
 /* ── Сетка категории: редизайн по макету в Figma («Сетка категории») ──────
-   Только #catalog-grid: «Мои торренты» (#torrents-grid) и «Похожие» в карточке
-   фильма живут на тех же .card-modern и остаются как были.
+   Сетка категории (#catalog-grid) и «Мои торренты» (#torrents-grid). «Похожие»
+   в карточке фильма живут на тех же .card-modern, но у них своё оформление
+   («сцена») — их правила ниже не трогают.
    Для слабых ТВ: на постере ни одной полупрозрачной плашки (год, полоса с
    оценкой и типом) — карточка из 10 элементов становится картинкой с
    подписью, браузеру нечего смешивать поверх постеров.
@@ -1126,12 +1127,15 @@ textarea {
    updateCatalogGridTitle в catalog.js). position: absolute — в раскладку
    сетки не попадает; relative — для Chrome 66 без contain. Слева — тот же
    отступ, что у карточек (padding сетки). */
-#catalog-grid[data-title] {
+#catalog-grid[data-title],
+#torrents-grid {
   position: relative;
   padding-top: 52px;
 }
 
-#catalog-grid[data-title]::before {
+/* «Мои торренты» — та же строка заголовка, текст постоянный */
+#catalog-grid[data-title]::before,
+#torrents-grid::before {
   content: attr(data-title);
   position: absolute;
   top: 6px;
@@ -1149,6 +1153,10 @@ textarea {
   pointer-events: none;
 }
 
+#torrents-grid::before {
+  content: "Мои торренты";
+}
+
 /* На постере ничего поверх — год и оценка переехали под название */
 #catalog-grid .card-modern .poster-year,
 #catalog-grid .card-modern .poster-bar {
@@ -1160,7 +1168,8 @@ textarea {
   display: none;
 }
 
-#catalog-grid .catalog-card-sub {
+#catalog-grid .catalog-card-sub,
+#torrents-grid .catalog-card-sub {
   display: block;
   margin-top: 3px;
   /* Кегль — как у названия: его ставит ui-customizer.js с ползунка «Название»
@@ -1183,33 +1192,53 @@ textarea {
   font-weight: 700;
 }
 
-#catalog-grid .catalog-card-sub .catalog-sub-dot {
+#catalog-grid .catalog-card-sub .catalog-sub-dot,
+#torrents-grid .catalog-card-sub .catalog-sub-dot {
   margin: 0 0.45em;
+}
+
+/* «Мои торренты»: размер раздачи или «▶ Идет просмотр» (зелёным) — в той же
+   строке и тем же кеглем; ползунок оценки (.torrent-size/.torrent-playing в
+   ui-customizer.js) её не дробит */
+#torrents-grid .catalog-card-sub .torrent-size,
+#torrents-grid .catalog-card-sub .torrent-playing {
+  font-size: inherit !important;
+  line-height: inherit;
+}
+
+#torrents-grid .catalog-card-sub .torrent-size {
+  color: inherit;
+  font-weight: 500;
 }
 
 /* 1920×1080: как 1280×720, ×1.5 (так же, как текст главной) */
 @media screen and (min-width: 1600px) and (min-height: 880px) {
-  #catalog-grid[data-title] {
+  #catalog-grid[data-title],
+  #torrents-grid {
     padding-top: 78px;
   }
 
-  #catalog-grid[data-title]::before {
+  #catalog-grid[data-title]::before,
+  #torrents-grid::before {
     top: 9px;
     font-size: 39px;
   }
 
-  #catalog-grid .catalog-card-sub {
+  #catalog-grid .catalog-card-sub,
+  #torrents-grid .catalog-card-sub {
     margin-top: 4px;
   }
 }
 
 /* Телефон */
 @media (max-width: 768px) {
-  #catalog-grid[data-title] {
+  #catalog-grid[data-title],
+  #torrents-grid {
     padding-top: 44px;
   }
 
-  #catalog-grid[data-title]::before {
+  #catalog-grid[data-title]::before,
+  #torrents-grid::before {
     top: 4px;
     font-size: 22px;
   }
