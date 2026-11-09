@@ -2775,6 +2775,52 @@ function returnSearchFromAndroidPlayer() {
 }
 
 /**
+ * Карточка фильма или сериала, из которой открыли поиск раздач («Поиск
+ * торрентов» — строка под замком, setSearchLocked). null — поиск свободный.
+ */
+function searchOriginCard() {
+  if (!AppState.searchLocked) return null;
+  var card = AppState.androidBackCatalog || AppState.pendingDetailItem;
+  return card && card.id ? card : null;
+}
+
+/**
+ * Раздачу запускали из выдачи поиска, открытого из карточки: из плеера — в эту
+ * карточку, а не обратно в выдачу (выдача закрывается, как по «Назад»).
+ * Раздачу останавливаем, как после просмотра из самой карточки.
+ * @returns {boolean} false — поиск свободный, остаёмся в выдаче
+ */
+function returnToCardFromSearch(hash) {
+  var card = searchOriginCard();
+  if (!card || typeof window.hideSearchResults !== 'function') return false;
+  if (hash) {
+    dropTorrentToServer(hash)['catch'](function () { });
+    if (torrentProgressCache.has(hash)) torrentProgressCache.delete(hash);
+  }
+  lastPlaybackFromSearch = false;
+  androidReturnSearch = false;
+  AppState.playFromHash = false;
+  AppState.isCatalogSearch = false;
+  AppState.isCatalogSerials = false;
+  AppState.currentDetailItem = card;
+  window.hideSearchResults({ returnTo: 'detail' });
+  return true;
+}
+
+/**
+ * То же для нативного плеера. Таймлайны приходят пачкой (по серии на каждую
+ * досмотренную) — карточку показываем один раз, после пачки.
+ */
+var androidReturnCardTimer = null;
+function returnCardFromAndroidPlayer(hash) {
+  if (androidReturnCardTimer) return;
+  androidReturnCardTimer = setTimeout(function () {
+    androidReturnCardTimer = null;
+    returnToCardFromSearch(hash);
+  }, 0);
+}
+
+/**
  * Возврат в карточку-«сцену», откуда запускали «Продолжить» или серию из
  * ленты: она так и лежит собранной, снова только показать. Раздача в
  * currentDetailItem была нужна плееру — возвращаем сам фильм.
@@ -4237,6 +4283,8 @@ function showDetailView(field = null) {
     // Запускали из выдачи поиска (под плеером в стеке — поиск): просто
     // возвращаем оверлей с результатами, раздачу не открываем и не останавливаем
     if (navUnder && navUnder.screen === 'search') {
+      // Поиск открыт из карточки фильма/сериала — возвращаемся в неё
+      if (returnToCardFromSearch(AppState.currentDetailItem && AppState.currentDetailItem.hash)) return;
       lastPlaybackFromSearch = false;
       AppState.playFromHash = false;
       AppState.isCatalogSearch = false;
@@ -6528,6 +6576,9 @@ function updatePlayerTimeline(timelineData) {
     }
     if (typeof window.refreshDetailResume === 'function') window.refreshDetailResume();
     if (androidReturnHome) { returnHomeFromAndroidPlayer(); return; }
+    // Из выдачи поиска, открытого из карточки, — в карточку
+    if (androidReturnCardTimer) return;
+    if ((androidReturnSearch || AppState.playFromHash) && searchOriginCard()) { returnCardFromAndroidPlayer(currentTimecodeData.hash); return; }
     if (androidReturnSearch) { returnSearchFromAndroidPlayer(); return; }
     if (AppState.playFromHash && AppState.isCatalogSerials) { AppState.isCatalogSearch = false; return; }
     else if (AppState.playFromHash) { AppState.playFromHash = false; AppState.isCatalogSearch = false; return; }

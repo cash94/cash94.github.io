@@ -2356,6 +2356,37 @@ function returnSearchFromAndroidPlayer() {
     AppState.playFromHash = false;
   }, 0);
 }
+function searchOriginCard() {
+  if (!AppState.searchLocked) return null;
+  var card = AppState.androidBackCatalog || AppState.pendingDetailItem;
+  return card && card.id ? card : null;
+}
+function returnToCardFromSearch(hash) {
+  var card = searchOriginCard();
+  if (!card || typeof window.hideSearchResults !== 'function') return false;
+  if (hash) {
+    dropTorrentToServer(hash)['catch'](function () {});
+    if (torrentProgressCache.has(hash)) torrentProgressCache.delete(hash);
+  }
+  lastPlaybackFromSearch = false;
+  androidReturnSearch = false;
+  AppState.playFromHash = false;
+  AppState.isCatalogSearch = false;
+  AppState.isCatalogSerials = false;
+  AppState.currentDetailItem = card;
+  window.hideSearchResults({
+    returnTo: 'detail'
+  });
+  return true;
+}
+var androidReturnCardTimer = null;
+function returnCardFromAndroidPlayer(hash) {
+  if (androidReturnCardTimer) return;
+  androidReturnCardTimer = setTimeout(function () {
+    androidReturnCardTimer = null;
+    returnToCardFromSearch(hash);
+  }, 0);
+}
 function returnToDetailCard() {
   var ctx = AppState.cardPlayback;
   AppState.cardPlayback = null;
@@ -3854,6 +3885,7 @@ function showDetailView(field = null) {
     getEl('player-screen').style.display = 'none';
     getEl('config-screen').style.display = 'none';
     if (navUnder && navUnder.screen === 'search') {
+      if (returnToCardFromSearch(AppState.currentDetailItem && AppState.currentDetailItem.hash)) return;
       lastPlaybackFromSearch = false;
       AppState.playFromHash = false;
       AppState.isCatalogSearch = false;
@@ -6231,6 +6263,11 @@ function updatePlayerTimeline(timelineData) {
     if (typeof window.refreshDetailResume === 'function') window.refreshDetailResume();
     if (androidReturnHome) {
       returnHomeFromAndroidPlayer();
+      return;
+    }
+    if (androidReturnCardTimer) return;
+    if ((androidReturnSearch || AppState.playFromHash) && searchOriginCard()) {
+      returnCardFromAndroidPlayer(currentTimecodeData.hash);
       return;
     }
     if (androidReturnSearch) {
