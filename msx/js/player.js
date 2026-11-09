@@ -2685,10 +2685,17 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       // при отказе — напрямую; пусто — сразу напрямую
       online_subs_proxy: AppState.subsApiHost ? AppState.protocol + '//' + AppState.subsApiHost : ''
     };
-    if (AppState.autoSwitchEpisodes) {
+    // Список серий — всегда, если приложение умеет его не листать само
+    // (AndroidJS.playlistAutoNext, с 1.1.26): «Переключать серии
+    // автоматически» выключает только автопереход, а не список серий в плеере.
+    // Старому приложению плейлист без автоперехода не объяснить — ему, как
+    // раньше, только при включённой настройке.
+    var canStopAtEpisodeEnd = typeof window.AndroidJS.playlistAutoNext === 'function';
+    if (AppState.autoSwitchEpisodes || canStopAtEpisodeEnd) {
       var playlist = buildEpisodesPlaylist(currentEpisodeIndex, seekTime);
       if (playlist) playerData.playlist = playlist;
     }
+    playerData.auto_next = !!AppState.autoSwitchEpisodes;
     // Basic-авторизация TorrServer. Встроенный плеер вешает эти заголовки и на
     // видеопоток, и на опрос /cache (строка статистики под заголовком): без них
     // при включённой авторизации TorrServer отвечает 401 на то и на другое
@@ -2879,9 +2886,6 @@ window.loadResumeEpisodes = loadResumeEpisodes;
 // нужной серии, а не в карточку раздачи. Свободный поиск сюда не ходит — там
 // раздачу именно добавляют, и она открывается как в «Моих торрентах».
 
-// Свежая раздача отдаёт файлы только с метаданными, а их может и не быть: дольше
-// под заставкой не держим, карточка раздачи ждёт сама и показывает ход
-var SERIES_FILES_WAIT_MS = 15000;
 var seriesStartCancel = null;
 
 /** Сезон и серия файла — те же, что у таймкода (getTimecodeMediaKey) */
@@ -2970,16 +2974,15 @@ function pickSeasonEpisode(torrent, files, start, season) {
  *          карточку раздачи; 'cancelled' — ждать файлы передумали («Назад»)
  */
 async function findSeriesStart(torrent, item) {
-  var timer = null;
-  var waited = await Promise.race([
-    getTorrentFilesWithCache(torrent, true),
-    new Promise(function (resolve) { timer = setTimeout(function () { resolve(null); }, SERIES_FILES_WAIT_MS); }),
-    new Promise(function (resolve) { seriesStartCancel = function () { resolve('cancelled'); }; })
-  ]);
-  clearTimeout(timer);
+  // Файлы ждём с повторами, как у списка «Лучшие» (waitSeasonFiles). Раньше
+  // был один запрос на 15 с: у свежей раздачи (вышла новая серия, пиров пока
+  // мало) метаданные не успевали, и вместо плеера открывалась карточка
+  // раздачи, будто серию не нашли. «Назад» — отмена.
+  var cancelled = false;
+  var onCancel = new Promise(function (resolve) { seriesStartCancel = function () { cancelled = true; resolve('cancelled'); }; });
+  var files = await Promise.race([waitSeasonFiles(torrent, function () { return cancelled; }), onCancel]);
   seriesStartCancel = null;
-  if (waited === 'cancelled') return waited;
-  var files = extractVideoFiles(waited || []);
+  if (files === 'cancelled') return files;
   if (!files.length) return null;
   var resume = window.HomeScreen ? await HomeScreen.fetchResume({ id: item.id, media_type: 'tv' }) : null;
   // Имена файлов не у всех раздач с номером: тогда серию знает только TMDB
@@ -2994,8 +2997,8 @@ async function findSeriesStart(torrent, item) {
 }
 window.findSeriesStart = findSeriesStart;
 
-// Сколько ждём файлы раздачи из списка «Лучшие». Дольше, чем SERIES_FILES_WAIT_MS:
-// здесь ждут в окне предзагрузки, с пирами на экране и «Назад» под рукой
+// Сколько ждём файлы раздачи сериала (список «Лучшие», раздача из поиска в
+// карточке сериала). Столько же ждёт метаданные и MonoServer; «Назад» — отмена
 var SEASON_FILES_WAIT_MS = 60000;
 var SEASON_FILES_RETRY_MS = 1500;
 
@@ -4024,9 +4027,12 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   var applePlayer = (typeof getApplePlayer === 'function') ? getApplePlayer() : null;
   if (applePlayer && applePlayer.template) {
     var appleRef = parseStreamRef(originalUrl);
-    if (AppState.autoSwitchEpisodes && AppState.currentDetailItem && AppState.currentDetailItem.hash) {
+    // Серии — при любой настройке автопереключения: по ним номер серии в
+    // заголовке и ключ серии у таймкода (getTimecodeMediaKey). Плейлист чужому
+    // плееру уходит только при включённой (buildAppleExternalUrl)
+    if (AppState.currentDetailItem && AppState.currentDetailItem.hash) {
       try { await loadEpisodesInfo(AppState.currentDetailItem.hash, appleRef ? appleRef.fileId : null); } catch (e) { /* без серий — один файл */ }
-      if (typeof getTorrentProgressBatch === 'function') {
+      if (AppState.autoSwitchEpisodes && typeof getTorrentProgressBatch === 'function') {
         try { await getTorrentProgressBatch(AppState.currentDetailItem.hash, currentEpisodeFiles); } catch (e) { /* без прогресса — нули */ }
       }
     }
@@ -4047,7 +4053,11 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     // ещё не знает, какая серия открыта, и в название не попал бы её номер.
     // Плейлист серий нужен ДО открытия нативного плеера: иначе currentEpisodeFiles
     // ещё пуст (обычно он подгружается уже после старта воспроизведения, с задержкой).
-    if (AppState.autoSwitchEpisodes && AppState.currentDetailItem && AppState.currentDetailItem.hash) {
+    // Грузим и при выключенном «Переключать серии автоматически»: без
+    // currentEpisodeFiles у таймкода нет ключа серии (getTimecodeMediaKey),
+    // сервер не связывает файл с сериалом — и после плеера не было ни
+    // «Продолжить», ни серий в карточке, ни записи в «Продолжить просмотр».
+    if (AppState.currentDetailItem && AppState.currentDetailItem.hash) {
       try { await loadEpisodesInfo(AppState.currentDetailItem.hash, androidRef ? androidRef.fileId : null); } catch (e) { /* ignore, fall back to single episode */ }
       // Названия серий для плейлиста. Карточку раздачи не открывали (запуск с
       // главной, из «Продолжить») — их ещё нет, loadEpisodesInfo только начал

@@ -2298,10 +2298,12 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       online_subs: onlineSubsPayload(torrentHash, fileId),
       online_subs_proxy: AppState.subsApiHost ? AppState.protocol + '//' + AppState.subsApiHost : ''
     };
-    if (AppState.autoSwitchEpisodes) {
+    var canStopAtEpisodeEnd = typeof window.AndroidJS.playlistAutoNext === 'function';
+    if (AppState.autoSwitchEpisodes || canStopAtEpisodeEnd) {
       var playlist = buildEpisodesPlaylist(currentEpisodeIndex, seekTime);
       if (playlist) playerData.playlist = playlist;
     }
+    playerData.auto_next = !!AppState.autoSwitchEpisodes;
     var authHeaders = getAuthHeaders();
     if (authHeaders && authHeaders.Authorization) playerData.headers = {
       Authorization: authHeaders.Authorization
@@ -2464,7 +2466,6 @@ function _loadResumeEpisodes() {
   return _loadResumeEpisodes.apply(this, arguments);
 }
 window.loadResumeEpisodes = loadResumeEpisodes;
-var SERIES_FILES_WAIT_MS = 15000;
 var seriesStartCancel = null;
 function fileEpisodeRef(hash, file, seasons) {
   var meta = window.getTorrentEpisodeMeta(hash, file.id);
@@ -2562,20 +2563,18 @@ function findSeriesStart(_x21, _x22) {
 }
 function _findSeriesStart() {
   _findSeriesStart = _asyncToGenerator(function* (torrent, item) {
-    var timer = null;
-    var waited = yield Promise.race([getTorrentFilesWithCache(torrent, true), new Promise(function (resolve) {
-      timer = setTimeout(function () {
-        resolve(null);
-      }, SERIES_FILES_WAIT_MS);
-    }), new Promise(function (resolve) {
+    var cancelled = false;
+    var onCancel = new Promise(function (resolve) {
       seriesStartCancel = function () {
+        cancelled = true;
         resolve('cancelled');
       };
-    })]);
-    clearTimeout(timer);
+    });
+    var files = yield Promise.race([waitSeasonFiles(torrent, function () {
+      return cancelled;
+    }), onCancel]);
     seriesStartCancel = null;
-    if (waited === 'cancelled') return waited;
-    var files = extractVideoFiles(waited || []);
+    if (files === 'cancelled') return files;
     if (!files.length) return null;
     var resume = window.HomeScreen ? yield HomeScreen.fetchResume({
       id: item.id,
@@ -3609,11 +3608,11 @@ function _startHLSPlayback() {
     var applePlayer = typeof getApplePlayer === 'function' ? getApplePlayer() : null;
     if (applePlayer && applePlayer.template) {
       var appleRef = parseStreamRef(originalUrl);
-      if (AppState.autoSwitchEpisodes && AppState.currentDetailItem && AppState.currentDetailItem.hash) {
+      if (AppState.currentDetailItem && AppState.currentDetailItem.hash) {
         try {
           yield loadEpisodesInfo(AppState.currentDetailItem.hash, appleRef ? appleRef.fileId : null);
         } catch (e) {}
-        if (typeof getTorrentProgressBatch === 'function') {
+        if (AppState.autoSwitchEpisodes && typeof getTorrentProgressBatch === 'function') {
           try {
             yield getTorrentProgressBatch(AppState.currentDetailItem.hash, currentEpisodeFiles);
           } catch (e) {}
@@ -3630,7 +3629,7 @@ function _startHLSPlayback() {
     }
     if (window.AndroidJS) {
       var androidRef = parseStreamRef(originalUrl);
-      if (AppState.autoSwitchEpisodes && AppState.currentDetailItem && AppState.currentDetailItem.hash) {
+      if (AppState.currentDetailItem && AppState.currentDetailItem.hash) {
         try {
           yield loadEpisodesInfo(AppState.currentDetailItem.hash, androidRef ? androidRef.fileId : null);
         } catch (e) {}

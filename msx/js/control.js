@@ -2983,8 +2983,18 @@ function setupKeyboardHandlers() {
             }
             if (isKeyPressed('LEFT', k) || isKeyPressed('RIGHT', k)) {
                 e.preventDefault();
-                // cv посчитан в начале ветки, панель с тех пор никто не трогал
-                if (!cv) return;
+                // Панель скрыта (cv посчитан в начале ветки): влево/вправо —
+                // сразу перемотка назад/вперёд, как в нативном плеере. Панель
+                // открывается на ползунке, дальше — та же перемотка с ускорением
+                // при удержании, сам seek — на отпускании (keyup)
+                if (!cv) {
+                    if (typeof window.getOpenPlayerPanel === 'function' && window.getOpenPlayerPanel()) return;
+                    showPlayerControls('seek-slider');
+                    updateFocusableElements();
+                    var hotSeek = focusableElements.indexOf(getEl('seek-slider'));
+                    if (hotSeek === -1) return;
+                    setFocus(hotSeek);
+                }
                 if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
 
                 var fe = focusableElements[currentFocusIndex];
