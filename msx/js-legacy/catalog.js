@@ -2280,18 +2280,6 @@ function ensureCatalogGridVisible(el) {
     target.style.opacity = '';
   }
 }
-function catalogGridTitle() {
-  var key = catalogState.currentCatalog;
-  if (!key) return '';
-  if (key === 'person') return catalogState.person && catalogState.person.name || 'Фильмография';
-  return CATALOG_CONFIG[key] && CATALOG_CONFIG[key].name || '';
-}
-function updateCatalogGridTitle(grid) {
-  grid = grid || getCatalogGridEl();
-  if (!grid) return;
-  var t = catalogGridTitle();
-  if (t) grid.setAttribute('data-title', t);else grid.removeAttribute('data-title');
-}
 function showCatalogGridView() {
   var rows = getCatalogRowsEl(),
     grid = getCatalogGridEl();
@@ -2302,10 +2290,7 @@ function showCatalogGridView() {
     if (catalogFadedEl === rows) catalogFadedEl = null;
     rows.style.display = 'none';
   }
-  if (grid) {
-    grid.style.display = '';
-    updateCatalogGridTitle(grid);
-  }
+  if (grid) grid.style.display = '';
   if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
 }
 var catalogRowsRevealPending = false;

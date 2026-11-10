@@ -193,7 +193,7 @@ var Animations = (function () {
     // вложенный индикатор был бы не виден именно тогда, когда он нужен.
     // z-index 120 — выше #detail-view (100) и ниже остальных оверлеев (200+).
     // Стили инлайном: css/styles.css не трогаем. inset не используем — Chrome 66 его не знает.
-    // Спиннер и подпись — уже существующие классы из styles.css.
+    // Спиннер — общий класс из styles.css, вид кометы — по #detail-loading.
     function getDetailLoader(create) {
         if (detailLoaderEl && detailLoaderEl.parentNode) return detailLoaderEl;
         if (!create) return null;
@@ -206,8 +206,9 @@ var Animations = (function () {
         detailLoaderEl.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;' +
             'display:none;flex-direction:column;align-items:center;justify-content:center;' +
             'background:rgba(0,0,0,0.75);z-index:120;opacity:0;pointer-events:none;';
-        detailLoaderEl.innerHTML = '<div class="loading-spinner"></div>' +
-            '<div class="loading-text">Загрузка...</div>';
+        // Только комета (styles.css: #detail-loading) — подпись «Загрузка…»
+        // ничего к ней не добавляла
+        detailLoaderEl.innerHTML = '<div class="loading-spinner"></div>';
         host.appendChild(detailLoaderEl);
 
         return detailLoaderEl;

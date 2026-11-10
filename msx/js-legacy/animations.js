@@ -121,7 +121,7 @@ var Animations = function () {
     detailLoaderEl = document.createElement('div');
     detailLoaderEl.id = 'detail-loading';
     detailLoaderEl.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;' + 'display:none;flex-direction:column;align-items:center;justify-content:center;' + 'background:rgba(0,0,0,0.75);z-index:120;opacity:0;pointer-events:none;';
-    detailLoaderEl.innerHTML = '<div class="loading-spinner"></div>' + '<div class="loading-text">Загрузка...</div>';
+    detailLoaderEl.innerHTML = '<div class="loading-spinner"></div>';
     host.appendChild(detailLoaderEl);
     return detailLoaderEl;
   }

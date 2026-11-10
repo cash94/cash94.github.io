@@ -1122,21 +1122,24 @@ textarea {
    нельзя — его обрезал бы contain: content у карточки, а он для скорости
    нужнее. */
 
-/* Название категории — над сеткой. Псевдоэлемент, а не элемент в сетке: её
-   режут на чанки с распорками, лишний ребёнок сбил бы им счёт (см.
-   updateCatalogGridTitle в catalog.js). position: absolute — в раскладку
-   сетки не попадает; relative — для Chrome 66 без contain. Слева — тот же
-   отступ, что у карточек (padding сетки). */
-#catalog-grid[data-title],
+/* Вертикаль сетки категории листает по строкам control.js (колесо и свайп —
+   шаг фокуса, как стрелкой пульта), поэтому нативную прокрутку пальцем
+   выключаем; горизонтальных лент в сетке нет */
+#catalog-grid {
+  touch-action: pan-x;
+}
+
+/* «Мои торренты»: над сеткой — строка заголовка. Псевдоэлемент, а не элемент
+   в сетке; position: absolute — в раскладку сетки не попадает, relative — для
+   Chrome 66 без contain. Слева — тот же отступ, что у карточек (padding
+   сетки). У сетки категории заголовка нет: карточки начинаются сразу. */
 #torrents-grid {
   position: relative;
   padding-top: 52px;
 }
 
-/* «Мои торренты» — та же строка заголовка, текст постоянный */
-#catalog-grid[data-title]::before,
 #torrents-grid::before {
-  content: attr(data-title);
+  content: "Мои торренты";
   position: absolute;
   top: 6px;
   left: 0;
@@ -1151,10 +1154,6 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   pointer-events: none;
-}
-
-#torrents-grid::before {
-  content: "Мои торренты";
 }
 
 /* На постере ничего поверх — год и оценка переехали под название */
@@ -1213,12 +1212,10 @@ textarea {
 
 /* 1920×1080: как 1280×720, ×1.5 (так же, как текст главной) */
 @media screen and (min-width: 1600px) and (min-height: 880px) {
-  #catalog-grid[data-title],
   #torrents-grid {
     padding-top: 78px;
   }
 
-  #catalog-grid[data-title]::before,
   #torrents-grid::before {
     top: 9px;
     font-size: 39px;
@@ -1232,12 +1229,10 @@ textarea {
 
 /* Телефон */
 @media (max-width: 768px) {
-  #catalog-grid[data-title],
   #torrents-grid {
     padding-top: 44px;
   }
 
-  #catalog-grid[data-title]::before,
   #torrents-grid::before {
     top: 4px;
     font-size: 22px;
@@ -14756,7 +14751,8 @@ html.apple-tv-ui #search-overlay {
 }
 
 /* ===== Экраны загрузки: кольцо-«комета» и подписи без плашки ===============
-   #loading-overlay (showLoading), #playback-overlay («Воспроизведение…») и
+   #loading-overlay (showLoading), #detail-loading (подмена карточки фильма,
+   animations.js — там без подписи), #playback-overlay («Воспроизведение…») и
    #loading-player-overlay (перемотка в плеере). Раньше — тонкая дуга и текст
    в тёмно-синей «таблетке» с рамкой, выбивавшейся из нового стиля.
 
@@ -14769,6 +14765,7 @@ html.apple-tv-ui #search-overlay {
 
    Размеры — в --cu (1,852vh ≈ 20px на 1080), как в карточке и выдаче. */
 #loading-overlay,
+#detail-loading,
 #playback-overlay,
 #loading-player-overlay {
   --cu: 1.852vh;
@@ -14776,6 +14773,7 @@ html.apple-tv-ui #search-overlay {
 
 @media screen and (min-width: 1900px) and (min-height: 900px) and (max-height: 1079px) {
   html.apple-device #loading-overlay,
+  html.apple-device #detail-loading,
   html.apple-device #playback-overlay,
   html.apple-device #loading-player-overlay {
     --cu: 20px;
@@ -14783,6 +14781,7 @@ html.apple-tv-ui #search-overlay {
 }
 
 html.apple-tv-ui #loading-overlay,
+html.apple-tv-ui #detail-loading,
 html.apple-tv-ui #playback-overlay,
 html.apple-tv-ui #loading-player-overlay {
   --cu: 20px;
@@ -14790,6 +14789,7 @@ html.apple-tv-ui #loading-player-overlay {
 
 @media (max-width: 768px) {
   #loading-overlay,
+  #detail-loading,
   #playback-overlay,
   #loading-player-overlay {
     --cu: 13px;
@@ -14797,6 +14797,7 @@ html.apple-tv-ui #loading-player-overlay {
 }
 
 #loading-overlay .loading-spinner,
+#detail-loading .loading-spinner,
 #playback-overlay .playback-spinner,
 #loading-player-overlay .loading-player-spinner {
   -webkit-box-sizing: border-box;
@@ -14817,6 +14818,7 @@ html.apple-tv-ui #loading-player-overlay {
    залитый цветом квадрат */
 @supports ((-webkit-mask-image: url("")) or (mask-image: url(""))) {
   #loading-overlay .loading-spinner,
+  #detail-loading .loading-spinner,
   #playback-overlay .playback-spinner,
   #loading-player-overlay .loading-player-spinner {
     border: 0;

@@ -1286,6 +1286,118 @@ document.addEventListener('touchend', function (e) {
 
 document.addEventListener('touchcancel', function () { cinemaSwipe = null; }, { passive: true });
 
+/*
+ * Сетка категории: колесо и свайп — по строкам, как стрелки пульта.
+ *
+ * Раньше #main-container под колесом и пальцем ехал по пикселям: строки
+ * вставали где придётся, а фокус оставался на карточке, ушедшей за экран.
+ * Теперь вертикальный жест — это шаг «вниз»/«вверх» через ту же стратегию
+ * экрана (runScreenNavigation): фокус переходит в соседнюю строку на ту же
+ * колонку, а прокрутку делает её же прижатие строки к низу
+ * (scrollCatalogGridCardIntoView). Догрузка и достройка чанков — те же, что у
+ * пульта. Вверх из первой строки жест не уводит: шапка — это пульт.
+ *
+ * Нет фокуса в сетке (только открыли, фокус в шапке) — первый шаг ставит его
+ * на карточку под указателем, иначе на первую строку, что видна целиком.
+ *
+ * Пальцем: нативную вертикаль выключает CSS (touch-action: pan-x у
+ * #catalog-grid), поэтому слушатели пассивные; длинный свайп проходит
+ * несколько строк — по шагу на CATALOG_SWIPE_STEP_PX пути.
+ */
+var CATALOG_WHEEL_STEP_PX = 40;      // как у сцены и главной
+var CATALOG_WHEEL_IDLE_MS = 400;
+var CATALOG_SWIPE_STEP_PX = 70;
+var CATALOG_SWIPE_AXIS_PX = 10;
+var catalogWheelAccum = 0;
+var catalogWheelAt = 0;
+var catalogGestureLockUntil = 0;
+var catalogSwipe = null;
+
+function catalogGridGestureTarget(target) {
+    if (currentScreen() !== 'catalog' || isCatalogRowsMode()) return false;
+    var grid = getEl('catalog-grid');
+    if (!grid || grid.style.display === 'none') return false;
+    var mc = getEl('main-container');
+    return !!(target && mc && mc.contains(target));
+}
+
+/** Шаг жеста на строку вниз/вверх; true — шаг сделан */
+function catalogGridGestureStep(down, target) {
+    var cards = getCatalogGridCards();
+    if (!cards.length) return false;
+    var f = document.querySelector('#catalog-grid .torrent-card.focused');
+    window.lastNavDirection = down ? 'down' : 'up';
+    if (!f) {
+        var base = target && target.closest ? target.closest('#catalog-grid .torrent-card') : null;
+        if (!base) {
+            var mc = getEl('main-container');
+            var top = mc ? mc.getBoundingClientRect().top : 0;
+            for (var i = 0; i < cards.length && !base; i++) {
+                var r = cards[i].getBoundingClientRect();
+                if (r.height && r.top >= top - 1) base = cards[i];
+            }
+        }
+        return focusEl(base || cards[0], { direction: down ? 'down' : 'up' });
+    }
+    if (!down && isFirstRowGridCard(f)) return false;
+    runScreenNavigation(down ? 'down' : 'up');
+    return true;
+}
+
+document.addEventListener('wheel', function (e) {
+    if (e.defaultPrevented || e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
+    if (!catalogGridGestureTarget(e.target)) return;
+
+    var dy = e.deltaY || e.wheelDeltaY ||
+        (e.wheelDelta ? -e.wheelDelta / 40 : 0) || e.detail || 0;
+    var dx = e.deltaX || e.wheelDeltaX || 0;
+    if (!dy || Math.abs(dx) > Math.abs(dy)) return;
+    // Страницу двигает шаг фокуса — нативной прокрутки под колесом быть не должно
+    e.preventDefault();
+
+    var now = Date.now();
+    if (now - catalogWheelAt > CATALOG_WHEEL_IDLE_MS || (catalogWheelAccum > 0) !== (dy > 0)) catalogWheelAccum = 0;
+    catalogWheelAt = now;
+    catalogWheelAccum += dy;
+    if (Math.abs(catalogWheelAccum) < CATALOG_WHEEL_STEP_PX) return;
+    // Инерция тачпада не должна пролистывать полкаталога за один жест
+    if (now < catalogGestureLockUntil) return;
+    catalogWheelAccum = 0;
+    catalogGestureLockUntil = now + NAV_STEP_BASE_MS;
+    catalogGridGestureStep(dy > 0, e.target);
+}, { passive: false });
+
+document.addEventListener('touchstart', function (e) {
+    catalogSwipe = null;
+    if (!e.touches || e.touches.length !== 1 || !catalogGridGestureTarget(e.target)) return;
+    var t = e.touches[0];
+    catalogSwipe = { x: t.clientX, y: t.clientY, anchor: t.clientY, vertical: false, target: e.target };
+}, { passive: true });
+
+document.addEventListener('touchmove', function (e) {
+    var sw = catalogSwipe;
+    if (!sw || !e.touches || e.touches.length !== 1) return;
+    var t = e.touches[0];
+    if (!sw.vertical) {
+        var dx = t.clientX - sw.x, dy = t.clientY - sw.y;
+        if (Math.abs(dx) < CATALOG_SWIPE_AXIS_PX && Math.abs(dy) < CATALOG_SWIPE_AXIS_PX) return;
+        if (Math.abs(dx) > Math.abs(dy)) { catalogSwipe = null; return; }
+        sw.vertical = true;
+        sw.anchor = t.clientY;      // порог не считаем за пройденный путь
+    }
+    var now = Date.now();
+    if (now < catalogGestureLockUntil) return;
+    var travel = t.clientY - sw.anchor;
+    if (Math.abs(travel) < CATALOG_SWIPE_STEP_PX) return;
+    sw.anchor = t.clientY;
+    catalogGestureLockUntil = now + NAV_STEP_BASE_MS;
+    // Палец вверх — строка ниже, как при прокрутке
+    catalogGridGestureStep(travel < 0, sw.target);
+}, { passive: true });
+
+document.addEventListener('touchend', function () { catalogSwipe = null; }, { passive: true });
+document.addEventListener('touchcancel', function () { catalogSwipe = null; }, { passive: true });
+
 /**
  * Плитка, на которую встаём, входя в ряд серий сверху.
  *
