@@ -5313,6 +5313,61 @@ window.blockSwipe = function (ms) {
 };
 
 // ==================== УПРАВЛЕНИЕ ГРОМКОСТЬЮ КОЛЕСОМ МЫШИ ====================
+/*
+ * Колесо в плеере — громкость, шаг 2%.
+ *
+ * Открыта панель (серии, дорожки, субтитры, настройки) — колесо её, а не
+ * громкости: раньше обработчик отменял прокрутку на всём экране плеера, и
+ * длинный список серий колесом не листался, а громкость при этом ехала.
+ *
+ * Новый уровень виден справа — вертикальная шкала в той же плашке, что и
+ * индикатор перемотки (#volume-indicator, styles.css): раньше громкость
+ * менялась вслепую, ползунок внизу прятался вместе с панелью управления.
+ */
+var VOLUME_INDICATOR_HIDE_MS = 800;
+var volumeIndicatorEl = null;
+var volumeIndicatorTimer = null;
+
+function getVolumeIndicator() {
+    if (volumeIndicatorEl && volumeIndicatorEl.parentNode) return volumeIndicatorEl;
+    var host = getEl('player-screen');
+    if (!host) return null;
+    volumeIndicatorEl = getEl('volume-indicator');
+    if (!volumeIndicatorEl) {
+        volumeIndicatorEl = document.createElement('div');
+        volumeIndicatorEl.id = 'volume-indicator';
+        volumeIndicatorEl.className = 'volume-indicator';
+        volumeIndicatorEl.innerHTML =
+            '<div class="volume-indicator-value">100</div>' +
+            '<div class="volume-indicator-track"><div class="volume-indicator-fill"></div></div>' +
+            '<i class="volume-indicator-icon fi fi-rr-volume"></i>';
+        host.appendChild(volumeIndicatorEl);
+    }
+    return volumeIndicatorEl;
+}
+
+/** @param {number} volume 0…1 (уже с учётом muted) */
+function showVolumeIndicator(volume) {
+    var el = getVolumeIndicator();
+    if (!el) return;
+    var pct = Math.round(Math.max(0, Math.min(1, volume)) * 100);
+    var val = el.querySelector('.volume-indicator-value');
+    var fill = el.querySelector('.volume-indicator-fill');
+    if (val) val.textContent = String(pct);
+    // Высота, а не transform: scaleY — шкала в 200px, пересчёт копеечный, а
+    // скругление у заполнения не сплющивается
+    if (fill) fill.style.height = pct + '%';
+    el.classList.toggle('is-muted', pct === 0);
+    var icon = el.querySelector('.volume-indicator-icon');
+    if (icon) icon.className = 'volume-indicator-icon fi ' + (pct === 0 ? 'fi-rr-volume-slash' : 'fi-rr-volume');
+    el.classList.add('visible');
+    if (volumeIndicatorTimer) clearTimeout(volumeIndicatorTimer);
+    volumeIndicatorTimer = setTimeout(function () {
+        volumeIndicatorTimer = null;
+        el.classList.remove('visible');
+    }, VOLUME_INDICATOR_HIDE_MS);
+}
+
 function setupPlayerWheelControl() {
     var STEP = 0.02; // Шаг 2%
     var lastWheelTime = 0;
@@ -5321,52 +5376,41 @@ function setupPlayerWheelControl() {
     document.addEventListener('wheel', function (e) {
         // Работаем только на экране плеера
         if (!AppState || AppState.currentScreen !== 'player') return;
+        // Панель открыта — колесо листает её списки, громкость не трогаем
+        if (typeof window.getOpenPlayerPanel === 'function' && window.getOpenPlayerPanel()) return;
+
+        // Страницу под плеером колесо не прокручивает
+        e.preventDefault();
 
         // Throttling - не обрабатываем слишком частые события
         var now = Date.now();
         if (now - lastWheelTime < WHEEL_THROTTLE) return;
         lastWheelTime = now;
 
-        // Предотвращаем скролл страницы
-        e.preventDefault();
-
         var videoPlayer = getEl('video-player');
         var volumeSlider = getEl('volume-slider');
 
         if (!videoPlayer) return;
+        var dy = e.deltaY || 0;
+        if (!dy) return;
 
-        // Определяем направление: вверх = громче, вниз = тише
-        var delta = e.deltaY < 0 ? STEP : -STEP;
+        // Вверх = громче, вниз = тише. Из «без звука» шаг идёт от нуля:
+        // иначе первый щелчок вверх включал звук сразу на прежнем уровне
+        var currentVolume = videoPlayer.muted ? 0 : videoPlayer.volume;
+        var newVolume = currentVolume + (dy < 0 ? STEP : -STEP);
+        newVolume = Math.round(Math.max(0, Math.min(1, newVolume)) * 100) / 100;
 
-        // Получаем текущую громкость
-        var currentVolume = videoPlayer.volume;
-        var newVolume = currentVolume + delta;
-
-        // Ограничиваем диапазон [0, 1]
-        newVolume = Math.max(0, Math.min(1, newVolume));
-
-        // Округляем до 2 знаков
-        newVolume = Math.round(newVolume * 100) / 100;
-
-        // Применяем новую громкость
         videoPlayer.volume = newVolume;
+        if (volumeSlider) volumeSlider.value = newVolume;
+        if (newVolume > 0 && videoPlayer.muted) videoPlayer.muted = false;
 
-        // Обновляем ползунок
-        if (volumeSlider) {
-            volumeSlider.value = newVolume;
-        }
-
-        // Если громкость > 0 и видео было замьючено - размьючиваем
-        if (newVolume > 0 && videoPlayer.muted) {
-            videoPlayer.muted = false;
-        }
+        showVolumeIndicator(videoPlayer.muted ? 0 : newVolume);
 
         // Сбрасываем таймер скрытия UI
         if (typeof window.resetMouseIdleTimer === 'function') {
             window.resetMouseIdleTimer();
         }
 
-        // Сохраняем в localStorage
         try {
             localStorage.setItem('playerVolume', newVolume);
         } catch (err) { /* ignore */ }

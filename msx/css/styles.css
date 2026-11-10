@@ -2467,6 +2467,101 @@ body.detail-open {
   letter-spacing: 0.12em;
 }
 
+/* ===== ИНДИКАТОР ГРОМКОСТИ (control.js: showVolumeIndicator) =====
+   Колесо мыши в плеере. Та же плашка, что у перемотки, только справа и
+   столбиком: процент, вертикальная шкала (заполняется снизу цветом фокуса из
+   «Внешнего вида») и значок. Внутри #player-screen — виден и в полноэкранном. */
+.volume-indicator {
+  position: absolute;
+  right: 40px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 235;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 64px;
+  padding: 16px 0 14px;
+  border-radius: 16px;
+  background: rgba(10, 10, 18, 0.72);
+  color: #fff;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.volume-indicator.visible {
+  opacity: 1;
+}
+
+.volume-indicator-value {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.volume-indicator-track {
+  position: relative;
+  width: 8px;
+  height: 200px;
+  margin: 14px 0;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+}
+
+.volume-indicator-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--focus-color, #ff8c00);
+  transition: height 0.08s linear;
+}
+
+.volume-indicator-icon {
+  display: block;
+  font-size: 20px;
+  line-height: 1;
+  color: #c4c4cc;
+}
+
+.volume-indicator.is-muted .volume-indicator-icon {
+  color: #83838f;
+}
+
+/* 1920×1080 — ×1.5, как текст плеера */
+@media screen and (min-width: 1600px) and (min-height: 880px) {
+  .volume-indicator {
+    right: 60px;
+    width: 92px;
+    padding: 22px 0 20px;
+    border-radius: 22px;
+  }
+
+  .volume-indicator-value {
+    font-size: 30px;
+  }
+
+  .volume-indicator-track {
+    width: 12px;
+    height: 300px;
+    margin: 20px 0;
+    border-radius: 6px;
+  }
+
+  .volume-indicator-fill {
+    border-radius: 6px;
+  }
+
+  .volume-indicator-icon {
+    font-size: 28px;
+  }
+}
+
 #exit-player-btn {
   position: fixed;
   width: 42px;
