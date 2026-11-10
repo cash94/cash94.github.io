@@ -796,6 +796,9 @@ var TS_DEVICE_URL = 'http://localhost:8090';
 /**
  * Адрес TorrServer на этом устройстве. На webOS встроенный поднимается на
  * 18090, если 8090 занят (WebOSTorrServer: run.sh), — адрес даёт мост.
+ * Android-приложение (с поддержкой MonoServer) присылает адрес в статусе:
+ * MonoServer там на 8099 (приложение online.torrstream.monoserver), чтобы не
+ * мешать TorrServer на 8090. На Tizen MonoServer-Tizen.wgt — на 8090.
  */
 function deviceTorrServerUrl() {
     var b = deviceTorrServerBridge();
@@ -1533,12 +1536,16 @@ var TizenTorrServer = (function () {
         probe();
         var id = serviceId();
         var running = !!version;
+        // MonoServer-Tizen.wgt отвечает на /echo «MatriX.136 (MonoServer 1.0.35)»
+        var mono = /\(MonoServer ([^)]+)\)/.exec(version);
         var st = {
             supported: running || !!id,
             installed: running || !!id,
             running: running,
             own: false,
-            runningVersion: version,
+            // Работает — по /echo; молчит — по установленной службе (первая — MonoServer-Tizen)
+            server: (running ? mono : id === SERVICE_IDS[0]) ? 'monoserver' : 'torrserver',
+            runningVersion: mono ? mono[1] : version,
             starting: !!starting && Date.now() - starting < 20000,
             error: error
         };
@@ -1586,6 +1593,10 @@ function deviceTorrServerBridge() {
     if (window.AndroidJS && typeof AndroidJS.tsLocalStatus === 'function') {
         return {
             status: function () { try { return JSON.parse(AndroidJS.tsLocalStatus()); } catch (e) { return null; } },
+            // Старые сборки url не присылают — тогда localhost:8090
+            url: function () {
+                try { var s = JSON.parse(AndroidJS.tsLocalStatus()); return (s && s.url) || ''; } catch (e) { return ''; }
+            },
             install: function () { AndroidJS.tsLocalInstall(); },
             start: function () { AndroidJS.tsLocalStart(); },
             stop: function () { AndroidJS.tsLocalStop(); },
@@ -1700,14 +1711,22 @@ var deviceTorrServerPanel = (function () {
 
     function render(st) {
         syncDeviceUrl();
+        // MonoServer: Android — отдельное приложение на 8099 (st.server, st.monoInstalled
+        // присылает приложение с его поддержкой), Tizen — служба MonoServer-Tizen.wgt
+        var mono = st.server === 'monoserver';
+        var monoIdle = !!st.monoInstalled && !st.running && !st.downloading;
         var text;
         if (st.ask) text = st.ask;
-        else if (!st.supported) text = st.unsupportedText || 'Процессор этого устройства TorrServer не поддерживает';
+        else if (!st.supported && !st.monoInstalled) text = st.unsupportedText || 'Процессор этого устройства TorrServer не поддерживает';
         else if (st.downloading) text = 'Скачиваю TorrServer… ' + (st.progress || 0) + '%';
-        else if (st.starting && !st.running) text = 'Запускаю TorrServer…';
+        else if (st.starting && !st.running) text = 'Запускаю ' + (mono ? 'MonoServer' : 'TorrServer') + '…';
         else if (st.running && st.own) text = 'Работает встроенный TorrServer ' + (st.version || '');
+        else if (st.running && mono) text = 'На устройстве работает MonoServer ' + (st.runningVersion || '') + ' — используется он';
         else if (st.running) text = 'На устройстве уже работает TorrServer ' + (st.runningVersion || '') + ' — используется он';
+        else if (monoIdle) text = 'MonoServer установлен, но не отвечает. «Запустить» откроет его приложение — сервер поднимется, и можно вернуться сюда';
         else if (st.installed) text = 'TorrServer ' + (st.version || '') + ' установлен, но не запущен';
+        else if ('monoInstalled' in st) text = 'TorrServer на устройстве не найден. Можно скачать официальную сборку (около 65 МБ) ' +
+            'или поставить MonoServer — приложение с github.com/cash94/MonoServer (релизы), оно работает на порту 8099';
         else text = 'TorrServer на устройстве не найден. Можно скачать официальную сборку (около 65 МБ)';
         if (st.note && !st.downloading) text += '. ' + st.note;
         if (st.error && !st.downloading && !st.starting) text += '. Ошибка: ' + st.error;
@@ -1717,10 +1736,10 @@ var deviceTorrServerPanel = (function () {
         // Пока ждём ответа «убрать ли из автозапуска» — только его кнопки
         var busy = st.downloading || !!st.ask || !!st.starting;
         var external = st.running && !st.own;
-        show('ts-device-install', st.supported && !st.installed && !external && !busy);
-        show('ts-device-start', st.installed && !st.running && !busy);
+        show('ts-device-install', st.supported && !st.installed && !st.monoInstalled && !external && !busy);
+        show('ts-device-start', (st.installed || monoIdle) && !st.running && !busy);
         show('ts-device-stop', st.own && !busy);
-        show('ts-device-update', st.installed && !external && !busy && st.latest && st.latest !== st.version);
+        show('ts-device-update', st.installed && !monoIdle && !external && !busy && st.latest && st.latest !== st.version);
         show('ts-device-replace', external && !!st.canReplace && !busy);
         show('ts-device-autostart-off', !!st.ask);
         show('ts-device-autostart-keep', !!st.ask);
@@ -1826,8 +1845,9 @@ var deviceTorrServerPanel = (function () {
                 if (s && s.supported && s.installed && !s.downloading && !s.ask) act('start');
             }, atStartup ? 2500 : 1500);
         } else {
+            // MonoServer установлен, но молчит — «start» откроет его приложение
             var st0 = readStatus();
-            if (!atStartup && st0 && st0.installed && !st0.running) act('start');
+            if (!atStartup && st0 && (st0.installed || st0.monoInstalled) && !st0.running) act('start');
         }
         start();
     }
