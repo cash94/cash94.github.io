@@ -832,31 +832,70 @@ document.addEventListener('touchcancel', function () {
 }, {
   passive: true
 });
-var CATALOG_WHEEL_STEP_PX = 40;
-var CATALOG_WHEEL_IDLE_MS = 400;
-var CATALOG_SWIPE_STEP_PX = 70;
-var CATALOG_SWIPE_AXIS_PX = 10;
-var catalogWheelAccum = 0;
-var catalogWheelAt = 0;
-var catalogGestureLockUntil = 0;
-var catalogSwipe = null;
-function catalogGridGestureTarget(target) {
-  if (currentScreen() !== 'catalog' || isCatalogRowsMode()) return false;
-  var grid = getEl('catalog-grid');
-  if (!grid || grid.style.display === 'none') return false;
-  var mc = getEl('main-container');
-  return !!(target && mc && mc.contains(target));
+var GRID_WHEEL_STEP_PX = 40;
+var GRID_WHEEL_IDLE_MS = 400;
+var GRID_SWIPE_STEP_PX = 70;
+var GRID_SWIPE_AXIS_PX = 10;
+var gridWheelAccum = 0;
+var gridWheelAt = 0;
+var gridGestureLockUntil = 0;
+var gridSwipe = null;
+function gridGestureScope(target) {
+  if (!target || !target.closest) return null;
+  var sc = currentScreen(),
+    grid = null,
+    cards = null,
+    cols = 0,
+    view = null;
+  if (sc === 'catalog') {
+    if (isCatalogRowsMode()) return null;
+    grid = getEl('catalog-grid');
+    view = getEl('main-container');
+    if (!grid || grid.style.display === 'none' || !view || !view.contains(target)) return null;
+    return {
+      grid: grid,
+      cards: getCatalogGridCards(),
+      cols: getColumns(),
+      view: view,
+      loadsMore: true
+    };
+  }
+  if (sc === 'torrents') {
+    grid = getEl('torrents-grid');
+    view = getEl('main-container');
+    if (!grid || !view || !view.contains(target)) return null;
+    cards = getTorrentCards();
+    cols = getColumns();
+  } else if (sc === 'search') {
+    var cm = typeof window.getCurrentSearchMode === 'function' ? window.getCurrentSearchMode() : '';
+    if (cm !== 'globalsearch') return null;
+    view = getEl('search-results');
+    grid = view && view.querySelector('.global-search-grid');
+    if (!grid || !view.contains(target)) return null;
+    cards = getSearchResults();
+    cols = getSearchGridColumns();
+  } else {
+    return null;
+  }
+  return {
+    grid: grid,
+    cards: cards,
+    cols: cols,
+    view: view,
+    loadsMore: false
+  };
 }
-function catalogGridGestureStep(down, target) {
-  var cards = getCatalogGridCards();
-  if (!cards.length) return false;
-  var f = document.querySelector('#catalog-grid .torrent-card.focused');
+function gridGestureStep(scope, down, target) {
+  var cards = scope.cards;
+  if (!cards.length || !(scope.cols > 0)) return false;
+  var f = scope.grid.querySelector('.focused');
+  var fi = f ? cards.indexOf(f) : -1;
   window.lastNavDirection = down ? 'down' : 'up';
-  if (!f) {
-    var base = target && target.closest ? target.closest('#catalog-grid .torrent-card') : null;
+  if (fi === -1) {
+    var base = target.closest('.torrent-card, .global-search-card');
+    if (base && cards.indexOf(base) === -1) base = null;
     if (!base) {
-      var mc = getEl('main-container');
-      var top = mc ? mc.getBoundingClientRect().top : 0;
+      var top = scope.view.getBoundingClientRect().top;
       for (var i = 0; i < cards.length && !base; i++) {
         var r = cards[i].getBoundingClientRect();
         if (r.height && r.top >= top - 1) base = cards[i];
@@ -866,34 +905,40 @@ function catalogGridGestureStep(down, target) {
       direction: down ? 'down' : 'up'
     });
   }
-  if (!down && isFirstRowGridCard(f)) return false;
+  if (scope.loadsMore) {
+    if (!down && isFirstRowGridCard(f)) return false;
+  } else {
+    if (!down && fi < scope.cols) return false;
+    if (down && fi + scope.cols >= cards.length && Math.floor(fi / scope.cols) === Math.floor((cards.length - 1) / scope.cols)) return false;
+  }
   runScreenNavigation(down ? 'down' : 'up');
   return true;
 }
 document.addEventListener('wheel', function (e) {
   if (e.defaultPrevented || e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
-  if (!catalogGridGestureTarget(e.target)) return;
+  var scope = gridGestureScope(e.target);
+  if (!scope) return;
   var dy = e.deltaY || e.wheelDeltaY || (e.wheelDelta ? -e.wheelDelta / 40 : 0) || e.detail || 0;
   var dx = e.deltaX || e.wheelDeltaX || 0;
   if (!dy || Math.abs(dx) > Math.abs(dy)) return;
   e.preventDefault();
   var now = Date.now();
-  if (now - catalogWheelAt > CATALOG_WHEEL_IDLE_MS || catalogWheelAccum > 0 !== dy > 0) catalogWheelAccum = 0;
-  catalogWheelAt = now;
-  catalogWheelAccum += dy;
-  if (Math.abs(catalogWheelAccum) < CATALOG_WHEEL_STEP_PX) return;
-  if (now < catalogGestureLockUntil) return;
-  catalogWheelAccum = 0;
-  catalogGestureLockUntil = now + NAV_STEP_BASE_MS;
-  catalogGridGestureStep(dy > 0, e.target);
+  if (now - gridWheelAt > GRID_WHEEL_IDLE_MS || gridWheelAccum > 0 !== dy > 0) gridWheelAccum = 0;
+  gridWheelAt = now;
+  gridWheelAccum += dy;
+  if (Math.abs(gridWheelAccum) < GRID_WHEEL_STEP_PX) return;
+  if (now < gridGestureLockUntil) return;
+  gridWheelAccum = 0;
+  gridGestureLockUntil = now + NAV_STEP_BASE_MS;
+  gridGestureStep(scope, dy > 0, e.target);
 }, {
   passive: false
 });
 document.addEventListener('touchstart', function (e) {
-  catalogSwipe = null;
-  if (!e.touches || e.touches.length !== 1 || !catalogGridGestureTarget(e.target)) return;
+  gridSwipe = null;
+  if (!e.touches || e.touches.length !== 1 || !gridGestureScope(e.target)) return;
   var t = e.touches[0];
-  catalogSwipe = {
+  gridSwipe = {
     x: t.clientX,
     y: t.clientY,
     anchor: t.clientY,
@@ -904,37 +949,42 @@ document.addEventListener('touchstart', function (e) {
   passive: true
 });
 document.addEventListener('touchmove', function (e) {
-  var sw = catalogSwipe;
+  var sw = gridSwipe;
   if (!sw || !e.touches || e.touches.length !== 1) return;
   var t = e.touches[0];
   if (!sw.vertical) {
     var dx = t.clientX - sw.x,
       dy = t.clientY - sw.y;
-    if (Math.abs(dx) < CATALOG_SWIPE_AXIS_PX && Math.abs(dy) < CATALOG_SWIPE_AXIS_PX) return;
+    if (Math.abs(dx) < GRID_SWIPE_AXIS_PX && Math.abs(dy) < GRID_SWIPE_AXIS_PX) return;
     if (Math.abs(dx) > Math.abs(dy)) {
-      catalogSwipe = null;
+      gridSwipe = null;
       return;
     }
     sw.vertical = true;
     sw.anchor = t.clientY;
   }
   var now = Date.now();
-  if (now < catalogGestureLockUntil) return;
+  if (now < gridGestureLockUntil) return;
   var travel = t.clientY - sw.anchor;
-  if (Math.abs(travel) < CATALOG_SWIPE_STEP_PX) return;
+  if (Math.abs(travel) < GRID_SWIPE_STEP_PX) return;
+  var scope = gridGestureScope(sw.target);
+  if (!scope) {
+    gridSwipe = null;
+    return;
+  }
   sw.anchor = t.clientY;
-  catalogGestureLockUntil = now + NAV_STEP_BASE_MS;
-  catalogGridGestureStep(travel < 0, sw.target);
+  gridGestureLockUntil = now + NAV_STEP_BASE_MS;
+  gridGestureStep(scope, travel < 0, sw.target);
 }, {
   passive: true
 });
 document.addEventListener('touchend', function () {
-  catalogSwipe = null;
+  gridSwipe = null;
 }, {
   passive: true
 });
 document.addEventListener('touchcancel', function () {
-  catalogSwipe = null;
+  gridSwipe = null;
 }, {
   passive: true
 });

@@ -5335,6 +5335,11 @@ function getTorrentProgressBatch(hash, files) {
             // Фильм/серия каждого файла: сервер запоминает их и отдаёт общий
             // таймкод фильма — начатый в другой раздаче (4K → 1080p) продолжится
             // с того же места (getTimecodeMediaKey в player.js)
+            // Сборник фильмов: у каждого файла свой фильм коллекции — карту
+            // файлов считаем до ключей (ensureCollectionMap в player.js)
+            if (typeof window.ensureCollectionMap === 'function') {
+                try { await window.ensureCollectionMap(hash, 1500); } catch (e) { }
+            }
             var mediaKeys = null;
             if (typeof window.getTimecodeMediaKey === 'function') {
                 for (var m = 0; m < videoFiles.length; m++) {
@@ -7679,6 +7684,15 @@ function renderFilteredGlobalResults(results) {
 
     var fragment = document.createDocumentFragment();
 
+    // Год, оценка и тип — строкой под названием, как у сетки каталога
+    // (appendCatalogCardSub в catalog.js); тип — только если в выдаче есть и
+    // фильмы, и сериалы
+    var hasTv = false, hasMovie = false;
+    for (var mi = 0; mi < limit; mi++) {
+        if (results[mi].media_type === 'tv') hasTv = true; else hasMovie = true;
+    }
+    var mixedTypes = hasTv && hasMovie;
+
     for (var idx = 0; idx < limit; idx++) {
         var result = results[idx];
         var title = result.title || result.name || 'Без названия';
@@ -7704,10 +7718,14 @@ function renderFilteredGlobalResults(results) {
             metaBadge: year
         });
 
+        if (typeof window.appendCatalogCardSub === 'function') {
+            window.appendCatalogCardSub(card, year, rating || '', mt, mixedTypes);
+        }
+
         if (!result.poster_path) {
             // Скелет-загрузка без постера так и мигал бы вечно — меняем на
             // заглушку. Не через updatePosterDOM: тот переписывает весь блок
-            // постера, и вместе с ним пропали бы плашка года и полоса оценки.
+            // постера целиком.
             var ph = card.querySelector('.no-poster');
             if (ph) {
                 ph.classList.remove('catalog-poster-loading');

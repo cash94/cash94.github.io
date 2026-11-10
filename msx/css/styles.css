@@ -1112,7 +1112,8 @@ textarea {
 }
 
 /* ── Сетка категории: редизайн по макету в Figma («Сетка категории») ──────
-   Сетка категории (#catalog-grid) и «Мои торренты» (#torrents-grid). «Похожие»
+   Сетка категории (#catalog-grid), «Мои торренты» (#torrents-grid) и выдача
+   поиска TMDB (.global-search-grid). «Похожие»
    в карточке фильма живут на тех же .card-modern, но у них своё оформление
    («сцена») — их правила ниже не трогают.
    Для слабых ТВ: на постере ни одной полупрозрачной плашки (год, полоса с
@@ -1122,43 +1123,21 @@ textarea {
    нельзя — его обрезал бы contain: content у карточки, а он для скорости
    нужнее. */
 
-/* Вертикаль сетки категории листает по строкам control.js (колесо и свайп —
-   шаг фокуса, как стрелкой пульта), поэтому нативную прокрутку пальцем
-   выключаем; горизонтальных лент в сетке нет */
-#catalog-grid {
+/* Вертикаль сеток категории, «Моих торрентов» и выдачи поиска TMDB листает
+   по строкам control.js (колесо и свайп — шаг фокуса, как стрелкой пульта),
+   поэтому нативную прокрутку пальцем выключаем; горизонтальных лент в сетках
+   нет. Заголовков над сетками нет: карточки начинаются сразу. */
+#catalog-grid,
+#torrents-grid,
+.global-search-grid {
   touch-action: pan-x;
-}
-
-/* «Мои торренты»: над сеткой — строка заголовка. Псевдоэлемент, а не элемент
-   в сетке; position: absolute — в раскладку сетки не попадает, relative — для
-   Chrome 66 без contain. Слева — тот же отступ, что у карточек (padding
-   сетки). У сетки категории заголовка нет: карточки начинаются сразу. */
-#torrents-grid {
-  position: relative;
-  padding-top: 52px;
-}
-
-#torrents-grid::before {
-  content: "Мои торренты";
-  position: absolute;
-  top: 6px;
-  left: 0;
-  right: 0;
-  padding-left: inherit;
-  padding-right: inherit;
-  font-size: 26px;
-  font-weight: 800;
-  line-height: 1.2;
-  color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  pointer-events: none;
 }
 
 /* На постере ничего поверх — год и оценка переехали под название */
 #catalog-grid .card-modern .poster-year,
-#catalog-grid .card-modern .poster-bar {
+#catalog-grid .card-modern .poster-bar,
+.global-search-grid .card-modern .poster-year,
+.global-search-grid .card-modern .poster-bar {
   display: none !important;
 }
 
@@ -1168,7 +1147,8 @@ textarea {
 }
 
 #catalog-grid .catalog-card-sub,
-#torrents-grid .catalog-card-sub {
+#torrents-grid .catalog-card-sub,
+.global-search-grid .catalog-card-sub {
   display: block;
   margin-top: 3px;
   /* Кегль — как у названия: его ставит ui-customizer.js с ползунка «Название»
@@ -1184,7 +1164,8 @@ textarea {
 
 /* Размер оценки обычно задаёт свой ползунок (.rating-badge{font-size…!important}
    в ui-customizer.js) — в строке под названием она идёт кеглем строки */
-#catalog-grid .catalog-card-sub .rating-badge {
+#catalog-grid .catalog-card-sub .rating-badge,
+.global-search-grid .catalog-card-sub .rating-badge {
   display: inline;
   color: #ff8c00;
   font-size: inherit !important;
@@ -1192,7 +1173,8 @@ textarea {
 }
 
 #catalog-grid .catalog-card-sub .catalog-sub-dot,
-#torrents-grid .catalog-card-sub .catalog-sub-dot {
+#torrents-grid .catalog-card-sub .catalog-sub-dot,
+.global-search-grid .catalog-card-sub .catalog-sub-dot {
   margin: 0 0.45em;
 }
 
@@ -1212,32 +1194,11 @@ textarea {
 
 /* 1920×1080: как 1280×720, ×1.5 (так же, как текст главной) */
 @media screen and (min-width: 1600px) and (min-height: 880px) {
-  #torrents-grid {
-    padding-top: 78px;
-  }
-
-  #torrents-grid::before {
-    top: 9px;
-    font-size: 39px;
-  }
-
   #catalog-grid .catalog-card-sub,
-  #torrents-grid .catalog-card-sub {
+  #torrents-grid .catalog-card-sub,
+  .global-search-grid .catalog-card-sub {
     margin-top: 4px;
   }
-}
-
-/* Телефон */
-@media (max-width: 768px) {
-  #torrents-grid {
-    padding-top: 44px;
-  }
-
-  #torrents-grid::before {
-    top: 4px;
-    font-size: 22px;
-  }
-
 }
 
 /* Бегущая строка. Класс marquee-text носит любая подпись, которую имеет смысл

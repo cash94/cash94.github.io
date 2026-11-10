@@ -4270,6 +4270,11 @@ function getTorrentProgressBatch(hash, files) {
     };
     if (!videoFiles.length) return result;
     try {
+      if (typeof window.ensureCollectionMap === 'function') {
+        try {
+          yield window.ensureCollectionMap(hash, 1500);
+        } catch (e) {}
+      }
       var mediaKeys = null;
       if (typeof window.getTimecodeMediaKey === 'function') {
         for (var m = 0; m < videoFiles.length; m++) {
@@ -6182,6 +6187,12 @@ function renderFilteredGlobalResults(results) {
   var grid = document.createElement('div');
   grid.className = 'global-search-grid';
   var fragment = document.createDocumentFragment();
+  var hasTv = false,
+    hasMovie = false;
+  for (var mi = 0; mi < limit; mi++) {
+    if (results[mi].media_type === 'tv') hasTv = true;else hasMovie = true;
+  }
+  var mixedTypes = hasTv && hasMovie;
   for (var idx = 0; idx < limit; idx++) {
     var result = results[idx];
     var title = result.title || result.name || 'Без названия';
@@ -6204,6 +6215,9 @@ function renderFilteredGlobalResults(results) {
       metaType: mt === 'tv' ? 'Сериал' : 'Фильм',
       metaBadge: year
     });
+    if (typeof window.appendCatalogCardSub === 'function') {
+      window.appendCatalogCardSub(card, year, rating || '', mt, mixedTypes);
+    }
     if (!result.poster_path) {
       var ph = card.querySelector('.no-poster');
       if (ph) {

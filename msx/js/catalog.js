@@ -3518,7 +3518,11 @@ function catalogItemsMixed() {
     return catalogState._mixed;
 }
 
-function appendCatalogCardSub(card, year, rating, mt) {
+/**
+ * mixed — показывать ли тип («Фильм»/«Сериал»); не задан — по составу открытой
+ * категории (catalogItemsMixed). Выдача поиска TMDB передаёт его сама.
+ */
+function appendCatalogCardSub(card, year, rating, mt, mixed) {
     var info = card.querySelector('.torrent-info');
     if (!info) return;
     // Плашки года и полосы с оценкой и типом с постера — вон из DOM, а не только
@@ -3537,7 +3541,7 @@ function appendCatalogCardSub(card, year, rating, mt) {
         s.textContent = text;
         sub.appendChild(s);
     };
-    var mixed = catalogItemsMixed();
+    if (mixed === undefined) mixed = catalogItemsMixed();
     // Точки — отдельными элементами: «Внешний вид» прячет год или оценку, и
     // точка уходит вместе с ними (.catalog-sub-dot-y / -r в ui-customizer.js)
     if (year) add('catalog-sub-year', year);
@@ -3551,6 +3555,8 @@ function appendCatalogCardSub(card, year, rating, mt) {
     }
     if (sub.firstChild) info.appendChild(sub);
 }
+
+window.appendCatalogCardSub = appendCatalogCardSub;
 
 function createCatalogCard(item, index) {
     var title = getCatalogItemTitle(item);

@@ -1274,6 +1274,10 @@ async function loadTimecodeFromServer(hash, fileId) {
   if (!hash || !fileId) return 0;
   try {
     var savedClientId = localStorage.getItem('clientId');
+    // Сборник: ключ фильма файла нужен уже здесь — по нему сервер свяжет файл с
+    // фильмом и для нативных плееров (Android, Apple), которые шлют только hash
+    await ensureCollectionMap(hash, 1500);
+    noteCollectionPlayback(hash, fileId);
     var mediaKey = getTimecodeMediaKey(hash, fileId);
     var response = await fetchWithTimeout(SERVER_URL + '/api/timecode/get?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId) +
       (mediaKey ? '&mediaKey=' + encodeURIComponent(mediaKey) : ''));
@@ -1782,9 +1786,214 @@ function getTimecodeMediaKey(hash, fileId, files) {
     return (season >= 0 && episode > 0) ? 'tv:' + tmdbId + ':' + season + ':' + episode : null;
   }
   if (files && files.length === 1 && file) return 'movie:' + tmdbId;
-  return null;
+  // Сборник фильмов: у файла свой фильм коллекции (collectionPartFor ниже)
+  var part = collectionPartFor(h, fileId);
+  return part ? 'movie:' + part.id : null;
 }
 window.getTimecodeMediaKey = getTimecodeMediaKey;
+
+/* ============ СБОРНИКИ ФИЛЬМОВ: ФАЙЛ → ФИЛЬМ КОЛЛЕКЦИИ ============
+ *
+ * «Матрица трилогия», «Кошмар на улице Вязов (все части)» — одна раздача,
+ * один id TMDB (первого фильма), а внутри несколько фильмов. Общий таймкод
+ * (getTimecodeMediaKey) такой раздаче не доставался вовсе: записать всем файлам
+ * id первого фильма — значит перематывать «Перезагрузку» по таймкоду «Матрицы».
+ * Без общего таймкода сервер не знал, где остановились (resume в
+ * /api/history), и ни главная, ни карточка не предлагали «Продолжить» — хотя
+ * «Мои торренты» по таймкодам самих файлов продолжали.
+ *
+ * Теперь у фильма раздачи берём коллекцию TMDB (belongs_to_collection) и её
+ * части (/api/tmdb/collection/parts — тот же ряд «Коллекция» в карточке), а
+ * каждому файлу ищем его часть по имени:
+ *   • год в имени совпал с одной частью — она (на 2003 у «Матрицы» две части —
+ *     тогда решает название);
+ *   • года нет — по названию (русскому или оригинальному), только если
+ *     совпадение одно и за названием не стоит номер: «Кошмар на улице Вязов 4»
+ *     без года — не первый фильм, а неизвестно какой.
+ * Не нашлась часть — у файла ключа нет, как раньше: чужой таймкод хуже, чем
+ * никакого. Сопоставленный файл получает ключ «movie:<id части>», а при
+ * запуске в историю попадает сама часть — её карточка и ряд «Продолжить
+ * просмотр» показывают «Продолжить» с нужного файла этой раздачи.
+ *
+ * Карта файлов считается один раз на раздачу и лежит в localStorage
+ * (COLLECTION_MAP_TTL_MS): состав раздачи и коллекции не меняется.
+ */
+var COLLECTION_MAP_PREFIX = 'ts_collmap_';
+var COLLECTION_MAP_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+var COLLECTION_MAX_PARTS = 15;
+var collectionMaps = {};          // hash → { files: {fileId: part}, at } ({} files — не сборник)
+var collectionMapPending = {};    // hash → Promise
+
+function collNorm(s) {
+  return ' ' + String(s || '').toLowerCase().replace(/ё/g, 'е')
+    .replace(/[^a-zа-я0-9]+/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+}
+
+function collFileYears(name) {
+  var out = [], re = /(?:^|[^0-9])((?:19|20)\d{2})(?![0-9])/g, m;
+  while ((m = re.exec(name))) out.push(+m[1]);
+  return out;
+}
+
+// Номер сиквела сразу за названием: «Кошмар на улице Вязов 4», «Matrix II»
+var COLL_SEQUEL_RE = /^(\d{1,2}|ii|iii|iv|v|vi|vii|viii|ix|x)$/;
+
+/** Длина самого длинного названия части, найденного в имени файла (0 — нет) */
+function collTitleHit(fn, part, strict) {
+  var best = 0;
+  for (var i = 0; i < part.names.length; i++) {
+    var n = part.names[i], at = fn.indexOf(n);
+    if (n.length <= 3 || at === -1 || n.length <= best) continue;
+    if (strict && COLL_SEQUEL_RE.test(fn.slice(at + n.length).split(' ')[0])) continue;
+    best = n.length;
+  }
+  return best;
+}
+
+/** Часть коллекции для файла или null. parts: [{id, year, title, names, poster}] */
+function matchCollectionFile(path, parts) {
+  var base = String(path || '').split('/').pop().replace(/\.[a-z0-9]{2,4}$/i, '');
+  var fn = collNorm(base), years = collFileYears(base);
+  var hits = [], bestT = 0, i;
+  for (i = 0; i < parts.length; i++) {
+    // Без года в имени название — единственная улика, и номер за ним её отменяет
+    var t = collTitleHit(fn, parts[i], !years.length);
+    hits.push({ p: parts[i], t: t, y: years.indexOf(parts[i].year) !== -1 });
+    if (t > bestT) bestT = t;
+  }
+  var pool = [], top = 0, pick = [];
+  for (i = 0; i < hits.length; i++) if (hits[i].y) { pool.push(hits[i]); if (hits[i].t > top) top = hits[i].t; }
+  if (pool.length === 1) return pool[0].p;
+  if (pool.length > 1) {
+    for (i = 0; i < pool.length; i++) if (top > 0 && pool[i].t === top) pick.push(pool[i]);
+  } else if (bestT > 0) {
+    for (i = 0; i < hits.length; i++) {
+      if (hits[i].t !== bestT) continue;
+      var near = !years.length;
+      for (var k = 0; k < years.length; k++) if (Math.abs(years[k] - hits[i].p.year) <= 1) near = true;
+      if (near) pick.push(hits[i]);
+    }
+  }
+  return pick.length === 1 ? pick[0].p : null;
+}
+window.matchCollectionFile = matchCollectionFile;
+
+function readCollectionMap(h) {
+  if (collectionMaps[h]) return collectionMaps[h];
+  try {
+    var raw = localStorage.getItem(COLLECTION_MAP_PREFIX + h);
+    var m = raw ? JSON.parse(raw) : null;
+    if (m && m.files && Date.now() - (m.at || 0) < COLLECTION_MAP_TTL_MS) return (collectionMaps[h] = m);
+  } catch (e) { }
+  return null;
+}
+
+/** Фильм коллекции для файла сборника, если карта уже посчитана, иначе null */
+function collectionPartFor(hash, fileId) {
+  if (!hash || fileId === null || fileId === undefined) return null;
+  var m = readCollectionMap(String(hash).toLowerCase());
+  return (m && m.files[String(fileId)]) || null;
+}
+window.collectionPartFor = collectionPartFor;
+
+/** Раздача — сборник фильмов: фильм, видеофайлов больше одного, серий в именах нет */
+function looksLikeMovieCollection(torrent, videoFiles) {
+  if (!torrent || videoFiles.length < 2) return false;
+  var known = typeof knownTorrentMeta !== 'undefined' && knownTorrentMeta ? knownTorrentMeta.get(String(torrent.hash).toLowerCase()) : null;
+  var type = torrent.media_type || torrent.category || (known && known.mediaType) || '';
+  if (type === 'tv' || type === 'serial') return false;
+  if (typeof window.getTorrentSeasons === 'function' && window.getTorrentSeasons(torrent).length) return false;
+  for (var i = 0; i < videoFiles.length; i++) {
+    if (typeof parseEpisodeRef === 'function' && parseEpisodeRef(videoFiles[i].path || videoFiles[i].name)) return false;
+  }
+  return true;
+}
+
+async function buildCollectionMap(h) {
+  var torrent = await resolveTorrentWithFiles(h, 2, 500);
+  if (!torrent) return null;
+  var files = torrent.file_stats || [];
+  if (!files.length && torrent.data) {
+    try { var d = JSON.parse(torrent.data); files = (d.TorrServer && d.TorrServer.Files) || []; } catch (e) { }
+  }
+  var video = extractVideoFiles(files);
+  var tmdbId = parseInt(getTorrentTmdbId(torrent) || '', 10);
+  var empty = { files: {}, at: Date.now() };
+  if (!(tmdbId > 0) || !looksLikeMovieCollection(torrent, video)) return empty;
+
+  var details = await safeFetch(SERVER_URL + '/api/tmdb/details?id=' + tmdbId + '&type=movie', { timeout: 10000 });
+  var bc = details && details.belongs_to_collection;
+  if (!bc || !bc.id) return details ? empty : null;       // null — сеть, попробуем в другой раз
+  var coll = await safeFetch(SERVER_URL + '/api/tmdb/collection/parts?id=' + encodeURIComponent(bc.id), { timeout: 15000 });
+  var items = coll && coll.success && coll.items;
+  if (!items) return null;
+  items = items.slice(0, COLLECTION_MAX_PARTS);
+  // Оригинальные названия — для английских имён файлов. /api/tmdb/item кэширует сервер
+  var orig = await Promise.all(items.map(function (it) {
+    return safeFetch(SERVER_URL + '/api/tmdb/item?id=' + it.id + '&type=movie', { timeout: 10000 });
+  }));
+  var parts = [];
+  for (var i = 0; i < items.length; i++) {
+    var year = parseInt(String(items[i].release_date || '').slice(0, 4), 10);
+    if (!(year > 0)) continue;                               // анонс — файла у него ещё нет
+    var names = [collNorm(items[i].title)];
+    var o = orig[i] && orig[i].original_title;
+    if (o && names.indexOf(collNorm(o)) === -1) names.push(collNorm(o));
+    parts.push({ id: String(items[i].id), year: year, title: items[i].title, poster: items[i].poster_path || null, names: names });
+  }
+  var map = { files: {}, at: Date.now() }, n = 0;
+  for (var j = 0; j < video.length; j++) {
+    var p = matchCollectionFile(video[j].path || video[j].name, parts);
+    if (p) { map.files[String(video[j].id)] = { id: p.id, title: p.title, poster: p.poster }; n++; }
+  }
+  console.log('🎞️ Сборник ' + h.slice(0, 8) + ': коллекция «' + (coll.name || bc.id) + '», сопоставлено файлов ' + n + ' из ' + video.length);
+  return map;
+}
+
+/**
+ * Посчитать карту файлов сборника (один раз на раздачу). Promise<карта|null>;
+ * waitMs — не ждать дольше (запуск плеера не должен стоять из-за TMDB).
+ */
+function ensureCollectionMap(hash, waitMs) {
+  if (!hash) return Promise.resolve(null);
+  var h = String(hash).toLowerCase();
+  var ready = readCollectionMap(h);
+  if (ready) return Promise.resolve(ready);
+  if (!collectionMapPending[h]) {
+    collectionMapPending[h] = buildCollectionMap(h).then(function (m) {
+      delete collectionMapPending[h];
+      if (!m) return null;
+      collectionMaps[h] = m;
+      try { localStorage.setItem(COLLECTION_MAP_PREFIX + h, JSON.stringify(m)); } catch (e) { }
+      return m;
+    }, function (e) {
+      delete collectionMapPending[h];
+      console.warn('Сборник: карта файлов не посчиталась:', e && e.message);
+      return null;
+    });
+  }
+  if (!(waitMs > 0)) return collectionMapPending[h];
+  return Promise.race([collectionMapPending[h], new Promise(function (r) { setTimeout(function () { r(null); }, waitMs); })]);
+}
+window.ensureCollectionMap = ensureCollectionMap;
+
+/**
+ * Запущен файл сборника — в историю его фильм, а не фильм раздачи: по нему
+ * главная и карточка найдут «Продолжить». Повтор того же файла за минуту
+ * (несколько путей запуска зовут это по очереди) — не дублируем.
+ */
+var collectionHistoryNoted = { key: '', at: 0 };
+function noteCollectionPlayback(hash, fileId) {
+  if (!hash || fileId === null || fileId === undefined) return;
+  ensureCollectionMap(hash).then(function () {
+    var part = collectionPartFor(hash, fileId);
+    if (!part || !window.addToWatchHistory) return;
+    var key = String(hash).toLowerCase() + ':' + fileId, now = Date.now();
+    if (collectionHistoryNoted.key === key && now - collectionHistoryNoted.at < 60000) return;
+    collectionHistoryNoted = { key: key, at: now };
+    Promise.resolve(window.addToWatchHistory(part.id, part.title, 'movie', part.poster))['catch'](function () { });
+  });
+}
 
 /**
  * id TMDB, сезон и серия файла для запроса заставок или null.
@@ -3594,6 +3803,7 @@ async function preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, sig
     return null;
   }
   currentTimecodeData.hash = match[1]; currentTimecodeData.fileId = match[2]; currentTimecodeData.timecode = 0;
+  noteCollectionPlayback(currentTimecodeData.hash, currentTimecodeData.fileId);
   // if (AppState.transcodingFullOnOff) {
   //   return true;
   // }

@@ -2822,7 +2822,7 @@ function catalogItemsMixed() {
   catalogState._mixed = tv && movie;
   return catalogState._mixed;
 }
-function appendCatalogCardSub(card, year, rating, mt) {
+function appendCatalogCardSub(card, year, rating, mt, mixed) {
   var info = card.querySelector('.torrent-info');
   if (!info) return;
   var poster = card.firstChild;
@@ -2838,7 +2838,7 @@ function appendCatalogCardSub(card, year, rating, mt) {
     s.textContent = text;
     sub.appendChild(s);
   };
-  var mixed = catalogItemsMixed();
+  if (mixed === undefined) mixed = catalogItemsMixed();
   if (year) add('catalog-sub-year', year);
   if (year && rating) add('catalog-sub-dot catalog-sub-dot-y catalog-sub-dot-r', '·');
   if (rating) add('rating-badge', rating);
@@ -2848,6 +2848,7 @@ function appendCatalogCardSub(card, year, rating, mt) {
   }
   if (sub.firstChild) info.appendChild(sub);
 }
+window.appendCatalogCardSub = appendCatalogCardSub;
 function createCatalogCard(item, index) {
   var title = getCatalogItemTitle(item);
   var mt = item.media_type || 'movie';

@@ -602,7 +602,7 @@
             'height:auto!important;max-height:none!important;}');
         // Строка «год · ★ оценка» под названием в сетке категории — тем же
         // кеглем, что и название: отдельным, мельче, она читалась с трудом
-        css.push('#catalog-grid .catalog-card-sub,#torrents-grid .catalog-card-sub{font-size:' + titleSize + 'px!important;}');
+        css.push('#catalog-grid .catalog-card-sub,#torrents-grid .catalog-card-sub,.global-search-grid .catalog-card-sub{font-size:' + titleSize + 'px!important;}');
         css.push('.rating-badge,.card-modern .torrent-playing,.card-modern .torrent-size{' +
             'font-size:' + ratingSize + 'px!important;}');
         css.push('.torrent-meta,.torrent-badge{font-size:' + typeSize + 'px!important;}');
