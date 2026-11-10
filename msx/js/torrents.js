@@ -5667,9 +5667,7 @@ function summarizeFfprobe(ffprobe) {
 
             var title = shortTrackTitle(tags.title);
             // Безымянная дорожка без языка чипом не станет — рисовать в ней
-            // нечего. Считать её «дорожкой» тоже нельзя: по наличию дорожек
-            // ниже скрывается список озвучек из info.voices, и такая пустышка
-            // прятала бы единственное, что о раздаче вообще известно
+            // нечего, и чип «+N» её тоже не считает
             if (lang || title) {
                 var key = lang + '\u0000' + title;
                 if (!audioSeen[key]) {
@@ -6173,6 +6171,7 @@ function updateAvailableVideotype() {
  */
 function setSearchLocked(locked, query) {
     AppState.searchLocked = !!locked;
+    setSearchBackdrop(!!locked);
 
     // Режим «Глобальный / Торренты» карточка тоже задаёт сама (ищутся раздачи
     // её фильма): переключение на глобальный поиск увело бы выдачу от карточки
@@ -6203,6 +6202,42 @@ function setSearchLocked(locked, query) {
     if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
 }
 window.setSearchLocked = setSearchLocked;
+
+/**
+ * Фон выдачи: кадр фильма из карточки или чёрный.
+ *
+ * Замок ставит только кнопка «Торренты» в карточке (showCatalogSearch в
+ * catalog.js) — значит, выдача открыта из карточки, и под списком остаётся тот
+ * же кадр, что был за ней (макет «Список раздач», вариант с фоном). Снимается
+ * замок при любом уходе в свободный поиск и при закрытии — фон уходит с ним.
+ *
+ * URL берём из стиля #catalog-detail-backdrop: туда кладётся уже отдавшееся
+ * зеркало, и картинка есть в кэше — новой загрузки нет. Класс hidden у
+ * карточки не смотрим: его ставит фоновый трейлер, а кадр под ним тот же.
+ * Нет кадра — выдача на чёрном, как свободный поиск.
+ *
+ * Элемент создаётся здесь, а не в index.html: index.html из пакета сервера
+ * бывает старым, а js приходит с зеркала свежий.
+ */
+function setSearchBackdrop(on) {
+    var overlay = getEl('search-overlay');
+    if (!overlay) return;
+    var url = '';
+    if (on) {
+        var card = getEl('catalog-detail-backdrop');
+        url = card ? (card.style.backgroundImage || '') : '';
+        if (url === 'none') url = '';
+    }
+    var box = getEl('search-backdrop');
+    if (url && !box) {
+        box = document.createElement('div');
+        box.id = 'search-backdrop';
+        box.className = 'search-backdrop';
+        overlay.insertBefore(box, overlay.firstChild);
+    }
+    if (box) box.style.backgroundImage = url;
+    overlay.classList.toggle('search-on-backdrop', !!url);
+}
 
 /**
  * Забыть, из какой карточки каталога пришли в поиск.
@@ -6951,21 +6986,22 @@ function formatBitrate(bps) {
     return (bps / 1000000).toFixed(2).replace('.', ',') + ' Мбит/с';
 }
 
-function mediaChip(text, extraClass) {
+function mediaChip(text, extraClass, icon) {
     return '<div class="search-result-media' + (extraClass ? ' ' + extraClass : '') + '">' +
-        escapeHtml(text) + '</div>';
+        (icon ? '<i class="fi ' + icon + '"></i>' : '') + escapeHtml(text) + '</div>';
 }
 
 /**
- * Строка характеристик файла над серой строкой с трекером и размером.
+ * Строка характеристик файла под строкой «трекер · год · тип».
  *
  * Порядок от «решает сразу» к «решает потом»: метка качества и HDR видно
  * издалека, дальше точное разрешение и кодек, битрейт (при равном
  * разрешении именно он отличает хорошую раздачу от сжатой), звук, дорожки,
- * субтитры.
+ * субтитры. Дорожки и субтитры — с иконками uicons, а не «♪» и «СТ»: этих
+ * знаков нет в Inter, и на ТВ они рисовались чужим шрифтом.
  *
- * Отдельным рядом, а не в строке мета-данных: там чипы о раздаче (трекер,
- * размер, сиды), здесь — о самом файле.
+ * Метка качества есть всегда, поэтому ряд не пропадает и у раздач без данных
+ * ffprobe — высота карточек в выдаче одна.
  */
 function buildMediaRow(result) {
     var media = result.media;
@@ -6987,12 +7023,12 @@ function buildMediaRow(result) {
             var track = media.audio[i];
             var name = (track.lang ? track.lang.toUpperCase() : '');
             if (track.title) name += (name ? ' · ' : '') + track.title;
-            if (name) chips += mediaChip('♪ ' + name);
+            if (name) chips += mediaChip(name, '', 'fi-rr-headphones');
         }
-        if (media.moreAudio > 0) chips += mediaChip('♪ +' + media.moreAudio);
+        if (media.moreAudio > 0) chips += mediaChip('+' + media.moreAudio, '', 'fi-rr-headphones');
 
         if (media.subs.length) {
-            chips += mediaChip('СТ ' + media.subs.join(', ').toUpperCase());
+            chips += mediaChip(media.subs.join(', ').toUpperCase(), '', 'fi-rr-subtitles');
         }
     }
 
@@ -7000,36 +7036,40 @@ function buildMediaRow(result) {
     return '<div class="search-result-media-row">' + chips + '</div>';
 }
 
+/**
+ * Раздача в выдаче — по макету «Список раздач» в Figma, за образец взята Lampa.
+ *
+ * Слева три строки: название (с меткой «Выбирали …»), строка текста «трекер ·
+ * год (дата раздачи) · тип / качество» и чипы файла (buildMediaRow). Справа —
+ * колонка «стоит ли качать»: размер, под ним сиды и пиры. Колонкой, а не
+ * чипами в строке: раздачи сравниваются взглядом сверху вниз.
+ *
+ * Ряда озвучек (info.voices: «Дубляж», «HDRezka») больше нет: дорожки с
+ * языком и названием есть в чипах ffprobe, перевод обычно указан и в названии
+ * раздачи, а выбрать по нему можно фильтром «Озвучка».
+ */
 function buildSearchResultMarkup(result, index) {
-    var voices = Array.isArray(result.voices) ? result.voices : [];
     var hash = extractHashFromMagnet(result.magnet);
     var trackerDisplay = result.tracker || 'Unknown';
-    // Дорожки из ffprobe точнее info.voices: там язык и название каждой,
-    // а не общий список переводов. Есть они — второй список лишний
-    var hasAudioTracks = !!(result.media && result.media.audio && result.media.audio.length);
     var pickedAt = SearchPicks.pickedAt(hash);
+    var dot = '<span class="search-result-dot">·</span>';
 
     return '<div class="search-result-item' + (pickedAt ? ' search-result-picked' : '') + '" data-index="' + index + '">' +
         '<div class="search-result-info">' +
         '<div class="search-result-title">' + (pickedAt ? buildPickedBadge(pickedAt) : '') + escapeHtml(result.title || 'Без названия') + '</div>' +
-        buildMediaRow(result) +
-        // Две группы: слева «что за раздача» (трекер, год, тип), справа «стоит ли
-        // качать» (размер, сиды, пиры). Правая прижата к краю и не рвётся
-        // посередине: не влезает в строку — уходит целиком на свою, тоже вправо,
-        // поэтому на телефоне в любом положении цифры не уезжают за экран
         '<div class="search-result-meta">' +
-        '<div class="search-result-meta-group search-result-meta-main">' +
-        '<div class="search-result-meta-item search-result-meta-tracker">' + escapeHtml(trackerDisplay) + '</div>' +
-        '<div class="search-result-meta-item search-result-meta-year">' + (result.released || 'N/A') + ' (' + (result.createTime ? new Date(result.createTime).toLocaleDateString() : 'N/A') + ')</div>' +
-        '<div class="search-result-meta-item search-result-meta-type">' + ((result.types && result.types.indexOf('tv') !== -1) ? 'Сериал' : 'Фильм') + ' / ' + (result.quality || 'N/A') + 'p</div>' +
+        '<span class="search-result-meta-tracker">' + escapeHtml(trackerDisplay) + '</span>' + dot +
+        '<span class="search-result-meta-year">' + (result.released || 'N/A') + ' (' + (result.createTime ? new Date(result.createTime).toLocaleDateString() : 'N/A') + ')</span>' + dot +
+        '<span class="search-result-meta-type">' + ((result.types && result.types.indexOf('tv') !== -1) ? 'Сериал' : 'Фильм') + ' / ' + (result.quality || 'N/A') + 'p</span>' +
         '</div>' +
-        '<div class="search-result-meta-group search-result-meta-stats">' +
-        '<div class="search-result-meta-item search-result-meta-size">' + escapeHtml(result.sizeName || formatBytes(result.size)) + '</div>' +
-        '<div class="search-result-meta-item search-result-meta-sid">сиды: ' + (result.sid !== undefined ? result.sid : 0) + '</div>' +
-        '<div class="search-result-meta-item search-result-meta-pir">пиры: ' + (result.pir !== undefined ? result.pir : 0) + '</div>' +
+        buildMediaRow(result) +
         '</div>' +
+        '<div class="search-result-stats">' +
+        '<div class="search-result-size">' + escapeHtml(result.sizeName || formatBytes(result.size)) + '</div>' +
+        '<div class="search-result-peers">' +
+        '<span class="search-result-sid"><i class="fi fi-rr-arrow-small-up"></i>' + (result.sid !== undefined ? result.sid : 0) + '</span>' +
+        '<span class="search-result-pir"><i class="fi fi-rr-arrow-small-down"></i>' + (result.pir !== undefined ? result.pir : 0) + '</span>' +
         '</div>' +
-        (voices.length > 0 && !hasAudioTracks ? '<div class="search-result-voices">' + voices.map(function (voice) { return '<span class="search-result-voice">' + escapeHtml(voice) + '</span>'; }).join('') + '</div>' : '') +
         '</div>' +
         '<button class="search-result-play" data-hash="' + hash + '" data-magnet="' + escapeAttr(result.magnet) + '" data-index="' + index + '" ' + (!hash ? 'disabled' : '') + '>' + (hash ? '▶' : '❌ Нет hash') + '</button>' +
         '</div>';
@@ -7324,7 +7364,9 @@ function renderSearchResults() {
     // Вся выдача — в одной обёртке: её, а не сам список, сдвигает прокрутка
     // переходом transform (FLIP, flipContentFor в control.js). Строка «Показано»
     // — внутри, иначе она стояла бы на месте, пока список едет под ней
-    searchResultsDiv.innerHTML = '<div class="search-results-body"><div class="filter-stats">Показано: <span>' + filteredResults.length + '</span> из <span>' + searchResults.length + '</span></div></div>';
+    searchResultsDiv.innerHTML = '<div class="search-results-body"><div class="filter-stats search-results-stats">' +
+        '<span class="search-results-heading">Раздачи</span>' +
+        'Показано <span>' + filteredResults.length + '</span> из <span>' + searchResults.length + '</span></div></div>';
     var resultsBody = searchResultsDiv.firstChild;
     searchResultsDiv.onclick = function (event) {
         var playBtn = event.target.closest('.search-result-play');

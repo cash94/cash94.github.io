@@ -4894,6 +4894,7 @@ function updateAvailableVideotype() {
 }
 function setSearchLocked(locked, query) {
   AppState.searchLocked = !!locked;
+  setSearchBackdrop(!!locked);
   var modeItem = document.querySelector('.filter-item[data-filter="torrent-movie"]');
   if (modeItem) modeItem.classList.toggle('hidden', !!locked);
   var input = getEl('search-query');
@@ -4913,6 +4914,25 @@ function setSearchLocked(locked, query) {
   if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
 }
 window.setSearchLocked = setSearchLocked;
+function setSearchBackdrop(on) {
+  var overlay = getEl('search-overlay');
+  if (!overlay) return;
+  var url = '';
+  if (on) {
+    var card = getEl('catalog-detail-backdrop');
+    url = card ? card.style.backgroundImage || '' : '';
+    if (url === 'none') url = '';
+  }
+  var box = getEl('search-backdrop');
+  if (url && !box) {
+    box = document.createElement('div');
+    box.id = 'search-backdrop';
+    box.className = 'search-backdrop';
+    overlay.insertBefore(box, overlay.firstChild);
+  }
+  if (box) box.style.backgroundImage = url;
+  overlay.classList.toggle('search-on-backdrop', !!url);
+}
 function clearCatalogSearchContext() {
   AppState.jacredSearchHints = null;
   AppState.pendingDetailItem = null;
@@ -5626,8 +5646,8 @@ function formatBitrate(bps) {
   if (!bps || bps <= 0) return '';
   return (bps / 1000000).toFixed(2).replace('.', ',') + ' Мбит/с';
 }
-function mediaChip(text, extraClass) {
-  return '<div class="search-result-media' + (extraClass ? ' ' + extraClass : '') + '">' + escapeHtml(text) + '</div>';
+function mediaChip(text, extraClass, icon) {
+  return '<div class="search-result-media' + (extraClass ? ' ' + extraClass : '') + '">' + (icon ? '<i class="fi ' + icon + '"></i>' : '') + escapeHtml(text) + '</div>';
 }
 function buildMediaRow(result) {
   var media = result.media;
@@ -5645,25 +5665,22 @@ function buildMediaRow(result) {
       var track = media.audio[i];
       var name = track.lang ? track.lang.toUpperCase() : '';
       if (track.title) name += (name ? ' · ' : '') + track.title;
-      if (name) chips += mediaChip('♪ ' + name);
+      if (name) chips += mediaChip(name, '', 'fi-rr-headphones');
     }
-    if (media.moreAudio > 0) chips += mediaChip('♪ +' + media.moreAudio);
+    if (media.moreAudio > 0) chips += mediaChip('+' + media.moreAudio, '', 'fi-rr-headphones');
     if (media.subs.length) {
-      chips += mediaChip('СТ ' + media.subs.join(', ').toUpperCase());
+      chips += mediaChip(media.subs.join(', ').toUpperCase(), '', 'fi-rr-subtitles');
     }
   }
   if (!chips) return '';
   return '<div class="search-result-media-row">' + chips + '</div>';
 }
 function buildSearchResultMarkup(result, index) {
-  var voices = Array.isArray(result.voices) ? result.voices : [];
   var hash = extractHashFromMagnet(result.magnet);
   var trackerDisplay = result.tracker || 'Unknown';
-  var hasAudioTracks = !!(result.media && result.media.audio && result.media.audio.length);
   var pickedAt = SearchPicks.pickedAt(hash);
-  return '<div class="search-result-item' + (pickedAt ? ' search-result-picked' : '') + '" data-index="' + index + '">' + '<div class="search-result-info">' + '<div class="search-result-title">' + (pickedAt ? buildPickedBadge(pickedAt) : '') + escapeHtml(result.title || 'Без названия') + '</div>' + buildMediaRow(result) + '<div class="search-result-meta">' + '<div class="search-result-meta-group search-result-meta-main">' + '<div class="search-result-meta-item search-result-meta-tracker">' + escapeHtml(trackerDisplay) + '</div>' + '<div class="search-result-meta-item search-result-meta-year">' + (result.released || 'N/A') + ' (' + (result.createTime ? new Date(result.createTime).toLocaleDateString() : 'N/A') + ')</div>' + '<div class="search-result-meta-item search-result-meta-type">' + (result.types && result.types.indexOf('tv') !== -1 ? 'Сериал' : 'Фильм') + ' / ' + (result.quality || 'N/A') + 'p</div>' + '</div>' + '<div class="search-result-meta-group search-result-meta-stats">' + '<div class="search-result-meta-item search-result-meta-size">' + escapeHtml(result.sizeName || formatBytes(result.size)) + '</div>' + '<div class="search-result-meta-item search-result-meta-sid">сиды: ' + (result.sid !== undefined ? result.sid : 0) + '</div>' + '<div class="search-result-meta-item search-result-meta-pir">пиры: ' + (result.pir !== undefined ? result.pir : 0) + '</div>' + '</div>' + '</div>' + (voices.length > 0 && !hasAudioTracks ? '<div class="search-result-voices">' + voices.map(function (voice) {
-    return '<span class="search-result-voice">' + escapeHtml(voice) + '</span>';
-  }).join('') + '</div>' : '') + '</div>' + '<button class="search-result-play" data-hash="' + hash + '" data-magnet="' + escapeAttr(result.magnet) + '" data-index="' + index + '" ' + (!hash ? 'disabled' : '') + '>' + (hash ? '▶' : '❌ Нет hash') + '</button>' + '</div>';
+  var dot = '<span class="search-result-dot">·</span>';
+  return '<div class="search-result-item' + (pickedAt ? ' search-result-picked' : '') + '" data-index="' + index + '">' + '<div class="search-result-info">' + '<div class="search-result-title">' + (pickedAt ? buildPickedBadge(pickedAt) : '') + escapeHtml(result.title || 'Без названия') + '</div>' + '<div class="search-result-meta">' + '<span class="search-result-meta-tracker">' + escapeHtml(trackerDisplay) + '</span>' + dot + '<span class="search-result-meta-year">' + (result.released || 'N/A') + ' (' + (result.createTime ? new Date(result.createTime).toLocaleDateString() : 'N/A') + ')</span>' + dot + '<span class="search-result-meta-type">' + (result.types && result.types.indexOf('tv') !== -1 ? 'Сериал' : 'Фильм') + ' / ' + (result.quality || 'N/A') + 'p</span>' + '</div>' + buildMediaRow(result) + '</div>' + '<div class="search-result-stats">' + '<div class="search-result-size">' + escapeHtml(result.sizeName || formatBytes(result.size)) + '</div>' + '<div class="search-result-peers">' + '<span class="search-result-sid"><i class="fi fi-rr-arrow-small-up"></i>' + (result.sid !== undefined ? result.sid : 0) + '</span>' + '<span class="search-result-pir"><i class="fi fi-rr-arrow-small-down"></i>' + (result.pir !== undefined ? result.pir : 0) + '</span>' + '</div>' + '</div>' + '<button class="search-result-play" data-hash="' + hash + '" data-magnet="' + escapeAttr(result.magnet) + '" data-index="' + index + '" ' + (!hash ? 'disabled' : '') + '>' + (hash ? '▶' : '❌ Нет hash') + '</button>' + '</div>';
 }
 var SEARCH_OFFSCREEN_CLASS = 'search-offscreen';
 var SEARCH_VISIBILITY_WINDOW_ROWS = 5;
@@ -5896,7 +5913,7 @@ function renderSearchResults() {
     searchResultsDiv.innerHTML = '<div class="filter-stats">Всего найдено: <span>' + searchResults.length + '</span></div><div class="search-result-empty">' + (currentSearchQuery ? 'Нет результатов по фильтрам для "' + escapeHtml(currentSearchQuery) + '"' : 'Введите запрос для поиска') + '</div>';
     return;
   }
-  searchResultsDiv.innerHTML = '<div class="search-results-body"><div class="filter-stats">Показано: <span>' + filteredResults.length + '</span> из <span>' + searchResults.length + '</span></div></div>';
+  searchResultsDiv.innerHTML = '<div class="search-results-body"><div class="filter-stats search-results-stats">' + '<span class="search-results-heading">Раздачи</span>' + 'Показано <span>' + filteredResults.length + '</span> из <span>' + searchResults.length + '</span></div></div>';
   var resultsBody = searchResultsDiv.firstChild;
   searchResultsDiv.onclick = function (event) {
     var playBtn = event.target.closest('.search-result-play');
