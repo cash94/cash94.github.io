@@ -356,6 +356,20 @@ function toggleSearchFiltersPanel(forceOpen) {
   return shouldOpen;
 }
 window.toggleSearchFiltersPanel = toggleSearchFiltersPanel;
+function watchSearchFiltersPanel() {
+  var panel = document.getElementById('search-filters-panel');
+  var overlay = document.getElementById('search-overlay');
+  if (!panel || !overlay || typeof MutationObserver !== 'function') return;
+  function sync() {
+    overlay.classList.toggle('search-filters-open', panel.classList.contains('active'));
+  }
+  new MutationObserver(sync).observe(panel, {
+    attributes: true,
+    attributeFilter: ['class']
+  });
+  sync();
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watchSearchFiltersPanel);else watchSearchFiltersPanel();
 function getTorrentFiles(torrent) {
   if (!torrent) return [];
   if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 0) return torrent.file_stats;

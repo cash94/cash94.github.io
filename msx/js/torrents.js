@@ -402,6 +402,28 @@ function toggleSearchFiltersPanel(forceOpen) {
 }
 window.toggleSearchFiltersPanel = toggleSearchFiltersPanel;
 
+/**
+ * Класс search-filters-open на #search-overlay, пока панель фильтров открыта:
+ * по нему styles.css приглушает список под панелью и прячет кнопки шапки —
+ * панель полупрозрачная, и они просвечивали бы сквозь её заголовок.
+ *
+ * Следим за классом active самой панели, а не ставим класс рядом с ним: панель
+ * открывают и закрывают в нескольких местах (здесь, closeFilterPanel и
+ * openFilterPanelAndFocus в control.js), и любое новое место забыло бы о нём.
+ */
+function watchSearchFiltersPanel() {
+    var panel = document.getElementById('search-filters-panel');
+    var overlay = document.getElementById('search-overlay');
+    if (!panel || !overlay || typeof MutationObserver !== 'function') return;
+    function sync() {
+        overlay.classList.toggle('search-filters-open', panel.classList.contains('active'));
+    }
+    new MutationObserver(sync).observe(panel, { attributes: true, attributeFilter: ['class'] });
+    sync();
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watchSearchFiltersPanel);
+else watchSearchFiltersPanel();
+
 function getTorrentFiles(torrent) {
     if (!torrent) return [];
     if (torrent.file_stats && Array.isArray(torrent.file_stats) && torrent.file_stats.length > 0) return torrent.file_stats;

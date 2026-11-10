@@ -1567,12 +1567,23 @@ function setupSearchFilters() {
     var filterBackBtn = getEl('filter-back-btn');
     var filterCloseBtn = getEl('filter-close-btn');
     var currentFilterId = null;
+    var filterPanelTitle = filterPanel.querySelector('.filter-panel-title');
+    // Подпись над значениями — только у «Качества», где можно отметить несколько.
+    // Создаётся здесь: index.html из пакета сервера бывает старым
+    var filterValuesCaption = null;
+    if (filterValuesScreen && filterValuesList) {
+      filterValuesCaption = document.createElement('div');
+      filterValuesCaption.className = 'filter-values-caption hidden';
+      filterValuesCaption.textContent = 'Можно отметить несколько';
+      filterValuesScreen.insertBefore(filterValuesCaption, filterValuesList);
+    }
 
     // Показать главный экран
     function showFilterMainScreen() {
       if (filterMainScreen) filterMainScreen.style.display = 'block';
       if (filterValuesScreen) filterValuesScreen.style.display = 'none';
       if (filterBackBtn) filterBackBtn.style.display = 'none';
+      if (filterPanelTitle) filterPanelTitle.textContent = 'Фильтры';
       currentFilterId = null;
       updateFilterValueDisplays();
     }
@@ -1586,6 +1597,10 @@ function setupSearchFilters() {
       if (filterMainScreen) filterMainScreen.style.display = 'none';
       if (filterValuesScreen) filterValuesScreen.style.display = 'block';
       if (filterBackBtn) filterBackBtn.style.display = 'flex';
+      // В заголовке — имя фильтра: «Фильтры» над списком значений не говорили,
+      // что именно выбирается
+      var filterLabel = filterPanel.querySelector('.filter-item[data-filter="' + filterId + '"] .filter-item-label');
+      if (filterPanelTitle) filterPanelTitle.textContent = filterLabel ? filterLabel.textContent : 'Фильтры';
 
       filterValuesList.innerHTML = '';
       var currentValue = filterSelect.value;
@@ -1595,6 +1610,7 @@ function setupSearchFilters() {
       // держит только одно значение и здесь не источник правды.
       var multi = filterId === 'filter-quality' && typeof window.parseQualityFilter === 'function';
       var multiSelected = multi ? window.parseQualityFilter(currentQualityFilter) : null;
+      if (filterValuesCaption) filterValuesCaption.classList.toggle('hidden', !multi);
 
       for (var i = 0; i < options.length; i++) {
         var option = options[i];
