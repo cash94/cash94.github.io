@@ -69,6 +69,96 @@ function initDonateOverlay() {
     var backdrop = donateOverlay.querySelector('.donate-overlay-backdrop');
     if (closeBtn) closeBtn.addEventListener('click', closeDonateOverlay);
     if (backdrop) backdrop.addEventListener('click', closeDonateOverlay);
+    setupDonateSwipe(donateOverlay.querySelector('.donate-overlay-panel'), backdrop);
+}
+
+/*
+ * Шторка на телефоне закрывается, если потянуть её вниз — за полоску сверху
+ * или за саму панель, пока она не прокручена. Панель едет за пальцем, фон
+ * бледнеет; отпустили ниже DONATE_SWIPE_CLOSE_SHARE высоты или смахнули
+ * быстрее DONATE_SWIPE_FLICK_PX_MS — шторка уезжает и окно закрывается,
+ * иначе возвращается на место. Только в режиме шторки (DONATE_SHEET_MQ —
+ * тот же медиазапрос, что в стилях ниже): окно по центру на ТВ не трогаем.
+ * Касание короче DONATE_SWIPE_START_PX — обычный тап по кнопке.
+ */
+var DONATE_SHEET_MQ = '(orientation: portrait), (max-height: 559px)';
+var DONATE_SWIPE_START_PX = 8;
+var DONATE_SWIPE_CLOSE_SHARE = 0.3;
+var DONATE_SWIPE_FLICK_PX_MS = 0.5;
+var DONATE_SWIPE_ANIM_MS = 200;
+
+function setupDonateSwipe(panel, backdrop) {
+    if (!panel) return;
+    var drag = null;
+
+    function setOffset(dy, animate) {
+        var t = animate ? 'transform ' + DONATE_SWIPE_ANIM_MS + 'ms ease-out' : 'none';
+        panel.style.webkitTransition = animate ? '-webkit-' + t : 'none';
+        panel.style.transition = t;
+        panel.style.webkitTransform = 'translateY(' + dy + 'px)';
+        panel.style.transform = 'translateY(' + dy + 'px)';
+        if (backdrop) {
+            var h = panel.offsetHeight || 1;
+            backdrop.style.transition = animate ? 'opacity ' + DONATE_SWIPE_ANIM_MS + 'ms ease-out' : 'none';
+            backdrop.style.opacity = String(Math.max(0, 1 - dy / h));
+        }
+    }
+
+    function clearOffset() {
+        panel.style.webkitTransition = panel.style.transition = '';
+        panel.style.webkitTransform = panel.style.transform = '';
+        if (backdrop) backdrop.style.transition = backdrop.style.opacity = '';
+    }
+
+    panel.addEventListener('touchstart', function (e) {
+        drag = null;
+        if (!e.touches || e.touches.length !== 1) return;
+        if (!(window.matchMedia && window.matchMedia(DONATE_SHEET_MQ).matches)) return;
+        var onHandle = !!(e.target && e.target.closest && e.target.closest('.donate-handle'));
+        // Прокрученную панель палец сначала листает к началу, а не закрывает
+        if (!onHandle && panel.scrollTop > 0) return;
+        var t = e.touches[0];
+        drag = { x: t.clientX, y: t.clientY, dy: 0, active: false, at: Date.now(), lastY: t.clientY, lastAt: Date.now(), v: 0 };
+    }, { passive: true });
+
+    panel.addEventListener('touchmove', function (e) {
+        if (!drag || !e.touches || e.touches.length !== 1) return;
+        var t = e.touches[0];
+        var dx = t.clientX - drag.x, dy = t.clientY - drag.y;
+        if (!drag.active) {
+            if (Math.abs(dy) < DONATE_SWIPE_START_PX && Math.abs(dx) < DONATE_SWIPE_START_PX) return;
+            // Вверх или вбок — это не закрытие: отдаём жест прокрутке панели
+            if (dy <= 0 || Math.abs(dx) > Math.abs(dy)) { drag = null; return; }
+            drag.active = true;
+            drag.y = t.clientY;                 // порог не считаем за путь
+            dy = 0;
+        }
+        if (e.cancelable) e.preventDefault();   // ни прокрутки, ни «потянуть для обновления»
+        var now = Date.now();
+        if (now > drag.lastAt) drag.v = (t.clientY - drag.lastY) / (now - drag.lastAt);
+        drag.lastY = t.clientY; drag.lastAt = now;
+        drag.dy = Math.max(0, dy);
+        setOffset(drag.dy, false);
+    }, { passive: false });
+
+    function finish() {
+        var d = drag;
+        drag = null;
+        if (!d || !d.active) return;
+        var h = panel.offsetHeight || 1;
+        if (d.dy > h * DONATE_SWIPE_CLOSE_SHARE || (d.v > DONATE_SWIPE_FLICK_PX_MS && d.dy > DONATE_SWIPE_START_PX)) {
+            setOffset(h, true);
+            setTimeout(function () {
+                closeDonateOverlay();
+                clearOffset();
+            }, DONATE_SWIPE_ANIM_MS);
+        } else {
+            setOffset(0, true);
+            setTimeout(clearOffset, DONATE_SWIPE_ANIM_MS);
+        }
+    }
+    panel.addEventListener('touchend', finish, { passive: true });
+    panel.addEventListener('touchcancel', finish, { passive: true });
 }
 
 function isDonateOpen() {
@@ -277,7 +367,11 @@ function addDonateStyles() {
         '  .donate-overlay-panel { display: block; width: 100%; max-width: 600px; max-height: 92vh;',
         '    padding: 12px 24px 34px; border-radius: 28px 28px 0 0; border: none;',
         '    -webkit-animation: donateSheetIn 0.24s ease-out; animation: donateSheetIn 0.24s ease-out; }',
-        '  .donate-handle { display: block; width: 40px; height: 5px; margin: 0 auto 20px; border-radius: 3px; background: rgba(255, 255, 255, 0.25); }',
+        // Полоска — ручка шторки (setupDonateSwipe): видно 40×5, а палец ловит
+        // зона побольше — прозрачный padding вокруг (background-clip)
+        '  .donate-handle { display: block; box-sizing: content-box; width: 40px; height: 5px; padding: 12px 40px; margin: -12px auto 8px;',
+        '    border-radius: 15px; background: rgba(255, 255, 255, 0.25); -webkit-background-clip: content-box; background-clip: content-box;',
+        '    -ms-touch-action: none; touch-action: none; }',
         '  .donate-qr-col, .donate-text-tv, .donate-hint { display: none; }',
         '  .donate-main { width: auto; }',
         '  .donate-badge { width: 56px; height: 56px; border-radius: 16px; }',
