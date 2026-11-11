@@ -158,12 +158,13 @@
       "js/player.js": "ba7d0275",
       "js/poster-db.js": "5133286b",
       "js/poster-prefetch.js": "a3173518",
-      "js/screensaver.js": "a1d305b7",
+      "js/screensaver.js": "01f61cc9",
       "js/smooth-scroll.js": "d5298daa",
       "js/speedtest.js": "8815f616",
       "js/start-module.js": "554bcb4a",
       "js/sync.js": "3b6f95ab",
       "js/tizen-avplay.js": "0e36f4e6",
+      "js/tizen-preview.js": "2c8e5dc0",
       "js/tmdb.js": "14f83980",
       "js/torrents-worker-bridge.js": "84a127e9",
       "js/torrents-worker-patch.js": "632c58aa",
@@ -1630,6 +1631,9 @@
     // Главная страница — последней: патчит showContentScreen / restoreFocusAfterNavigation
     // из app.js и closeDonateOverlay из donate.js, поэтому грузится после них
     document.write('<script src="https://cash94.github.io/msx/js/home.js?v=' + assetV('js/home.js') + '"><\/script>');
+    // Samsung Tizen: карточки Smart Hub Preview (как каналы Android TV) и
+    // открытие карточки по нажатию на них. Только в приложении (есть Device API)
+    if (window.tizen) document.write('<script src="https://cash94.github.io/msx/js/tizen-preview.js?v=' + assetV('js/tizen-preview.js') + '"><\/script>');
   </script>
 
 

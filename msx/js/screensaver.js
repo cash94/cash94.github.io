@@ -42,6 +42,7 @@
     // на автоповторе пульта это десятки clearTimeout/setTimeout в секунду.
     // Раз в секунду — ради пелены в плеере: 10 с при опросе раз в 5 с
     // превращались бы в 10–15. Вне плеера тик — одно сравнение времени
+    // (и пара проверок, не запускается ли фильм: watching)
     var CHECK_MS = 1000;
     var FADE_MS = 1500;
     // Пелена уходит быстро: под ней сразу должен появиться HUD
@@ -125,6 +126,16 @@
             } catch (e) { }
         }
         return false;
+    }
+
+    /** Открыт плеер или фильм запускается (окно предзагрузки, «Загрузка…») */
+    function watching() {
+        var st = window.AppState;
+        if (!st) return false;
+        if (st.currentScreen === 'player') return true;
+        if (typeof window.isPreloadScreenShown === 'function' && window.isPreloadScreenShown()) return true;
+        var starting = document.getElementById('playback-overlay');
+        return !!(starting && starting.classList.contains('active'));
     }
 
     function canStart() {
@@ -453,6 +464,11 @@
             pausedSince = 0;
             undim();
         }
+        // Фильм идёт или запускается — это не простой. Отсчёт держим на нуле,
+        // пока плеер не встанет на паузу или не закроется: иначе плеер,
+        // закрывшийся сам в конце фильма, сразу уступал экран заставке —
+        // последнее нажатие было ещё до начала фильма
+        if (watching() && !pausedSince) lastActivity = Date.now();
         if (active) {
             // Что-то заиграло мимо пульта (трейлер, плеер с телефона) — уходим
             if (!canStart()) stop();

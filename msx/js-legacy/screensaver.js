@@ -73,6 +73,14 @@
     }
     return false;
   }
+  function watching() {
+    var st = window.AppState;
+    if (!st) return false;
+    if (st.currentScreen === 'player') return true;
+    if (typeof window.isPreloadScreenShown === 'function' && window.isPreloadScreenShown()) return true;
+    var starting = document.getElementById('playback-overlay');
+    return !!(starting && starting.classList.contains('active'));
+  }
   function canStart() {
     if (document.hidden) return false;
     var st = window.AppState;
@@ -369,6 +377,7 @@
       pausedSince = 0;
       undim();
     }
+    if (watching() && !pausedSince) lastActivity = Date.now();
     if (active) {
       if (!canStart()) stop();else updateClock();
       return;
