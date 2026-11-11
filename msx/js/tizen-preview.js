@@ -13,7 +13,9 @@
 //
 // Готовый JSON отдаём службе пакета TorrStrm01.preview (preview/service.js в
 // TorrStream-Tizen) в данных запуска, а она — системе:
-// webapis.preview.setPreviewData. Чаще раза в 10 минут Samsung его звать не
+// webapis.preview.setPreviewData — и отвечает через messageport, принял ли
+// его Smart Hub. Служба не запустилась или не ответила — тот же вызов из
+// самой страницы. Что вышло — «Smart Hub» в «Об устройстве». Чаще раза в 10 минут Samsung его звать не
 // велит (лишние вызовы молча теряются), поэтому отправляем только изменения и
 // не чаще MIN_INTERVAL_MS.
 //
@@ -34,7 +36,11 @@
     var REPEAT_MS = 12 * 60 * 60 * 1000;
     var CHECK_MS = 10 * 60 * 1000;
     var FIRST_DELAY_MS = 5000;
-    var SENT_KEY = 'tsSmartHubPreview';
+    // Новый ключ: в первой версии «отправлено» значило лишь «служба запустилась»
+    var SENT_KEY = 'tsSmartHubPreview2';
+    var STATUS_KEY = 'tsSmartHubStatus';
+    var STATUS_PORT = 'TS_PREVIEW_STATUS';
+    var REPLY_MS = 30 * 1000;
     var COLD_KEY = 'tsPreviewColdDone';
     var TORRENT_HASH = /^[0-9a-f]{40}$/;
 
@@ -185,12 +191,13 @@
         return String(h >>> 0) + ':' + s.length;
     }
 
+    /** Последняя отправка: {h, at, ok} — ok, когда Smart Hub приём подтвердил */
     function readSent() {
         try { return JSON.parse(localStorage.getItem(SENT_KEY) || 'null') || {}; } catch (e) { return {}; }
     }
 
-    function writeSent(h) {
-        try { localStorage.setItem(SENT_KEY, JSON.stringify({ h: h, at: Date.now() })); } catch (e) { }
+    function writeSent(h, ok) {
+        try { localStorage.setItem(SENT_KEY, JSON.stringify({ h: h, at: Date.now(), ok: !!ok })); } catch (e) { }
     }
 
     function chunks(s, size) {
@@ -199,24 +206,123 @@
         return out;
     }
 
-    function sendToService(json, h) {
+    // ==================== ДИАГНОСТИКА ====================
+    //
+    // Что вышло с карточками — строкой «Smart Hub» в «Об устройстве» (app.js:
+    // renderDeviceInfo). Помним и между запусками: отправка бывает раз в 10 минут
+
+    function readStatus() {
+        try { return JSON.parse(localStorage.getItem(STATUS_KEY) || 'null'); } catch (e) { return null; }
+    }
+
+    function setStatus(text) {
+        log(text);
+        try { localStorage.setItem(STATUS_KEY, JSON.stringify({ text: text, at: Date.now() })); } catch (e) { }
+        // Перерисовываем «Об устройстве», только если он сейчас открыт
+        var box = document.getElementById('device-info');
+        if (box && box.offsetParent && typeof window.renderDeviceInfo === 'function') {
+            try { window.renderDeviceInfo(); } catch (e) { }
+        }
+    }
+
+    function hhmm(t) {
+        var d = new Date(t);
+        return d.getDate() + '.' + ('0' + (d.getMonth() + 1)).slice(-2) + ' ' +
+            d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2);
+    }
+
+    function statusText() {
+        var s = readStatus();
+        var head = serviceSupported() ? '' : 'веб-служб на ТВ нет (web.service); ';
+        if (!s) return head + 'ещё не отправляли';
+        return head + s.text + ' (' + hhmm(s.at) + ')';
+    }
+
+    // Ответ службы: что сказал Smart Hub (preview/service.js шлёт его на этот
+    // порт). Без него «передано службе» ничего не значит
+    var pending = null;     // {json, h, tiles, timer} — ждём ответа службы
+
+    (function listenService() {
+        try {
+            var port = tizen.messageport.requestLocalMessagePort(STATUS_PORT);
+            port.addMessagePortListener(function (data) {
+                var r = {};
+                for (var i = 0; i < (data || []).length; i++) r[data[i].key] = data[i].value;
+                // Служба получила карточки и зовёт Smart Hub — итог следом
+                if (r.result === 'started') {
+                    setStatus('служба получила карточки, жду ответ Smart Hub…');
+                    return;
+                }
+                var p = pending;
+                pending = null;
+                if (p) clearTimeout(p.timer);
+                if (r.result === 'ok') {
+                    if (p) writeSent(p.h, true);
+                    setStatus('Smart Hub принял карточки' + (p ? ': ' + p.tiles + ' шт.' : '') + ' (через службу)');
+                    return;
+                }
+                var why = 'служба: ' + (r.message || r.result || 'ошибка');
+                if (p) directSet(p.json, p.h, p.tiles, why); else setStatus(why);
+            });
+        } catch (e) {
+            log('messageport: ' + e.message);
+        }
+    })();
+
+    /**
+     * Запасной путь — тот же вызов из самой страницы (webapis.js подключает
+     * запускалка). Документация Samsung его не описывает, но и не запрещает
+     */
+    function directSet(json, h, tiles, why) {
+        var api = window.webapis && webapis.preview;
+        if (!api || typeof api.setPreviewData !== 'function') {
+            setStatus(why + '; в приложении webapis.preview нет');
+            return;
+        }
+        try {
+            api.setPreviewData(json, function () {
+                writeSent(h, true);
+                setStatus('Smart Hub принял карточки: ' + tiles + ' шт. (из приложения; ' + why + ')');
+            }, function (e) {
+                setStatus(why + '; из приложения: ' + ((e && (e.message || e.name)) || 'ошибка'));
+            });
+        } catch (e) {
+            setStatus(why + '; из приложения: ' + e.message);
+        }
+    }
+
+    function sendToService(json, h, tiles) {
+        writeSent(h, false);
+        if (!serviceSupported()) return directSet(json, h, tiles, 'веб-служб на ТВ нет');
         try {
             var ctrl = new tizen.ApplicationControl('http://tizen.org/appcontrol/operation/pick', null, null, null, [
                 new tizen.ApplicationControlData('caller', ['ForegroundApp']),
                 new tizen.ApplicationControlData('preview', chunks(json, 4000))
             ]);
             tizen.application.launchAppControl(ctrl, SERVICE_ID, function () {
-                writeSent(h);
-                log('карточки переданы службе (' + json.length + ' байт)');
+                setStatus('передано службе: ' + tiles + ' шт., жду ответ…');
+                if (pending) clearTimeout(pending.timer);
+                pending = { json: json, h: h, tiles: tiles };
+                pending.timer = setTimeout(function () {
+                    var p = pending;
+                    pending = null;
+                    if (p) directSet(p.json, p.h, p.tiles, 'служба запустилась, но не ответила за ' + (REPLY_MS / 1000) + ' с');
+                }, REPLY_MS);
             }, function (e) {
-                log('служба не запустилась: ' + (e && e.message));
+                directSet(json, h, tiles, 'служба не запустилась: ' + ((e && (e.message || e.name)) || 'ошибка'));
             });
         } catch (e) {
-            log('служба не запустилась: ' + e.message);
+            directSet(json, h, tiles, 'служба не запустилась: ' + e.message);
         }
     }
 
     var updating = false, retryTimer = null;
+
+    function countTiles(data) {
+        var n = 0;
+        for (var i = 0; i < data.sections.length; i++) n += data.sections[i].tiles.length;
+        return n;
+    }
 
     function update() {
         if (updating) return;
@@ -225,21 +331,22 @@
         updating = true;
         buildPreview().then(function (data) {
             updating = false;
-            if (!data) return;
+            if (!data) { setStatus('карточек нет: ряды пустые'); return; }
             var json = JSON.stringify(data);
             var h = hashOf(json);
             var sent = readSent();
             var since = Date.now() - (sent.at || 0);
-            if (sent.h === h && since < REPEAT_MS) return;
+            // Те же карточки, и Smart Hub их принял, — повторять незачем
+            if (sent.ok && sent.h === h && since < REPEAT_MS) return;
             if (since < MIN_INTERVAL_MS) {
-                // Изменилось, но рано: Samsung молча потеряет вызов
+                // Рано: Samsung молча потеряет вызов
                 if (!retryTimer) retryTimer = setTimeout(function () { retryTimer = null; update(); }, MIN_INTERVAL_MS - since + 1000);
                 return;
             }
-            sendToService(json, h);
+            sendToService(json, h, countTiles(data));
         }, function (e) {
             updating = false;
-            log('не собрал карточки: ' + (e && e.message));
+            setStatus('не собрал карточки: ' + (e && e.message));
         });
     }
 
@@ -355,8 +462,14 @@
     try { cold = !sessionStorage.getItem(COLD_KEY); sessionStorage.setItem(COLD_KEY, '1'); } catch (e) { }
     if (cold) openCard(payloadCard());
 
-    if (serviceSupported()) startWhenReady();
-    else log('веб-службы на этом ТВ нет — карточки не публикуем');
+    startWhenReady();
 
-    window.TizenPreview = { update: update, build: buildPreview, open: openCard };
+    window.TizenPreview = {
+        update: update,
+        build: buildPreview,
+        open: openCard,
+        statusText: statusText,
+        // Отправить сейчас, без проверки «не изменились» (для отладки)
+        force: function () { try { localStorage.removeItem(SENT_KEY); } catch (e) { } update(); }
+    };
 })();

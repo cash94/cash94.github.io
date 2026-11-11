@@ -10,7 +10,10 @@
   var REPEAT_MS = 12 * 60 * 60 * 1000;
   var CHECK_MS = 10 * 60 * 1000;
   var FIRST_DELAY_MS = 5000;
-  var SENT_KEY = 'tsSmartHubPreview';
+  var SENT_KEY = 'tsSmartHubPreview2';
+  var STATUS_KEY = 'tsSmartHubStatus';
+  var STATUS_PORT = 'TS_PREVIEW_STATUS';
+  var REPLY_MS = 30 * 1000;
   var COLD_KEY = 'tsPreviewColdDone';
   var TORRENT_HASH = /^[0-9a-f]{40}$/;
   var SECTIONS = [{
@@ -190,11 +193,12 @@
       return {};
     }
   }
-  function writeSent(h) {
+  function writeSent(h, ok) {
     try {
       localStorage.setItem(SENT_KEY, JSON.stringify({
         h: h,
-        at: Date.now()
+        at: Date.now(),
+        ok: !!ok
       }));
     } catch (e) {}
   }
@@ -203,33 +207,128 @@
     for (var i = 0; i < s.length; i += size) out.push(s.slice(i, i + size));
     return out;
   }
-  function sendToService(json, h) {
+  function readStatus() {
+    try {
+      return JSON.parse(localStorage.getItem(STATUS_KEY) || 'null');
+    } catch (e) {
+      return null;
+    }
+  }
+  function setStatus(text) {
+    log(text);
+    try {
+      localStorage.setItem(STATUS_KEY, JSON.stringify({
+        text: text,
+        at: Date.now()
+      }));
+    } catch (e) {}
+    var box = document.getElementById('device-info');
+    if (box && box.offsetParent && typeof window.renderDeviceInfo === 'function') {
+      try {
+        window.renderDeviceInfo();
+      } catch (e) {}
+    }
+  }
+  function hhmm(t) {
+    var d = new Date(t);
+    return d.getDate() + '.' + ('0' + (d.getMonth() + 1)).slice(-2) + ' ' + d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2);
+  }
+  function statusText() {
+    var s = readStatus();
+    var head = serviceSupported() ? '' : 'веб-служб на ТВ нет (web.service); ';
+    if (!s) return head + 'ещё не отправляли';
+    return head + s.text + ' (' + hhmm(s.at) + ')';
+  }
+  var pending = null;
+  (function listenService() {
+    try {
+      var port = tizen.messageport.requestLocalMessagePort(STATUS_PORT);
+      port.addMessagePortListener(function (data) {
+        var r = {};
+        for (var i = 0; i < (data || []).length; i++) r[data[i].key] = data[i].value;
+        if (r.result === 'started') {
+          setStatus('служба получила карточки, жду ответ Smart Hub…');
+          return;
+        }
+        var p = pending;
+        pending = null;
+        if (p) clearTimeout(p.timer);
+        if (r.result === 'ok') {
+          if (p) writeSent(p.h, true);
+          setStatus('Smart Hub принял карточки' + (p ? ': ' + p.tiles + ' шт.' : '') + ' (через службу)');
+          return;
+        }
+        var why = 'служба: ' + (r.message || r.result || 'ошибка');
+        if (p) directSet(p.json, p.h, p.tiles, why);else setStatus(why);
+      });
+    } catch (e) {
+      log('messageport: ' + e.message);
+    }
+  })();
+  function directSet(json, h, tiles, why) {
+    var api = window.webapis && webapis.preview;
+    if (!api || typeof api.setPreviewData !== 'function') {
+      setStatus(why + '; в приложении webapis.preview нет');
+      return;
+    }
+    try {
+      api.setPreviewData(json, function () {
+        writeSent(h, true);
+        setStatus('Smart Hub принял карточки: ' + tiles + ' шт. (из приложения; ' + why + ')');
+      }, function (e) {
+        setStatus(why + '; из приложения: ' + (e && (e.message || e.name) || 'ошибка'));
+      });
+    } catch (e) {
+      setStatus(why + '; из приложения: ' + e.message);
+    }
+  }
+  function sendToService(json, h, tiles) {
+    writeSent(h, false);
+    if (!serviceSupported()) return directSet(json, h, tiles, 'веб-служб на ТВ нет');
     try {
       var ctrl = new tizen.ApplicationControl('http://tizen.org/appcontrol/operation/pick', null, null, null, [new tizen.ApplicationControlData('caller', ['ForegroundApp']), new tizen.ApplicationControlData('preview', chunks(json, 4000))]);
       tizen.application.launchAppControl(ctrl, SERVICE_ID, function () {
-        writeSent(h);
-        log('карточки переданы службе (' + json.length + ' байт)');
+        setStatus('передано службе: ' + tiles + ' шт., жду ответ…');
+        if (pending) clearTimeout(pending.timer);
+        pending = {
+          json: json,
+          h: h,
+          tiles: tiles
+        };
+        pending.timer = setTimeout(function () {
+          var p = pending;
+          pending = null;
+          if (p) directSet(p.json, p.h, p.tiles, 'служба запустилась, но не ответила за ' + REPLY_MS / 1000 + ' с');
+        }, REPLY_MS);
       }, function (e) {
-        log('служба не запустилась: ' + (e && e.message));
+        directSet(json, h, tiles, 'служба не запустилась: ' + (e && (e.message || e.name) || 'ошибка'));
       });
     } catch (e) {
-      log('служба не запустилась: ' + e.message);
+      directSet(json, h, tiles, 'служба не запустилась: ' + e.message);
     }
   }
   var updating = false,
     retryTimer = null;
+  function countTiles(data) {
+    var n = 0;
+    for (var i = 0; i < data.sections.length; i++) n += data.sections[i].tiles.length;
+    return n;
+  }
   function update() {
     if (updating) return;
     if (window.AppState && AppState.currentScreen === 'player') return;
     updating = true;
     buildPreview().then(function (data) {
       updating = false;
-      if (!data) return;
+      if (!data) {
+        setStatus('карточек нет: ряды пустые');
+        return;
+      }
       var json = JSON.stringify(data);
       var h = hashOf(json);
       var sent = readSent();
       var since = Date.now() - (sent.at || 0);
-      if (sent.h === h && since < REPEAT_MS) return;
+      if (sent.ok && sent.h === h && since < REPEAT_MS) return;
       if (since < MIN_INTERVAL_MS) {
         if (!retryTimer) retryTimer = setTimeout(function () {
           retryTimer = null;
@@ -237,10 +336,10 @@
         }, MIN_INTERVAL_MS - since + 1000);
         return;
       }
-      sendToService(json, h);
+      sendToService(json, h, countTiles(data));
     }, function (e) {
       updating = false;
-      log('не собрал карточки: ' + (e && e.message));
+      setStatus('не собрал карточки: ' + (e && e.message));
     });
   }
   function startWhenReady() {
@@ -367,10 +466,17 @@
     sessionStorage.setItem(COLD_KEY, '1');
   } catch (e) {}
   if (cold) openCard(payloadCard());
-  if (serviceSupported()) startWhenReady();else log('веб-службы на этом ТВ нет — карточки не публикуем');
+  startWhenReady();
   window.TizenPreview = {
     update: update,
     build: buildPreview,
-    open: openCard
+    open: openCard,
+    statusText: statusText,
+    force: function () {
+      try {
+        localStorage.removeItem(SENT_KEY);
+      } catch (e) {}
+      update();
+    }
   };
 })();

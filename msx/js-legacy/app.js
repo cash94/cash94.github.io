@@ -2311,6 +2311,7 @@ function renderDeviceInfo() {
     rows.push(['Дорожки на ТВ', (tizenServiceStatus[tracksPort] || 'проверка…') + (lastLocal ? ' · последний файл: ' + lastLocal : '')]);
     rows.push(['ffprobe на ТВ', tizenServiceStatus[ffprobePort] || 'проверка…']);
     rows.push(['TorrServer на ТВ', tizenServiceStatus[8090] || 'проверка…']);
+    rows.push(['Smart Hub', window.TizenPreview ? TizenPreview.statusText() : 'не загружено (нет Device API)']);
     if (!tizenServiceStatus[8090]) checkTizenTorrServer();
     if (!tizenServiceStatus[tracksPort]) checkTizenService(tracksPort, 'не запущена (нужен TorrStream-Tizen 1.1.4+)');
     if (!tizenServiceStatus[ffprobePort]) checkTizenService(ffprobePort, 'не установлена (TorrStream-ffprobe.wgt, Tizen 6+)');
