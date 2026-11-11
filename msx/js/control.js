@@ -5077,6 +5077,51 @@ function setConfigMenuActive(menuItemId) {
     }
 }
 
+/**
+ * Открыть настройки сразу на нужном поле — когда без него дальше никак
+ * (пустой адрес Jacred в приложении Tizen: torrents.js, requireJacredHost).
+ *
+ * Настройки открываются той же кнопкой шапки, что и вручную: её обработчик
+ * (app.js) кладёт запись в стек переходов, и «назад» вернёт, откуда пришли.
+ * Поиск лежит выше настроек (z-index), поэтому его закрываем; карточку под
+ * ними прячет catalog.js, как при нажатии кнопки в шапке над карточкой.
+ *
+ * @param {string} fieldId id поля на одной из вкладок настроек
+ * @returns {boolean} false — поля такого нет
+ */
+function openSettingsField(fieldId) {
+    var field = getEl(fieldId);
+    var tab = field && field.closest ? field.closest('.tab-content') : null;
+    var btn = getEl('settings-btn');
+    if (!tab || !btn) return false;
+    var tabId = tab.id.replace(/-content$/, '');
+
+    if (_isScreenVisible(getEl('search-overlay')) && typeof window.hideSearchResults === 'function') {
+        window.hideSearchResults();
+    }
+    if (!_isScreenVisible(getEl('config-screen'))) {
+        if (_isScreenVisible(getEl('detail-view')) && typeof window.detailTopbarNavigate === 'function') {
+            window.detailTopbarNavigate('settings-btn');
+        }
+        clickEl(btn);
+    }
+    // После обработчика кнопки: тот через NAVIGATION_DELAY_MS ставит фокус на
+    // первый пункт меню
+    setTimeout(function () {
+        if (currentScreen() !== 'config') return;
+        configState.initialized = true;
+        configState.activeTabId = tabId;
+        configState.isOnMenu = false;
+        setConfigMenuActive(tabId);
+        switchConfigTab(tabId);
+        updateFocusableElements();
+        focusEl(field);
+        scrollToActiveConfigItem();
+    }, (typeof APP_CONSTANTS !== 'undefined' ? APP_CONSTANTS.NAVIGATION_DELAY_MS : 300) + 50);
+    return true;
+}
+window.openSettingsField = openSettingsField;
+
 // ==================== CUSTOM FILTER MENU ====================
 function ensureCustomFilterMenu() { var m = getEl('custom-filter-menu'); if (m) return m; m = document.createElement('div'); m.id = 'custom-filter-menu'; m.className = 'custom-filter-menu hidden'; m.innerHTML = '<div class="custom-filter-menu-backdrop"></div><div class="custom-filter-menu-panel"><div class="custom-filter-menu-title" id="custom-filter-menu-title">Выбор</div><div class="custom-filter-menu-options" id="custom-filter-menu-options"></div></div>'; document.body.appendChild(m); var bd = m.querySelector('.custom-filter-menu-backdrop'); if (bd) bd.addEventListener('click', closeCustomFilterMenu); /* Пункт — и мышью, и пальцем (iPhone, iPad): раньше выбрать можно было только пультом */ var oe = m.querySelector('.custom-filter-menu-options'); if (oe) oe.addEventListener('click', function (e) { var o = e.target.closest ? e.target.closest('.custom-filter-option') : null; if (!o || !customFilterMenuState) return; customFilterMenuState.index = parseInt(o.getAttribute('data-index'), 10) || 0; applyCustomFilterMenuSelection(); }); return m; }
 function renderCustomFilterMenu() {

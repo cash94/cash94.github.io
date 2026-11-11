@@ -4662,9 +4662,24 @@ function getJacredSearchHints() {
   return AppState.jacredSearchHints || null;
 }
 window.getJacredSearchHints = getJacredSearchHints;
-function buildJacredSearchUrl(query, hints) {
+function getJacredHost() {
   var jacred = getEl('jacred-url');
-  var host = jacred && jacred.value !== "" ? jacred.value : "jac.red";
+  var host = jacred ? String(jacred.value || '').trim() : '';
+  if (host) return host;
+  return AppState.tizenApp ? '' : 'jac.red';
+}
+window.getJacredHost = getJacredHost;
+function requireJacredHost() {
+  if (getJacredHost()) return true;
+  if (typeof window.showErrorBanner === 'function') {
+    window.showErrorBanner('Не указан адрес Jacred', 'Укажите адрес Jacred или Jackett в настройках (например, jac.red)');
+  }
+  if (typeof window.openSettingsField === 'function') window.openSettingsField('jacred-url');
+  return false;
+}
+window.requireJacredHost = requireJacredHost;
+function buildJacredSearchUrl(query, hints) {
+  var host = getJacredHost();
   var url = AppState.protocol + '//' + host + '/api/v2.0/indexers/all/results' + '?Query=' + encodeURIComponent(query.trim());
   if (hints === undefined) hints = getJacredSearchHints();
   if (hints && hints.title) {
@@ -4724,6 +4739,7 @@ function _searchTorrentsLegacy() {
       alert('Введите поисковый запрос');
       return;
     }
+    if (!requireJacredHost()) return;
     var target = buildJacredSearchUrl(query);
     var searchUrl = target.url,
       jacDefault = target.host;

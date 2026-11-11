@@ -175,6 +175,10 @@
     });
   }
   function requestJacred(gen, key) {
+    if (typeof window.getJacredHost === 'function' && !window.getJacredHost()) {
+      setStatus('nohost');
+      return;
+    }
     var item = state.item,
       query = state.query,
       details = state.details;
@@ -297,6 +301,7 @@
   }
   function statusText() {
     if (state.status === 'error') return 'Jacred не ответил. ОК — повторить';
+    if (state.status === 'nohost') return 'Не указан адрес Jacred. ОК — открыть настройки';
     if (state.status === 'ready' && !hasRows(state.data)) return 'Подходящих раздач нет';
     return '';
   }
@@ -396,7 +401,7 @@
     m.style.left = Math.max(0, Math.min(btn.offsetLeft, room)) + 'px';
     document.addEventListener('click', onOutsideClick, true);
     renderMenu();
-    if (state.status === 'idle' || state.status === 'error') load();
+    if (state.status === 'idle' || state.status === 'error' || state.status === 'nohost') load();
   }
   function close() {
     if (!state.open) return false;
@@ -406,6 +411,10 @@
     if (m) m.classList.add('hidden');
     document.removeEventListener('click', onOutsideClick, true);
     return true;
+  }
+  function openJacredSettings() {
+    close();
+    if (typeof window.requireJacredHost === 'function') window.requireJacredHost();
   }
   function stepSeason(step) {
     var groups = visibleGroups(state.data);
@@ -441,7 +450,7 @@
       if (row) choose(row);
       return;
     }
-    if (state.status === 'error') load();
+    if (state.status === 'error') load();else if (state.status === 'nohost') openJacredSettings();
   }
   function onMenuHover(e) {
     var rowEl = e.target.closest ? e.target.closest('.catalog-best-row') : null;
@@ -465,6 +474,10 @@
   function handleOk() {
     if (state.status === 'error') {
       load();
+      return;
+    }
+    if (state.status === 'nohost') {
+      openJacredSettings();
       return;
     }
     var row = state.index < state.revealed ? currentRows()[state.index] : null;

@@ -5932,6 +5932,41 @@ function getJacredSearchHints() {
 window.getJacredSearchHints = getJacredSearchHints;
 
 /**
+ * Адрес Jacred из настроек.
+ *
+ * Пустое поле — общий jac.red, но только не в приложении Tizen: по правилам
+ * каталога Apps2Samsung у приложения не должно быть источника контента по
+ * умолчанию, адрес своего Jacred или Jackett человек вписывает сам.
+ *
+ * @returns {string} '' — искать негде (только Tizen); перед поиском —
+ *          requireJacredHost
+ */
+function getJacredHost() {
+    var jacred = getEl('jacred-url');
+    var host = jacred ? String(jacred.value || '').trim() : '';
+    if (host) return host;
+    return AppState.tizenApp ? '' : 'jac.red';
+}
+window.getJacredHost = getJacredHost;
+
+/**
+ * Адрес Jacred есть? Нет — просим его вписать и ведём в настройки прямо на
+ * поле (control.js: openSettingsField).
+ *
+ * @returns {boolean} false — искать не надо
+ */
+function requireJacredHost() {
+    if (getJacredHost()) return true;
+    if (typeof window.showErrorBanner === 'function') {
+        window.showErrorBanner('Не указан адрес Jacred',
+            'Укажите адрес Jacred или Jackett в настройках (например, jac.red)');
+    }
+    if (typeof window.openSettingsField === 'function') window.openSettingsField('jacred-url');
+    return false;
+}
+window.requireJacredHost = requireJacredHost;
+
+/**
  * Собрать URL поиска к Jacred (Jackett JSON API v2.0).
  *
  * Свободный поиск — одна строка Query. Из карточки TMDB запрос собирается
@@ -5947,8 +5982,7 @@ window.getJacredSearchHints = getJacredSearchHints;
  *          «Не отвечает ...».
  */
 function buildJacredSearchUrl(query, hints) {
-    var jacred = getEl('jacred-url');
-    var host = (jacred && jacred.value !== "") ? jacred.value : "jac.red";
+    var host = getJacredHost();
 
     // Новый API Jackett v2.0
     var url = AppState.protocol + '//' + host + '/api/v2.0/indexers/all/results' +
@@ -6020,6 +6054,7 @@ window.signJacredSearchUrl = signJacredSearchUrl;
 
 async function searchTorrentsLegacy(query) {
     if (!query || !query.trim()) { alert('Введите поисковый запрос'); return; }
+    if (!requireJacredHost()) return;
     var target = buildJacredSearchUrl(query);
     var searchUrl = target.url, jacDefault = target.host;
 

@@ -4254,6 +4254,35 @@ function setConfigMenuActive(menuItemId) {
     if (menuItems[i].id === menuItemId) menuItems[i].classList.add('active');else menuItems[i].classList.remove('active');
   }
 }
+function openSettingsField(fieldId) {
+  var field = getEl(fieldId);
+  var tab = field && field.closest ? field.closest('.tab-content') : null;
+  var btn = getEl('settings-btn');
+  if (!tab || !btn) return false;
+  var tabId = tab.id.replace(/-content$/, '');
+  if (_isScreenVisible(getEl('search-overlay')) && typeof window.hideSearchResults === 'function') {
+    window.hideSearchResults();
+  }
+  if (!_isScreenVisible(getEl('config-screen'))) {
+    if (_isScreenVisible(getEl('detail-view')) && typeof window.detailTopbarNavigate === 'function') {
+      window.detailTopbarNavigate('settings-btn');
+    }
+    clickEl(btn);
+  }
+  setTimeout(function () {
+    if (currentScreen() !== 'config') return;
+    configState.initialized = true;
+    configState.activeTabId = tabId;
+    configState.isOnMenu = false;
+    setConfigMenuActive(tabId);
+    switchConfigTab(tabId);
+    updateFocusableElements();
+    focusEl(field);
+    scrollToActiveConfigItem();
+  }, (typeof APP_CONSTANTS !== 'undefined' ? APP_CONSTANTS.NAVIGATION_DELAY_MS : 300) + 50);
+  return true;
+}
+window.openSettingsField = openSettingsField;
 function ensureCustomFilterMenu() {
   var m = getEl('custom-filter-menu');
   if (m) return m;

@@ -40,6 +40,9 @@
     // ==================== searchTorrentsLegacy ====================
     window.searchTorrentsLegacy = searchTorrentsLegacy = async function (query) {
         if (!query || !query.trim()) { alert('Введите поисковый запрос'); return 0; }
+        // Адреса Jacred нет (приложение Tizen, поле пустое) — torrents.js
+        // просит его вписать и открывает настройки
+        if (typeof window.requireJacredHost === 'function' && !window.requireJacredHost()) return 0;
 
         if (_searchController) _searchController.abort();
         _searchController = new AbortController();
@@ -56,7 +59,8 @@
             jacDefault = target.host;
         } else {
             var jacred = getEl('jacred-url');
-            jacDefault = (jacred && jacred.value !== '') ? jacred.value : 'jac.red';
+            jacDefault = (jacred && jacred.value !== '') ? jacred.value : (AppState.tizenApp ? '' : 'jac.red');
+            if (!jacDefault) return 0;   // Tizen: индексатора по умолчанию нет
             searchUrl = AppState.protocol + '//' + jacDefault +
                 '/api/v2.0/indexers/all/results?Query=' + encodeURIComponent(query.trim()) + '&exact=true';
             var keyEl = getEl('jacred-apikey');

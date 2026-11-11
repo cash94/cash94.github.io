@@ -35,7 +35,7 @@
     var state = {
         item: null, key: null, query: '', details: null,
         ready: false,        // детали получены, запрос можно собрать
-        status: 'idle',      // idle | loading | ready | error
+        status: 'idle',      // idle | loading | ready | error | nohost (Jacred не указан)
         data: null,
         fresh: false,        // собран только что и ещё не показывался
         gen: 0,
@@ -186,6 +186,12 @@
     }
 
     function requestJacred(gen, key) {
+        // Адреса Jacred нет (приложение Tizen, поле пустое): спрашивать некого,
+        // список предлагает открыть настройки (openJacredSettings)
+        if (typeof window.getJacredHost === 'function' && !window.getJacredHost()) {
+            setStatus('nohost');
+            return;
+        }
         var item = state.item, query = state.query, details = state.details;
         var timeoutMs = window.JACRED_TIMEOUT_MS || DEFAULT_TIMEOUT_MS;
         var controller = null;
@@ -323,6 +329,7 @@
 
     function statusText() {
         if (state.status === 'error') return 'Jacred не ответил. ОК — повторить';
+        if (state.status === 'nohost') return 'Не указан адрес Jacred. ОК — открыть настройки';
         if (state.status === 'ready' && !hasRows(state.data)) return 'Подходящих раздач нет';
         return '';
     }
@@ -431,7 +438,7 @@
         m.style.left = Math.max(0, Math.min(btn.offsetLeft, room)) + 'px';
         document.addEventListener('click', onOutsideClick, true);
         renderMenu();
-        if (state.status === 'idle' || state.status === 'error') load();
+        if (state.status === 'idle' || state.status === 'error' || state.status === 'nohost') load();
     }
 
     function close() {
@@ -442,6 +449,12 @@
         if (m) m.classList.add('hidden');
         document.removeEventListener('click', onOutsideClick, true);
         return true;
+    }
+
+    /** Пустой адрес Jacred: список закрываем и ведём в настройки на это поле */
+    function openJacredSettings() {
+        close();
+        if (typeof window.requireJacredHost === 'function') window.requireJacredHost();
     }
 
     function stepSeason(step) {
@@ -478,6 +491,7 @@
             return;
         }
         if (state.status === 'error') load();
+        else if (state.status === 'nohost') openJacredSettings();
     }
 
     function onMenuHover(e) {
@@ -501,6 +515,7 @@
 
     function handleOk() {
         if (state.status === 'error') { load(); return; }
+        if (state.status === 'nohost') { openJacredSettings(); return; }
         var row = state.index < state.revealed ? currentRows()[state.index] : null;
         if (row) choose(row);
     }

@@ -3070,6 +3070,10 @@ function setupSpeedTest() {
 // ==================== JACRED URL ====================
 function initJacredUrlStorage() {
   bindJacredField('jacred-url', 'jacred URL');
+  // В приложении Tizen поиска по умолчанию нет (torrents.js: getJacredHost),
+  // и подсказка «jac.red» в пустом поле читалась бы как значение по умолчанию
+  var jacredInput = getEl('jacred-url');
+  if (jacredInput && AppState.tizenApp) jacredInput.placeholder = 'Адрес вашего Jacred или Jackett';
   // API ключ — поле рядом с адресом; в запрос уходит как &apikey=
   // (torrents.js: buildJacredSearchUrl). Значение в лог не пишем.
   bindJacredField('jacred-apikey', null);

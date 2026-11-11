@@ -29,6 +29,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         alert('Введите поисковый запрос');
         return 0;
       }
+      if (typeof window.requireJacredHost === 'function' && !window.requireJacredHost()) return 0;
       if (_searchController) _searchController.abort();
       _searchController = new AbortController();
       var controller = _searchController;
@@ -40,7 +41,8 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
         jacDefault = target.host;
       } else {
         var jacred = getEl('jacred-url');
-        jacDefault = jacred && jacred.value !== '' ? jacred.value : 'jac.red';
+        jacDefault = jacred && jacred.value !== '' ? jacred.value : AppState.tizenApp ? '' : 'jac.red';
+        if (!jacDefault) return 0;
         searchUrl = AppState.protocol + '//' + jacDefault + '/api/v2.0/indexers/all/results?Query=' + encodeURIComponent(query.trim()) + '&exact=true';
         var keyEl = getEl('jacred-apikey');
         if (keyEl && keyEl.value.trim()) searchUrl += '&apikey=' + encodeURIComponent(keyEl.value.trim());

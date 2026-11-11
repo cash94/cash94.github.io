@@ -2402,6 +2402,8 @@ function setupSpeedTest() {
 }
 function initJacredUrlStorage() {
   bindJacredField('jacred-url', 'jacred URL');
+  var jacredInput = getEl('jacred-url');
+  if (jacredInput && AppState.tizenApp) jacredInput.placeholder = 'Адрес вашего Jacred или Jackett';
   bindJacredField('jacred-apikey', null);
 }
 function bindJacredField(id, logName) {
