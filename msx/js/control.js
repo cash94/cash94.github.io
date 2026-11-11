@@ -5665,32 +5665,41 @@ function initControl() {
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initControl); else initControl();
 
 /**
- * Горизонтальная прокрутка списков колесом мыши и пальцем.
+ * Горизонтальные ленты: shift + колесо и свайп пальцем.
  *
  * Слушатели делегированы на document. Раньше wheel вешался на каждый
  * найденный контейнер один раз на DOMContentLoaded — то есть до того, как
  * появились ряды главной и каталога (они строятся асинхронно и пересобираются
  * при обновлении подборок), поэтому в рядах колесо не работало вовсе.
  *
- * Драг пальцем свой, не нативный: у рядов touch-action: pan-y — вертикальный
- * жест обязан доставаться странице (#main-container), иначе главная перестаёт
- * листаться, а браузер не умеет отдать одну ось странице, оставив вторую
- * контейнеру, если по горизонтали нужен ещё и fling с нашей инерцией.
+ * Свайп вбок — шаги фокуса, как стрелками пульта ←/→, а не драг по пикселям:
+ * раньше лента ехала под пальцем и пролетала по инерции, а фокус оставался на
+ * карточке, ушедшей за край. Шаг идёт тем же runScreenNavigation, что и у
+ * пульта, — прокрутку ленты к карточке делает фокус (как в сетках, жесты по
+ * строкам выше). Нативную горизонталь у лент выключает CSS (touch-action:
+ * pan-y): вертикаль остаётся странице (#main-container, карточка фильма).
  */
 (function () {
     var H_SCROLL_SELECTOR = '.files-list, ' +
         '.catalog-detail-episodes-grid, ' +
+        '.catalog-detail-crew-grid, ' +
         '.catalog-detail-actors-grid, ' +
         '.catalog-detail-recommendations-grid, ' +
         '.catalog-row-viewport, ' +
         '.catalog-row';
 
+    // Элементы лент, по которым ходит пульт: карточки рядов главной и
+    // каталога, файлы и серии, актёры и съёмочная группа, похожие и сборник
+    var LANE_ITEM_SELECTOR = '.catalog-row-card, .file-item, .catalog-episode-card, ' +
+        '.catalog-actor-card, .catalog-recommendation-card';
+
     // Столько же, сколько APP_CONSTANTS.TOUCH_MOVE_THRESHOLD_PX в app.js: до
     // этого порога касание там ещё считается тапом и открывает карточку,
-    // так что раньше начинать драг нельзя — уедет ряд и откроется фильм
+    // так что раньше начинать жест нельзя — сдвинется фокус и откроется фильм
     var TOUCH_AXIS_THRESHOLD = 10;
-    var FLING_MS = 140;      // насколько ряд пролетает по инерции после свайпа
-    var FLING_IDLE_MS = 80;  // палец постоял перед отрывом — инерции нет
+    var SWIPE_STEP_PX = 60;       // путь пальца на один шаг, как у рядов главной
+    var SWIPE_FLICK_PX = 30;      // короткий резкий мах — тоже шаг
+    var SWIPE_MAX_OWED = 6;       // столько шагов доезжает после отрыва пальца
 
     /** Состояние догона кадрами держим на самом элементе: слушатель один на всех */
     function state(cnt) {
@@ -5799,68 +5808,162 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
         glideTo(cnt, st.target + delta * 0.9);
     }, { passive: false });
 
-    // ---------- Драг пальцем ----------
-    var drag = null;
+    // ---------- Свайп пальцем: шаги фокуса ----------
+    var swipe = null;
+    // Шаги, которые ещё должен сделать жест: длинный или быстрый свайп копит
+    // их быстрее, чем фокус успевает ходить (один шаг — NAV_STEP_BASE_MS), и
+    // они доезжают по одному после отрыва пальца. Знак — направление (+ вправо).
+    var owed = 0, owedLane = null, owedTarget = null, owedTimer = null;
+    var stepLockUntil = 0;
+
+    /** Лента под пальцем; у заголовка ряда — вьюпорт этого ряда */
+    function findLane(target) {
+        if (!target || !target.closest) return null;
+        var lane = target.closest(H_SCROLL_SELECTOR);
+        if (lane && lane.classList.contains('catalog-row')) lane = lane.querySelector('.catalog-row-viewport');
+        return lane || null;
+    }
+
+    /** Экран, которому принадлежит лента, если жест сейчас ему адресован */
+    function laneScreen(lane) {
+        if (!lane || lane.isConnected === false) return null;
+        var sc = currentScreen();
+        if (sc === 'player' || !ScreenStrategies[sc] || !ScreenStrategies[sc].handleNavigation) return null;
+        return belongsToScreen(lane, sc) ? sc : null;
+    }
+
+    /** Видимые элементы ленты в порядке разметки (скрытые заглушки — мимо) */
+    function laneItems(lane) {
+        var all = lane.querySelectorAll(LANE_ITEM_SELECTOR), out = [];
+        for (var i = 0; i < all.length; i++) {
+            var it = all[i];
+            if (it.hidden || it.classList.contains('hidden') || !it.offsetWidth) continue;
+            out.push(it);
+        }
+        return out;
+    }
+
+    /** Карточка, с которой жест входит в ленту: под пальцем, иначе первая видимая целиком */
+    function laneEntry(lane, items, target) {
+        var base = target && target.closest ? target.closest(LANE_ITEM_SELECTOR) : null;
+        if (base && items.indexOf(base) !== -1) return base;
+        var vr = lane.getBoundingClientRect();
+        for (var i = 0; i < items.length; i++) {
+            var r = items[i].getBoundingClientRect();
+            if (r.left >= vr.left - 1 && r.right <= vr.right + 1) return items[i];
+        }
+        return items[0];
+    }
+
+    /** Один шаг жеста — то же, что стрелка ←/→; false — шагать некуда */
+    function laneStep(lane, right, target) {
+        var sc = laneScreen(lane);
+        if (!sc) return false;
+        var items = laneItems(lane);
+        if (!items.length) return false;
+        var dir = right ? 'right' : 'left';
+        var f = document.querySelector('.focused');
+        var fi = f ? items.indexOf(f) : -1;
+        stopGlide(lane);
+        if (fi === -1) {
+            // Фокус не в этой ленте (шапка, кнопки карточки, другой ряд или его
+            // нет вовсе на телефоне) — первый шаг ставит его в ленту
+            var entry = laneEntry(lane, items, target);
+            lastNavDirection = dir;
+            var st = ScreenStrategies[sc];
+            if (st.focusItem) { st.focusItem(entry, dir); return true; }
+            updateFocusableElements();
+            var idx = focusableElements.indexOf(entry);
+            if (idx !== -1) setFocus(idx);
+            else focusEl(entry, { direction: dir });
+            return true;
+        }
+        // У края стоим: стратегия у иных лент увела бы фокус в соседнюю
+        // строку, а жест должен листать ленту, а не прыгать
+        if (right ? fi === items.length - 1 : fi === 0) return false;
+        runScreenNavigation(dir);
+        return true;
+    }
+
+    function cancelOwed() {
+        owed = 0;
+        owedLane = owedTarget = null;
+        if (owedTimer) { clearTimeout(owedTimer); owedTimer = null; }
+    }
+
+    function pump() {
+        owedTimer = null;
+        if (!owed || !owedLane) return;
+        var now = Date.now();
+        if (now < stepLockUntil) { owedTimer = setTimeout(pump, stepLockUntil - now + 1); return; }
+        var right = owed > 0;
+        owed += right ? -1 : 1;
+        stepLockUntil = now + NAV_STEP_BASE_MS;
+        if (!laneStep(owedLane, right, owedTarget)) { cancelOwed(); return; }
+        if (owed) owedTimer = setTimeout(pump, NAV_STEP_BASE_MS + 1);
+    }
+
+    /** Жест должен ещё один шаг в сторону sign (+1 вправо, -1 влево) */
+    function addOwed(sw, sign) {
+        sw.steps++;
+        // Разворот пальца отменяет то, что не успело доехать
+        if (owed && (owed > 0) !== (sign > 0)) owed = 0;
+        if (Math.abs(owed) < SWIPE_MAX_OWED) owed += sign;
+        owedLane = sw.lane;
+        owedTarget = sw.target;
+        if (!owedTimer) pump();
+    }
 
     document.addEventListener('touchstart', function (e) {
-        drag = null;
+        swipe = null;
+        // Новое касание ловит ленту: недоехавшие шаги прошлого свайпа гасим
+        cancelOwed();
         if (!e.touches || e.touches.length !== 1) return;
-        var cnt = findContainer(e.target);
-        if (!cnt) return;
-
-        stopGlide(cnt);
+        var lane = findLane(e.target);
+        if (!lane || !laneScreen(lane)) return;
         var t = e.touches[0];
-        drag = {
-            cnt: cnt,
-            startX: t.clientX,
-            startY: t.clientY,
-            startScroll: getScrollX(cnt),
-            axis: null,
-            lastX: t.clientX,
-            lastT: Date.now(),
-            velocity: 0
-        };
+        swipe = { lane: lane, target: e.target, x: t.clientX, y: t.clientY, anchor: t.clientX, axis: null, steps: 0 };
     }, { passive: true });
 
     document.addEventListener('touchmove', function (e) {
-        if (!drag || !e.touches || e.touches.length !== 1) return;
-
+        var sw = swipe;
+        if (!sw || !e.touches || e.touches.length !== 1) return;
         var t = e.touches[0];
-        var dx = drag.startX - t.clientX;
-        var dy = drag.startY - t.clientY;
 
-        if (!drag.axis) {
+        if (!sw.axis) {
+            var dx = t.clientX - sw.x, dy = t.clientY - sw.y;
             if (Math.abs(dx) < TOUCH_AXIS_THRESHOLD && Math.abs(dy) < TOUCH_AXIS_THRESHOLD) return;
             // Жест по вертикали отдаём странице: #main-container скроллится
-            // нативно, перехватим — и главная перестанет листаться пальцем
-            if (Math.abs(dy) >= Math.abs(dx)) { drag = null; return; }
-            drag.axis = 'x';
+            // нативно, на главной и в сцене вертикаль ведут свои обработчики
+            if (Math.abs(dy) >= Math.abs(dx)) { swipe = null; return; }
+            sw.axis = 'x';
+            sw.anchor = t.clientX;      // порог не считаем за пройденный путь
         }
 
-        e.preventDefault();
+        if (e.cancelable) e.preventDefault();
 
-        var now = Date.now();
-        var dt = now - drag.lastT;
-        // px/мс, знак как у scrollX: палец влево — ряд уезжает вперёд
-        if (dt > 0) drag.velocity = (drag.lastX - t.clientX) / dt;
-        drag.lastX = t.clientX;
-        drag.lastT = now;
-
-        setScrollXImmediate(drag.cnt, clampX(drag.cnt, drag.startScroll + dx));
+        // Палец влево — фокус вправо, как при прокрутке ленты
+        var travel = sw.anchor - t.clientX;
+        while (Math.abs(travel) >= SWIPE_STEP_PX) {
+            var sign = travel > 0 ? 1 : -1;
+            sw.anchor -= sign * SWIPE_STEP_PX;
+            travel -= sign * SWIPE_STEP_PX;
+            addOwed(sw, sign);
+        }
     }, { passive: false });
 
-    function endDrag() {
-        if (!drag) return;
-        var d = drag;
-        drag = null;
-        if (d.axis !== 'x') return;
-
-        var velocity = (Date.now() - d.lastT > FLING_IDLE_MS) ? 0 : d.velocity;
-        glideTo(d.cnt, getScrollX(d.cnt) + velocity * FLING_MS);
+    function endSwipe(e) {
+        var sw = swipe;
+        swipe = null;
+        if (!sw || sw.axis !== 'x' || sw.steps || !e || !e.changedTouches || !e.changedTouches.length) return;
+        // Короткий мах не дотянул до шага — всё равно шаг: иначе быстрый
+        // щелчок пальцем по ленте ничего бы не делал
+        var travel = sw.x - e.changedTouches[0].clientX;
+        if (Math.abs(travel) >= SWIPE_FLICK_PX) addOwed(sw, travel > 0 ? 1 : -1);
     }
 
-    document.addEventListener('touchend', endDrag, { passive: true });
-    document.addEventListener('touchcancel', endDrag, { passive: true });
+    document.addEventListener('touchend', endSwipe, { passive: true });
+    document.addEventListener('touchcancel', function () { swipe = null; }, { passive: true });
 
     // Слушатели делегированы, обходить контейнеры больше не нужно —
     // функция оставлена, чтобы не падали внешние вызовы

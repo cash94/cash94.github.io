@@ -4860,10 +4860,12 @@ function initControl() {
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initControl);else initControl();
 (function () {
-  var H_SCROLL_SELECTOR = '.files-list, ' + '.catalog-detail-episodes-grid, ' + '.catalog-detail-actors-grid, ' + '.catalog-detail-recommendations-grid, ' + '.catalog-row-viewport, ' + '.catalog-row';
+  var H_SCROLL_SELECTOR = '.files-list, ' + '.catalog-detail-episodes-grid, ' + '.catalog-detail-crew-grid, ' + '.catalog-detail-actors-grid, ' + '.catalog-detail-recommendations-grid, ' + '.catalog-row-viewport, ' + '.catalog-row';
+  var LANE_ITEM_SELECTOR = '.catalog-row-card, .file-item, .catalog-episode-card, ' + '.catalog-actor-card, .catalog-recommendation-card';
   var TOUCH_AXIS_THRESHOLD = 10;
-  var FLING_MS = 140;
-  var FLING_IDLE_MS = 80;
+  var SWIPE_STEP_PX = 60;
+  var SWIPE_FLICK_PX = 30;
+  var SWIPE_MAX_OWED = 6;
   function state(cnt) {
     if (!cnt._hScroll) cnt._hScroll = {
       target: getScrollX(cnt),
@@ -4936,62 +4938,163 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
   }, {
     passive: false
   });
-  var drag = null;
+  var swipe = null;
+  var owed = 0,
+    owedLane = null,
+    owedTarget = null,
+    owedTimer = null;
+  var stepLockUntil = 0;
+  function findLane(target) {
+    if (!target || !target.closest) return null;
+    var lane = target.closest(H_SCROLL_SELECTOR);
+    if (lane && lane.classList.contains('catalog-row')) lane = lane.querySelector('.catalog-row-viewport');
+    return lane || null;
+  }
+  function laneScreen(lane) {
+    if (!lane || lane.isConnected === false) return null;
+    var sc = currentScreen();
+    if (sc === 'player' || !ScreenStrategies[sc] || !ScreenStrategies[sc].handleNavigation) return null;
+    return belongsToScreen(lane, sc) ? sc : null;
+  }
+  function laneItems(lane) {
+    var all = lane.querySelectorAll(LANE_ITEM_SELECTOR),
+      out = [];
+    for (var i = 0; i < all.length; i++) {
+      var it = all[i];
+      if (it.hidden || it.classList.contains('hidden') || !it.offsetWidth) continue;
+      out.push(it);
+    }
+    return out;
+  }
+  function laneEntry(lane, items, target) {
+    var base = target && target.closest ? target.closest(LANE_ITEM_SELECTOR) : null;
+    if (base && items.indexOf(base) !== -1) return base;
+    var vr = lane.getBoundingClientRect();
+    for (var i = 0; i < items.length; i++) {
+      var r = items[i].getBoundingClientRect();
+      if (r.left >= vr.left - 1 && r.right <= vr.right + 1) return items[i];
+    }
+    return items[0];
+  }
+  function laneStep(lane, right, target) {
+    var sc = laneScreen(lane);
+    if (!sc) return false;
+    var items = laneItems(lane);
+    if (!items.length) return false;
+    var dir = right ? 'right' : 'left';
+    var f = document.querySelector('.focused');
+    var fi = f ? items.indexOf(f) : -1;
+    stopGlide(lane);
+    if (fi === -1) {
+      var entry = laneEntry(lane, items, target);
+      lastNavDirection = dir;
+      var st = ScreenStrategies[sc];
+      if (st.focusItem) {
+        st.focusItem(entry, dir);
+        return true;
+      }
+      updateFocusableElements();
+      var idx = focusableElements.indexOf(entry);
+      if (idx !== -1) setFocus(idx);else focusEl(entry, {
+        direction: dir
+      });
+      return true;
+    }
+    if (right ? fi === items.length - 1 : fi === 0) return false;
+    runScreenNavigation(dir);
+    return true;
+  }
+  function cancelOwed() {
+    owed = 0;
+    owedLane = owedTarget = null;
+    if (owedTimer) {
+      clearTimeout(owedTimer);
+      owedTimer = null;
+    }
+  }
+  function pump() {
+    owedTimer = null;
+    if (!owed || !owedLane) return;
+    var now = Date.now();
+    if (now < stepLockUntil) {
+      owedTimer = setTimeout(pump, stepLockUntil - now + 1);
+      return;
+    }
+    var right = owed > 0;
+    owed += right ? -1 : 1;
+    stepLockUntil = now + NAV_STEP_BASE_MS;
+    if (!laneStep(owedLane, right, owedTarget)) {
+      cancelOwed();
+      return;
+    }
+    if (owed) owedTimer = setTimeout(pump, NAV_STEP_BASE_MS + 1);
+  }
+  function addOwed(sw, sign) {
+    sw.steps++;
+    if (owed && owed > 0 !== sign > 0) owed = 0;
+    if (Math.abs(owed) < SWIPE_MAX_OWED) owed += sign;
+    owedLane = sw.lane;
+    owedTarget = sw.target;
+    if (!owedTimer) pump();
+  }
   document.addEventListener('touchstart', function (e) {
-    drag = null;
+    swipe = null;
+    cancelOwed();
     if (!e.touches || e.touches.length !== 1) return;
-    var cnt = findContainer(e.target);
-    if (!cnt) return;
-    stopGlide(cnt);
+    var lane = findLane(e.target);
+    if (!lane || !laneScreen(lane)) return;
     var t = e.touches[0];
-    drag = {
-      cnt: cnt,
-      startX: t.clientX,
-      startY: t.clientY,
-      startScroll: getScrollX(cnt),
+    swipe = {
+      lane: lane,
+      target: e.target,
+      x: t.clientX,
+      y: t.clientY,
+      anchor: t.clientX,
       axis: null,
-      lastX: t.clientX,
-      lastT: Date.now(),
-      velocity: 0
+      steps: 0
     };
   }, {
     passive: true
   });
   document.addEventListener('touchmove', function (e) {
-    if (!drag || !e.touches || e.touches.length !== 1) return;
+    var sw = swipe;
+    if (!sw || !e.touches || e.touches.length !== 1) return;
     var t = e.touches[0];
-    var dx = drag.startX - t.clientX;
-    var dy = drag.startY - t.clientY;
-    if (!drag.axis) {
+    if (!sw.axis) {
+      var dx = t.clientX - sw.x,
+        dy = t.clientY - sw.y;
       if (Math.abs(dx) < TOUCH_AXIS_THRESHOLD && Math.abs(dy) < TOUCH_AXIS_THRESHOLD) return;
       if (Math.abs(dy) >= Math.abs(dx)) {
-        drag = null;
+        swipe = null;
         return;
       }
-      drag.axis = 'x';
+      sw.axis = 'x';
+      sw.anchor = t.clientX;
     }
-    e.preventDefault();
-    var now = Date.now();
-    var dt = now - drag.lastT;
-    if (dt > 0) drag.velocity = (drag.lastX - t.clientX) / dt;
-    drag.lastX = t.clientX;
-    drag.lastT = now;
-    setScrollXImmediate(drag.cnt, clampX(drag.cnt, drag.startScroll + dx));
+    if (e.cancelable) e.preventDefault();
+    var travel = sw.anchor - t.clientX;
+    while (Math.abs(travel) >= SWIPE_STEP_PX) {
+      var sign = travel > 0 ? 1 : -1;
+      sw.anchor -= sign * SWIPE_STEP_PX;
+      travel -= sign * SWIPE_STEP_PX;
+      addOwed(sw, sign);
+    }
   }, {
     passive: false
   });
-  function endDrag() {
-    if (!drag) return;
-    var d = drag;
-    drag = null;
-    if (d.axis !== 'x') return;
-    var velocity = Date.now() - d.lastT > FLING_IDLE_MS ? 0 : d.velocity;
-    glideTo(d.cnt, getScrollX(d.cnt) + velocity * FLING_MS);
+  function endSwipe(e) {
+    var sw = swipe;
+    swipe = null;
+    if (!sw || sw.axis !== 'x' || sw.steps || !e || !e.changedTouches || !e.changedTouches.length) return;
+    var travel = sw.x - e.changedTouches[0].clientX;
+    if (Math.abs(travel) >= SWIPE_FLICK_PX) addOwed(sw, travel > 0 ? 1 : -1);
   }
-  document.addEventListener('touchend', endDrag, {
+  document.addEventListener('touchend', endSwipe, {
     passive: true
   });
-  document.addEventListener('touchcancel', endDrag, {
+  document.addEventListener('touchcancel', function () {
+    swipe = null;
+  }, {
     passive: true
   });
   window.initSmoothHorizontalScroll = function () {};

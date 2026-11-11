@@ -3997,6 +3997,14 @@
             },
             ensureFocus: ensureHomeFocus,
             handleNavigation: handleHomeNavigation,
+            // Свайп по ряду (control.js, ленты) входит в ряд с карточки под
+            // пальцем — через focusCard, чтобы ряд запомнил колонку, а баннер
+            // сменился, как при стрелке
+            focusItem: function (card) {
+                var pos = findCardPosition(card);
+                if (pos) return focusCard(pos.row, pos.col);
+                return focusHomeEl(card);
+            },
             onOk: onHomeOk
         };
     }

@@ -3058,6 +3058,11 @@
       },
       ensureFocus: ensureHomeFocus,
       handleNavigation: handleHomeNavigation,
+      focusItem: function (card) {
+        var pos = findCardPosition(card);
+        if (pos) return focusCard(pos.row, pos.col);
+        return focusHomeEl(card);
+      },
       onOk: onHomeOk
     };
   }

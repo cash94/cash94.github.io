@@ -1133,6 +1133,18 @@ textarea {
   touch-action: pan-x;
 }
 
+/* Горизонтальные ленты карточки фильма (файлы, серии, люди, похожие) свайп
+   вбок листает шагами фокуса, как стрелками пульта (control.js), — нативную
+   горизонталь выключаем, вертикаль остаётся странице. У рядов главной и
+   каталога то же самое задаёт .catalog-row-viewport */
+.files-list,
+.catalog-detail-episodes-grid,
+.catalog-detail-crew-grid,
+.catalog-detail-actors-grid,
+.catalog-detail-recommendations-grid {
+  touch-action: pan-y;
+}
+
 /* На постере ничего поверх — год и оценка переехали под название */
 #catalog-grid .card-modern .poster-year,
 #catalog-grid .card-modern .poster-bar,
@@ -5021,7 +5033,7 @@ html.tizen-avplay #video-player {
   scrollbar-width: none;
   -ms-overflow-style: none;
   /* Палец: вертикаль отдаём браузеру (#main-container скроллится нативно),
-     горизонталь двигаем сами в control.js — там же инерция после свайпа.
+     горизонталь ведёт control.js — свайп шагает фокусом, как пульт.
      Без pan-y браузер может забрать жест себе на первых пикселях, и
      preventDefault в touchmove опоздает. */
   touch-action: pan-y;
