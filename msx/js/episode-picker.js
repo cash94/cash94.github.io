@@ -459,10 +459,15 @@
         var info = {
             tmdbId: tm ? tm.id : null,
             mediaType: tm ? tm.type : (state.serial ? 'tv' : 'movie'),
-            poster: tm && tm.poster ? imageUrl(tm.poster, 'w342') : null
+            poster: tm && tm.poster ? imageUrl(tm.poster, 'w342') : null,
+            title: state.title,
+            files: state.files.slice(),
+            preExisting: state.preExisting
         };
-        close(true);
+        // Сначала запуск — он сразу, до первого await, ставит окно предзагрузки
+        // (или «Добавление раздачи…»), и только потом закрываемся уже под ним
         if (typeof window.playSearchResultFile === 'function') window.playSearchResultFile(result, f.id, i, info);
+        close(true);
     }
 
     /* ==================== ПУЛЬТ ==================== */

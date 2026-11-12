@@ -5378,7 +5378,7 @@ function _addTorrentToServer() {
     if (!seasons.length && ctx.item && (ctx.item.title || ctx.item.name)) {
       seasons = extractSeasonsFromTitle(ctx.item.title || ctx.item.name);
     }
-    var baseName = ctx.item && (ctx.item.title || ctx.item.name) || searchResult && (searchResult.name || searchResult.title) || 'Без названия';
+    var baseName = options.title || ctx.item && (ctx.item.title || ctx.item.name) || searchResult && (searchResult.name || searchResult.title) || 'Без названия';
     AppState.mediaType = mediaType;
     var mono = monoServerTorrentMeta();
     var torrname;
@@ -5600,20 +5600,32 @@ function _playSearchResultFile() {
     info = info || {};
     var hash = String(searchResultHash(searchResult) || '').toLowerCase();
     if (!hash) return;
-    if (!(yield ensureTorrserverOnline())) return;
     var card = AppState.searchLocked && AppState.pendingDetailItem && AppState.pendingDetailItem.id ? AppState.pendingDetailItem : null;
-    AppState.lastSearchResultHash = hash;
-    SearchPicks.add(hash, searchResult);
-    markSearchResultPicked(hash);
-    AppState.androidBackCatalog = AppState.currentDetailItem;
-    if (card && window.addToWatchHistory) {
-      yield window.addToWatchHistory(String(card.id), currentSearchQuery, card.media_type, AppState.pendingDetailPoster || null);
-    }
     var overlay = getEl('playback-overlay'),
       overlayText = document.querySelector('.playback-text');
-    overlay.classList.add('active');
-    if (overlayText) overlayText.textContent = 'Добавление раздачи...';
     var searchOverlay = getEl('search-overlay');
+    var withWindow = !!AppState.preloadBeforePlay && typeof runPlaybackPreload === 'function';
+    var cancelled = false;
+    var onCancel = new Promise(function (resolve) {
+      seriesStartCancel = function () {
+        cancelled = true;
+        resolve('cancelled');
+      };
+    });
+    if (withWindow) {
+      runPlaybackPreload(hash, null, info.title || card && (card.title || card.name) || searchResult.name || '').then(function (ok) {
+        if (ok === false && seriesStartCancel) seriesStartCancel();
+      });
+    } else {
+      overlay.classList.add('active');
+      if (overlayText) overlayText.textContent = 'Добавление раздачи...';
+    }
+    var closeWindow = function () {
+      seriesStartCancel = null;
+      if (withWindow) endPlaybackPreloadWait();
+      overlay.classList.remove('active');
+      if (overlayText) overlayText.textContent = 'Воспроизведение...';
+    };
     var restoreSearch = function () {
       if (AppState.currentScreen === 'player') return;
       AppState.playFromHash = false;
@@ -5626,7 +5638,19 @@ function _playSearchResultFile() {
         if (typeof window.focusSearchHome === 'function') window.focusSearchHome();
       }, 80);
     };
+    var dropIfCancelled = function () {
+      if (!info.preExisting) Promise.resolve(dropTorrentToServer(hash))['catch'](function () {});
+    };
     try {
+      if (!(yield Promise.race([ensureTorrserverOnline(), onCancel]))) {
+        closeWindow();
+        return;
+      }
+      if (cancelled) return;
+      AppState.lastSearchResultHash = hash;
+      SearchPicks.add(hash, searchResult);
+      markSearchResultPicked(hash);
+      AppState.androidBackCatalog = AppState.currentDetailItem;
       var ctx = getCatalogSearchContext(searchResult);
       var meta = card ? {
         poster: ctx.poster,
@@ -5635,15 +5659,27 @@ function _playSearchResultFile() {
       } : {
         poster: info.poster || null,
         tmdbId: info.tmdbId || null,
-        mediaType: info.mediaType || ctx.mediaType
+        mediaType: info.mediaType || ctx.mediaType,
+        title: info.title || searchResult.name || searchResult.title || null
       };
-      var added = yield addTorrentToServer(searchResult.magnet || hash, hash, searchResult, meta);
-      if (!added || added === true) {
-        yield refreshTorrentsList();
-        added = AppState.torrents.find(function (t) {
-          return String(t.hash || '').toLowerCase() === hash;
-        });
+      if (card && window.addToWatchHistory) {
+        Promise.resolve(window.addToWatchHistory(String(card.id), currentSearchQuery, card.media_type, AppState.pendingDetailPoster || null))['catch'](function () {});
       }
+      var adding = _asyncToGenerator(function* () {
+        var t = yield addTorrentToServer(searchResult.magnet || hash, hash, searchResult, meta);
+        if (!t || t === true) {
+          yield refreshTorrentsList();
+          t = AppState.torrents.find(function (x) {
+            return String(x.hash || '').toLowerCase() === hash;
+          });
+        }
+        return t;
+      })();
+      adding.then(function () {
+        if (cancelled) dropIfCancelled();
+      }, function () {});
+      var added = yield Promise.race([adding, onCancel]);
+      if (added === 'cancelled') return;
       if (!added || typeof added !== 'object') throw new Error('TorrServer не вернул раздачу');
       added.poster = added.poster || meta.poster;
       added.tmdbId = added.tmdbId || meta.tmdbId;
@@ -5657,14 +5693,20 @@ function _playSearchResultFile() {
       lastAddedTorrentHash = hash;
       if (overlayText) overlayText.textContent = 'Воспроизведение...';
       if (card) {
-        AppState.playFromHash = true;
-        AppState.isCatalogSearch = true;
-        AppState.currentDetailItem = added;
-        yield playSeriesFromSearch(added, {
-          fileId: fileId,
-          seek: null,
-          index: episodeIndex
-        }, restoreSearch);
+        var files = Array.isArray(info.files) && info.files.length ? info.files : extractVideoFiles(added.file_stats || []);
+        var idx = files[episodeIndex] && String(files[episodeIndex].id) === String(fileId) ? episodeIndex : -1;
+        for (var fi = 0; idx === -1 && fi < files.length; fi++) if (String(files[fi].id) === String(fileId)) idx = fi;
+        if (idx === -1) throw new Error('В раздаче нет выбранного файла');
+        hideSearchResults({
+          returnTo: 'detail'
+        });
+        if ((yield Promise.race([pauseFor(SEARCH_CLOSE_SETTLE_MS), onCancel])) === 'cancelled') return;
+        seriesStartCancel = null;
+        overlay.classList.remove('active');
+        var from = getEl('catalog-watch-btn');
+        var started = yield playOpenedTorrent(card, added, files, idx, null, from && from.offsetParent !== null ? from : null);
+        if (withWindow) endPlaybackPreloadWait();
+        if (started === false) dropIfCancelled();
         return;
       }
       AppState.playFromHash = false;
@@ -5677,23 +5719,34 @@ function _playSearchResultFile() {
         torrent: added
       });
       if (searchOverlay) searchOverlay.classList.add('hidden');
+      seriesStartCancel = null;
       overlay.classList.remove('active');
-      var started = yield startHLSPlayback(AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId, null, true, episodeIndex);
-      if (started === false) {
+      var startedFree = yield startHLSPlayback(AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId, null, true, episodeIndex);
+      if (withWindow) endPlaybackPreloadWait();
+      if (startedFree === false) {
         if (window.Nav) Nav.pop('torrent-detail');
         AppState.currentDetailItem = AppState.androidBackCatalog;
         restoreSearch();
       }
     } catch (error) {
       console.error('❌ Ошибка запуска из окна серий:', error);
+      closeWindow();
       restoreSearch();
       if (typeof window.showErrorBanner === 'function') window.showErrorBanner('Не удалось начать воспроизведение', error.message);
     } finally {
+      if (seriesStartCancel && cancelled) seriesStartCancel = null;
+      if (cancelled) closeWindow();
       overlay.classList.remove('active');
       if (overlayText) overlayText.textContent = 'Воспроизведение...';
     }
   });
   return _playSearchResultFile.apply(this, arguments);
+}
+var SEARCH_CLOSE_SETTLE_MS = 400;
+function pauseFor(ms) {
+  return new Promise(function (resolve) {
+    setTimeout(resolve, ms);
+  });
 }
 window.playSearchResultFile = playSearchResultFile;
 function playFromHash(_x37, _x38) {

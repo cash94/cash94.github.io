@@ -6751,7 +6751,10 @@ async function addTorrentToServer(magnet, hash, searchResult, options = {}) {
         seasons = extractSeasonsFromTitle(ctx.item.title || ctx.item.name);
     }
 
-    var baseName =
+    // options.title — название задаёт вызывающий: в свободном поиске ctx.item
+    // бывает картой, оставшейся от прошлого запуска (androidBackCatalog), и
+    // раздача получила бы чужое название (окно серий, playSearchResultFile)
+    var baseName = options.title ||
         (ctx.item && (ctx.item.title || ctx.item.name)) ||
         (searchResult && (searchResult.name || searchResult.title)) ||
         'Без названия';
@@ -6986,10 +6989,17 @@ function markSearchResultPicked(hash) {
  * TorrServer (с сохранением по настройке, как обычный запуск), файл — сразу в
  * плеер.
  *
+ * Окно предзагрузки (или «Добавление раздачи…») встаёт СРАЗУ, до первого await:
+ * окно серий закрывается уже под ним (choose в episode-picker.js зовёт это и
+ * только потом закрывается). Раздачу добавляем за окном, как у «Лучших»
+ * (playBestPick, player.js); startHLSPlayback продолжает в нём же прогрев файла.
+ * «Назад», пока раздача добавляется, отменяет запуск (seriesStartCancel).
+ *
  * Куда из плеера:
- *  - поиск открыт из карточки фильма/сериала — в неё. Под плеером в стеке
- *    переходов лежит поиск, и выход из плеера сам уводит в карточку
- *    (returnToCardFromSearch в player.js), как у playSeriesFromSearch;
+ *  - поиск открыт из карточки фильма/сериала — в неё. Поиск закрываем ещё под
+ *    окном предзагрузки, и под плеером лежит сама карточка: выход из плеера
+ *    сразу в ней (AppState.cardPlayback, returnToDetailCard в player.js), а не
+ *    через выдачу, которая мелькала бы и закрывалась;
  *  - свободный поиск — в карточку раздачи, как в «Моих торрентах». Под плеер
  *    кладём её запись (torrent-detail) поверх поиска: выход из плеера её
  *    соберёт (lastPlaybackFromSearch → showDetailByHash), а «Назад» из неё
@@ -6997,26 +7007,37 @@ function markSearchResultPicked(hash) {
  *
  * @param {Object} searchResult раздача выдачи
  * @param {number} fileId       id файла в TorrServer
- * @param {number} episodeIndex номер файла в списке видео (extractVideoFiles) — для серий в плеере
- * @param {Object} [info]       { tmdbId, mediaType, poster } из окна — для свободного поиска
+ * @param {number} episodeIndex номер файла в files — для серий в плеере
+ * @param {Object} [info] из окна: { tmdbId, mediaType, poster, title, files, preExisting }
  */
 async function playSearchResultFile(searchResult, fileId, episodeIndex, info) {
     info = info || {};
     var hash = String(searchResultHash(searchResult) || '').toLowerCase();
     if (!hash) return;
-    if (!(await ensureTorrserverOnline())) return;
     var card = AppState.searchLocked && AppState.pendingDetailItem && AppState.pendingDetailItem.id ? AppState.pendingDetailItem : null;
-    AppState.lastSearchResultHash = hash;
-    SearchPicks.add(hash, searchResult);
-    markSearchResultPicked(hash);
-    AppState.androidBackCatalog = AppState.currentDetailItem;
-    if (card && window.addToWatchHistory) {
-        await window.addToWatchHistory(String(card.id), currentSearchQuery, card.media_type, AppState.pendingDetailPoster || null);
-    }
     var overlay = getEl('playback-overlay'), overlayText = document.querySelector('.playback-text');
-    overlay.classList.add('active');
-    if (overlayText) overlayText.textContent = 'Добавление раздачи...';
     var searchOverlay = getEl('search-overlay');
+
+    // Окно — до всякого await (см. выше)
+    var withWindow = !!AppState.preloadBeforePlay && typeof runPlaybackPreload === 'function';
+    var cancelled = false;
+    var onCancel = new Promise(function (resolve) {
+        seriesStartCancel = function () { cancelled = true; resolve('cancelled'); };
+    });
+    if (withWindow) {
+        runPlaybackPreload(hash, null, info.title || (card && (card.title || card.name)) || searchResult.name || '').then(function (ok) {
+            if (ok === false && seriesStartCancel) seriesStartCancel();
+        });
+    } else {
+        overlay.classList.add('active');
+        if (overlayText) overlayText.textContent = 'Добавление раздачи...';
+    }
+    var closeWindow = function () {
+        seriesStartCancel = null;
+        if (withWindow) endPlaybackPreloadWait();
+        overlay.classList.remove('active');
+        if (overlayText) overlayText.textContent = 'Воспроизведение...';
+    };
     var restoreSearch = function () {
         if (AppState.currentScreen === 'player') return;
         AppState.playFromHash = false;
@@ -7029,16 +7050,38 @@ async function playSearchResultFile(searchResult, fileId, episodeIndex, info) {
             if (typeof window.focusSearchHome === 'function') window.focusSearchHome();
         }, 80);
     };
+    // Отменили, когда раздачу уже добавили: её поднимали ради запуска — убираем,
+    // если до окна серий её на сервере не было
+    var dropIfCancelled = function () {
+        if (!info.preExisting) Promise.resolve(dropTorrentToServer(hash))['catch'](function () { });
+    };
+
     try {
+        if (!(await Promise.race([ensureTorrserverOnline(), onCancel]))) { closeWindow(); return; }
+        if (cancelled) return;
+        AppState.lastSearchResultHash = hash;
+        SearchPicks.add(hash, searchResult);
+        markSearchResultPicked(hash);
+        AppState.androidBackCatalog = AppState.currentDetailItem;
         var ctx = getCatalogSearchContext(searchResult);
         var meta = card
             ? { poster: ctx.poster, tmdbId: ctx.id, mediaType: ctx.mediaType }
-            : { poster: info.poster || null, tmdbId: info.tmdbId || null, mediaType: info.mediaType || ctx.mediaType };
-        var added = await addTorrentToServer(searchResult.magnet || hash, hash, searchResult, meta);
-        if (!added || added === true) {
-            await refreshTorrentsList();
-            added = AppState.torrents.find(function (t) { return String(t.hash || '').toLowerCase() === hash; });
+            : { poster: info.poster || null, tmdbId: info.tmdbId || null, mediaType: info.mediaType || ctx.mediaType,
+                title: info.title || searchResult.name || searchResult.title || null };
+        if (card && window.addToWatchHistory) {
+            Promise.resolve(window.addToWatchHistory(String(card.id), currentSearchQuery, card.media_type, AppState.pendingDetailPoster || null))['catch'](function () { });
         }
+        var adding = (async function () {
+            var t = await addTorrentToServer(searchResult.magnet || hash, hash, searchResult, meta);
+            if (!t || t === true) {
+                await refreshTorrentsList();
+                t = AppState.torrents.find(function (x) { return String(x.hash || '').toLowerCase() === hash; });
+            }
+            return t;
+        })();
+        adding.then(function () { if (cancelled) dropIfCancelled(); }, function () { });
+        var added = await Promise.race([adding, onCancel]);
+        if (added === 'cancelled') return;
         if (!added || typeof added !== 'object') throw new Error('TorrServer не вернул раздачу');
         added.poster = added.poster || meta.poster;
         added.tmdbId = added.tmdbId || meta.tmdbId;
@@ -7048,10 +7091,22 @@ async function playSearchResultFile(searchResult, fileId, episodeIndex, info) {
         if (overlayText) overlayText.textContent = 'Воспроизведение...';
 
         if (card) {
-            AppState.playFromHash = true;
-            AppState.isCatalogSearch = true;
-            AppState.currentDetailItem = added;
-            await playSeriesFromSearch(added, { fileId: fileId, seek: null, index: episodeIndex }, restoreSearch);
+            var files = Array.isArray(info.files) && info.files.length ? info.files : extractVideoFiles(added.file_stats || []);
+            var idx = files[episodeIndex] && String(files[episodeIndex].id) === String(fileId) ? episodeIndex : -1;
+            for (var fi = 0; idx === -1 && fi < files.length; fi++) if (String(files[fi].id) === String(fileId)) idx = fi;
+            if (idx === -1) throw new Error('В раздаче нет выбранного файла');
+            // Поиск закрываем под окном: под плеером — карточка. Фокус на ней
+            // hideSearchResults ставит с задержкой — ждём её, чтобы он не
+            // пришёл уже в плеер
+            hideSearchResults({ returnTo: 'detail' });
+            if (await Promise.race([pauseFor(SEARCH_CLOSE_SETTLE_MS), onCancel]) === 'cancelled') return;
+            seriesStartCancel = null;
+            overlay.classList.remove('active');
+            var from = getEl('catalog-watch-btn');
+            var started = await playOpenedTorrent(card, added, files, idx, null, from && from.offsetParent !== null ? from : null);
+            // Плеер упал раньше предзагрузки — окно ожидания само не закроется
+            if (withWindow) endPlaybackPreloadWait();
+            if (started === false) dropIfCancelled();
             return;
         }
 
@@ -7063,22 +7118,31 @@ async function playSearchResultFile(searchResult, fileId, episodeIndex, info) {
         // Выдача уходит и под нативным плеером Android: по возврату на экране —
         // карточка раздачи, а оверлей поиска лежал бы поверх неё
         if (searchOverlay) searchOverlay.classList.add('hidden');
+        seriesStartCancel = null;
         overlay.classList.remove('active');
-        var started = await startHLSPlayback(AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId, null, true, episodeIndex);
-        if (started === false) {
+        var startedFree = await startHLSPlayback(AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId, null, true, episodeIndex);
+        if (withWindow) endPlaybackPreloadWait();
+        if (startedFree === false) {
             if (window.Nav) Nav.pop('torrent-detail');
             AppState.currentDetailItem = AppState.androidBackCatalog;
             restoreSearch();
         }
     } catch (error) {
         console.error('❌ Ошибка запуска из окна серий:', error);
+        closeWindow();
         restoreSearch();
         if (typeof window.showErrorBanner === 'function') window.showErrorBanner('Не удалось начать воспроизведение', error.message);
     } finally {
+        if (seriesStartCancel && cancelled) seriesStartCancel = null;
+        if (cancelled) closeWindow();
         overlay.classList.remove('active');
         if (overlayText) overlayText.textContent = 'Воспроизведение...';
     }
 }
+// Затухание оверлея поиска (Animations.UI_FADE.overlay, 0,24 с) и фокус
+// карточки после него (hideSearchResults, +100 мс) — с запасом
+var SEARCH_CLOSE_SETTLE_MS = 400;
+function pauseFor(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
 window.playSearchResultFile = playSearchResultFile;
 
 async function playFromHash(hash, magnet, searchResult = null) {
