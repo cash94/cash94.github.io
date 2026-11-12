@@ -2005,11 +2005,7 @@ function handleFilterPanelNavigation(dir, currentElement) {
   if (!panel) return false;
   invalidateFocusCache();
   updateFocusableElements();
-  if (window.AppState && AppState.searchLocked) {
-    var filterItems = Array.from(panel.querySelectorAll('.filter-item:not([data-filter="torrent-movie"])'));
-  } else {
-    var filterItems = Array.from(panel.querySelectorAll('.filter-item'));
-  }
+  var filterItems = Array.from(panel.querySelectorAll('.filter-item')).filter(VISIBLE);
   var filterValueItems = Array.from(panel.querySelectorAll('.filter-value-item'));
   var backBtn = getEl('filter-back-btn');
   var closeBtn = getEl('filter-close-btn');
@@ -2589,6 +2585,10 @@ function onBack() {
     BestTorrents.close();
     return true;
   }
+  if (isEpisodePickerOpen()) {
+    EpisodePicker.close();
+    return true;
+  }
   var s = getEl('search-overlay'),
     d = getEl('detail-view'),
     c = getEl('config-screen');
@@ -2827,7 +2827,7 @@ function setupKeyboardHandlers() {
       okHoldFocused = null;
       return;
     }
-    if (isOkKey(k) && okHoldFocused && !isCustomFilterMenuOpen() && (currentScreen() === 'home' || currentScreen() === 'catalog')) {
+    if (isOkKey(k) && okHoldFocused && !isCustomFilterMenuOpen() && (currentScreen() === 'home' || currentScreen() === 'catalog' || currentScreen() === 'search')) {
       var hSame = document.querySelector('.focused') === okHoldFocused;
       var hDone = okHoldHandled;
       clearOkHold();
@@ -3636,7 +3636,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
   var isWindow = container === window || container === document.body;
   var scrollContainer = isWindow ? window.scrollingElement || document.documentElement : container;
   var isRowViewport = !!(container.classList && container.classList.contains('catalog-row-viewport'));
-  var isH = isRowViewport || container.id === 'catalog-detail-episodes-wrap' || container.id === 'catalog-detail-crew-wrap' || container.id === 'catalog-detail-collection-wrap' || container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers-wrap' || container.id === 'files-list';
+  var isH = isRowViewport || container.id === 'catalog-detail-episodes-wrap' || container.id === 'catalog-detail-crew-wrap' || container.id === 'catalog-detail-collection-wrap' || container.id === 'catalog-detail-actors-wrap' || container.id === 'catalog-detail-recommendations-wrap' || container.id === 'catalog-detail-trailers-wrap' || container.id === 'files-list' || container.id === 'episode-picker-row';
   if (isH) {
     var r = el.getBoundingClientRect();
     var cr = container.getBoundingClientRect();
@@ -3647,7 +3647,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
     } else {
       con = container;
     }
-    var isEpisodes = container.id === 'catalog-detail-episodes-wrap';
+    var isEpisodes = container.id === 'catalog-detail-episodes-wrap' || container.id === 'episode-picker-row';
     var hp = isEpisodes ? 0 : 30;
     var fullHp = isEpisodes ? parseFloat(window.getComputedStyle(con).paddingLeft) || 0 : hp;
     var laneEdge = isCinemaLaneWrap(container) ? cinemaLaneEdge(el) : 0;
@@ -3681,6 +3681,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
       }
     }
     if (isRowViewport && el.classList && el.classList.contains('home-card')) return;
+    if (container.id === 'episode-picker-row') return;
     var vertEl = isRowViewport ? getEl('main-container') : getEl('detail-view');
     var dy = pendingScrollDelta(vertEl);
     if (vertEl && isRowViewport && isFirstRowViewport(container)) {
@@ -3826,6 +3827,7 @@ function focusEl(el, opts) {
   var isRC = el.classList && el.classList.contains('catalog-recommendation-card');
   var isTC = el.classList && el.classList.contains('catalog-trailer-card-item');
   var isRowCard = el.classList && el.classList.contains('catalog-row-card');
+  var isEpTile = el.classList && el.classList.contains('ep-picker-tile');
   if ((isRowCard || el.classList && el.classList.contains('catalog-card')) && typeof revealCatalogElement === 'function') {
     revealCatalogElement(el);
   }
@@ -3843,7 +3845,9 @@ function focusEl(el, opts) {
     filterValuesScreen = el.closest('.filter-values-screen');
     isInFilterPanel = !!(filterMainScreen || filterValuesScreen) || el.id === 'filter-back-btn' || el.id === 'filter-close-btn' || el.id === 'reset-filters';
   }
-  if (s === 'config') {
+  if (isEpTile) {
+    container = getEl('episode-picker-row');
+  } else if (s === 'config') {
     container = getConfigScroller();
   } else if (s === 'catalog' || s === 'torrents' || s === 'home') {
     var rowVp = isRowCard && el.closest ? el.closest('.catalog-row-viewport') : null;
@@ -4025,6 +4029,7 @@ function openFilterPanelAndFocus() {
   var toggleBtn = getEl('filter-toggle');
   var overlay = getEl('filter-overlay');
   if (panel) {
+    if (typeof window.updateFilterValueDisplays === 'function') window.updateFilterValueDisplays();
     panel.classList.add('active');
     if (toggleBtn) toggleBtn.classList.add('active');
     if (overlay) overlay.classList.add('active');
@@ -4368,6 +4373,13 @@ function applyCustomFilterMenuSelection() {
 function isBestTorrentsOpen() {
   return !!(window.BestTorrents && BestTorrents.isOpen());
 }
+function isEpisodePickerOpen() {
+  return !!(window.EpisodePicker && EpisodePicker.isOpen());
+}
+function runEpisodePickerNavigation(direction) {
+  if (!acceptNavStep(direction, runEpisodePickerNavigation)) return;
+  if (isEpisodePickerOpen()) EpisodePicker.handleArrow(direction);
+}
 function isCustomFilterMenuOpen() {
   var m = getEl('custom-filter-menu');
   return !!(m && !m.classList.contains('hidden') && customFilterMenuState);
@@ -4457,6 +4469,10 @@ function setupFocusRescue() {
         BestTorrents.close();
         return;
       }
+      if (isEpisodePickerOpen()) {
+        EpisodePicker.close();
+        return;
+      }
       if (s === 'catalog' && window.catalogState && window.catalogState.currentCatalog) {
         window.catalogState.lastSelectedIndex = 0;
         window.catalogState.lastSelectedId = null;
@@ -4475,6 +4491,12 @@ function setupFocusRescue() {
       }
       if (isBestTorrentsOpen()) {
         BestTorrents.handleArrow(d);
+        return;
+      }
+      if (isEpisodePickerOpen()) {
+        navKeyRepeat = !!e.repeat;
+        setNavHold(d);
+        runEpisodePickerNavigation(d);
         return;
       }
       navKeyRepeat = !!e.repeat;
@@ -4496,6 +4518,26 @@ function setupFocusRescue() {
       if (isBestTorrentsOpen()) {
         if (!okRepeat) BestTorrents.handleOk();
         return;
+      }
+      if (isEpisodePickerOpen()) {
+        if (!okRepeat) EpisodePicker.handleOk();
+        return;
+      }
+      if (s === 'search' && window.EpisodePicker) {
+        if (okRepeat && okHoldFocused) return;
+        var sf = document.querySelector('.focused');
+        if (sf && sf.classList.contains('search-result-item')) {
+          if (!okRepeat) {
+            okHoldHandled = false;
+            okHoldFocused = sf;
+            clearOkHold();
+            okHoldTimer = setTimeout(function () {
+              okHoldHandled = true;
+              if (okHoldFocused && document.querySelector('.focused') === okHoldFocused) EpisodePicker.openFor(okHoldFocused);
+            }, OK_HOLD_DELETE_MS);
+          }
+          return;
+        }
       }
       if (s === 'torrents') {
         var f = document.querySelector('.focused');
@@ -4889,8 +4931,8 @@ function initControl() {
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initControl);else initControl();
 (function () {
-  var H_SCROLL_SELECTOR = '.files-list, ' + '.catalog-detail-episodes-grid, ' + '.catalog-detail-crew-grid, ' + '.catalog-detail-actors-grid, ' + '.catalog-detail-recommendations-grid, ' + '.catalog-row-viewport, ' + '.catalog-row';
-  var LANE_ITEM_SELECTOR = '.catalog-row-card, .file-item, .catalog-episode-card, ' + '.catalog-actor-card, .catalog-recommendation-card';
+  var H_SCROLL_SELECTOR = '.files-list, ' + '.catalog-detail-episodes-grid, ' + '.catalog-detail-crew-grid, ' + '.catalog-detail-actors-grid, ' + '.catalog-detail-recommendations-grid, ' + '.catalog-row-viewport, ' + '.catalog-row, ' + '.episode-picker-row';
+  var LANE_ITEM_SELECTOR = '.catalog-row-card, .file-item, .catalog-episode-card, ' + '.catalog-actor-card, .catalog-recommendation-card, .ep-picker-tile';
   var TOUCH_AXIS_THRESHOLD = 10;
   var SWIPE_STEP_PX = 60;
   var SWIPE_FLICK_PX = 30;
@@ -4983,6 +5025,7 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     if (!lane || lane.isConnected === false) return null;
     var sc = currentScreen();
     if (sc === 'player' || !ScreenStrategies[sc] || !ScreenStrategies[sc].handleNavigation) return null;
+    if (lane.id === 'episode-picker-row') return isEpisodePickerOpen() ? sc : null;
     return belongsToScreen(lane, sc) ? sc : null;
   }
   function laneItems(lane) {
@@ -5014,6 +5057,11 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
     var f = document.querySelector('.focused');
     var fi = f ? items.indexOf(f) : -1;
     stopGlide(lane);
+    if (lane.id === 'episode-picker-row') {
+      if (fi === -1 || (right ? fi === items.length - 1 : fi === 0)) return false;
+      runEpisodePickerNavigation(dir);
+      return true;
+    }
     if (fi === -1) {
       var entry = laneEntry(lane, items, target);
       lastNavDirection = dir;

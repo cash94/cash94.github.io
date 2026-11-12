@@ -3236,7 +3236,9 @@ function buildEpisodeMetaByFile(files, seasonNumbers, allSeasonEpisodes) {
                 episode: eps[e].episodeNumber,
                 name: cleanEpisodeName(eps[e].name),
                 overview: String(eps[e].overview || '').trim(),
-                stillPath: eps[e].stillPath || null
+                stillPath: eps[e].stillPath || null,
+                // Минуты; окно серий из поиска показывает длительность (episode-picker.js)
+                runtime: eps[e].runtime || null
             };
             ordered.push(ep);
             byKey[ep.season + '_' + ep.episode] = ep;
@@ -6139,21 +6141,91 @@ function updateAvailableYears() {
     }
 }
 
-function initSearchModeToggle() {
-    var modeSelect = getEl('search-mode');
-    if (modeSelect) {
-        modeSelect.addEventListener('change', function (e) {
-            currentSearchMode = e.target.value;
-            var trackerFilter = getEl('filter-tracker'); var qualityFilter = getEl('filter-quality'); var contentTypeFilter = getEl('filter-content-type');
-            if (currentSearchMode === 'globalsearch') {
-                if (trackerFilter) trackerFilter.disabled = true; if (qualityFilter) qualityFilter.disabled = true; if (!contentTypeFilter) showContentTypeFilter();
-            } else {
-                if (trackerFilter) trackerFilter.disabled = false; if (qualityFilter) qualityFilter.disabled = false; if (contentTypeFilter && contentTypeFilter.remove) contentTypeFilter.remove();
-            }
-            if (currentSearchQuery) searchTorrents(currentSearchQuery);
-        });
-    }
+/* Фильтры глобального поиска (TMDB): год и тип — фильм или сериал.
+ *
+ * Фильтры раздач (качество, трекер, озвучка, сезон…) к выдаче TMDB не
+ * применимы: там карточки фильмов, а не раздачи. Раньше они всё равно стояли в
+ * панели и в глобальном поиске ничего не делали. Теперь у каждого режима свой
+ * набор пунктов (data-scope у .filter-item, app.js), лишние скрыты, а пульт
+ * ходит только по видимым (handleFilterPanelNavigation в control.js).
+ *
+ * Значения — свои переменные, а не currentYearFilter: год раздачи и год
+ * выхода фильма — разные фильтры, и переключение режима не должно сбивать
+ * выбранное в другом. */
+var globalYearFilter = 'all';
+var globalTypeFilter = 'all';
+
+function isGlobalSearchMode() {
+    var modeSelect = getEl('torrent-movie');
+    return (modeSelect ? modeSelect.value : currentSearchMode) === 'globalsearch';
 }
+
+function globalResultYear(r) {
+    var date = String(r.release_date || r.first_air_date || '');
+    return /^\d{4}/.test(date) ? date.substring(0, 4) : '';
+}
+
+function getFilteredGlobalResults() {
+    return globalSearchResults.filter(function (r) {
+        if (globalTypeFilter !== 'all' && (r.media_type === 'tv' ? 'tv' : 'movie') !== globalTypeFilter) return false;
+        if (globalYearFilter !== 'all' && globalResultYear(r) !== globalYearFilter) return false;
+        return true;
+    });
+}
+
+// Годы — из самой выдачи, как у фильтра раздач (updateAvailableYears)
+function updateGlobalYearOptions() {
+    var yearSelect = getEl('global-filter-year'); if (!yearSelect) return;
+    var yearSet = {};
+    globalSearchResults.forEach(function (r) { var y = globalResultYear(r); if (y) yearSet[y] = true; });
+    var years = Object.keys(yearSet).sort(function (a, b) { return b - a; });
+    if (globalYearFilter !== 'all' && !yearSet[globalYearFilter]) globalYearFilter = 'all';
+    yearSelect.innerHTML = '<option value="all">Все</option>' + years.map(function (y) { return '<option value="' + y + '">' + y + '</option>'; }).join('');
+    yearSelect.value = globalYearFilter;
+    var typeSelect = getEl('global-filter-type'); if (typeSelect) typeSelect.value = globalTypeFilter;
+    if (typeof window.updateFilterValueDisplays === 'function') window.updateFilterValueDisplays();
+}
+
+function setGlobalSearchFilter(filterId, value) {
+    if (filterId === 'global-filter-year') globalYearFilter = value || 'all';
+    else if (filterId === 'global-filter-type') globalTypeFilter = value || 'all';
+    if (globalSearchResults.length) renderFilteredGlobalResults(getFilteredGlobalResults());
+}
+window.setGlobalSearchFilter = setGlobalSearchFilter;
+
+function resetGlobalFilters() {
+    globalYearFilter = 'all'; globalTypeFilter = 'all';
+    ['global-filter-year', 'global-filter-type'].forEach(function (id) { var el = getEl(id); if (el) el.value = 'all'; });
+    if (globalSearchResults.length) renderFilteredGlobalResults(getFilteredGlobalResults());
+}
+
+/**
+ * Показать в панели только пункты текущего режима. Режим меняют и в обход
+ * панели (карточка ставит «Торренты», выход из поиска — «Глобальный» прямо в
+ * select без change), поэтому сверяемся при каждом обновлении подписей
+ * (updateFilterValueDisplays) и открытии панели.
+ * «Категория» (torrent-movie) общая, её прячет только замок строки поиска
+ * (setSearchLocked) — data-scope у неё нет, и её класс hidden тут не трогаем.
+ */
+function syncSearchFilterScope() {
+    var panel = getEl('search-filters-panel'); if (!panel) return;
+    var scope = isGlobalSearchMode() ? 'global' : 'torrents';
+    var items = panel.querySelectorAll('.filter-item[data-scope]');
+    for (var i = 0; i < items.length; i++) items[i].classList.toggle('hidden', items[i].getAttribute('data-scope') !== scope);
+    if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+}
+window.syncSearchFilterScope = syncSearchFilterScope;
+
+// Переключили «Категорию» в панели: выдачу TMDB, если она есть, рисуем из
+// памяти, а не прогоняем через фильтры раздач — applyFiltersAndSort
+// нарисовал бы на её месте список раздач
+function onSearchModeChanged() {
+    getCurrentSearchMode();
+    syncSearchFilterScope();
+    if (currentSearchMode === 'globalsearch' && globalSearchResults.length) showGlobalSearchResults();
+    else applyFiltersAndSort();
+}
+window.onSearchModeChanged = onSearchModeChanged;
 
 function updateAvailableTrackers() {
     var trackerSet = {};
@@ -6585,8 +6657,11 @@ function resetFiltersForCardSearch(key) {
 }
 window.resetFiltersForCardSearch = resetFiltersForCardSearch;
 
-// «Сбросить» возвращает к значениям по умолчанию из настроек, а не к «Все»
+// «Сбросить» возвращает к значениям по умолчанию из настроек, а не к «Все».
+// В глобальном поиске сбрасывает только его фильтры: фильтры раздач там
+// скрыты, а applyFiltersAndSort нарисовал бы раздачи поверх выдачи TMDB
 function resetFilters() {
+    if (isGlobalSearchMode()) { resetGlobalFilters(); return; }
     currentTrackerFilter = 'all'; currentYearFilter = ''; currentSeasonFilter = 'all'; currentVoiceFilter = 'all';
     applySearchFilterDefaults();
     syncSearchFilterButtons();
@@ -6883,6 +6958,128 @@ async function playSeriesFromSearch(torrent, start, restoreSearch) {
         if (section) section.style.display = sectionDisplay;
     }
 }
+
+/** Раздача выдачи за элементом .search-result-item (окно серий, episode-picker.js) */
+function getSearchResultForItem(el) {
+    if (!el || !el.dataset) return null;
+    var index = parseInt(el.dataset.index, 10);
+    return !isNaN(index) && filteredResults[index] ? filteredResults[index] : null;
+}
+window.getSearchResultForItem = getSearchResultForItem;
+
+/** Метка «Выбирали …» на раздаче в выдаче — как при обычном запуске из неё */
+function markSearchResultPicked(hash) {
+    var items = document.querySelectorAll('#search-results .search-result-item');
+    for (var i = 0; i < items.length; i++) {
+        var btn = items[i].querySelector('.search-result-play');
+        if (!btn || String(btn.dataset.hash || '').toLowerCase() !== hash) continue;
+        if (items[i].classList.contains('search-result-picked')) return;
+        items[i].classList.add('search-result-picked');
+        var titleEl = items[i].querySelector('.search-result-title');
+        if (titleEl) titleEl.insertAdjacentHTML('afterbegin', buildPickedBadge(Date.now()));
+        return;
+    }
+}
+
+/**
+ * Запуск файла, выбранного в окне серий (episode-picker.js): раздачу — в
+ * TorrServer (с сохранением по настройке, как обычный запуск), файл — сразу в
+ * плеер.
+ *
+ * Куда из плеера:
+ *  - поиск открыт из карточки фильма/сериала — в неё. Под плеером в стеке
+ *    переходов лежит поиск, и выход из плеера сам уводит в карточку
+ *    (returnToCardFromSearch в player.js), как у playSeriesFromSearch;
+ *  - свободный поиск — в карточку раздачи, как в «Моих торрентах». Под плеер
+ *    кладём её запись (torrent-detail) поверх поиска: выход из плеера её
+ *    соберёт (lastPlaybackFromSearch → showDetailByHash), а «Назад» из неё
+ *    вернёт в выдачу.
+ *
+ * @param {Object} searchResult раздача выдачи
+ * @param {number} fileId       id файла в TorrServer
+ * @param {number} episodeIndex номер файла в списке видео (extractVideoFiles) — для серий в плеере
+ * @param {Object} [info]       { tmdbId, mediaType, poster } из окна — для свободного поиска
+ */
+async function playSearchResultFile(searchResult, fileId, episodeIndex, info) {
+    info = info || {};
+    var hash = String(searchResultHash(searchResult) || '').toLowerCase();
+    if (!hash) return;
+    if (!(await ensureTorrserverOnline())) return;
+    var card = AppState.searchLocked && AppState.pendingDetailItem && AppState.pendingDetailItem.id ? AppState.pendingDetailItem : null;
+    AppState.lastSearchResultHash = hash;
+    SearchPicks.add(hash, searchResult);
+    markSearchResultPicked(hash);
+    AppState.androidBackCatalog = AppState.currentDetailItem;
+    if (card && window.addToWatchHistory) {
+        await window.addToWatchHistory(String(card.id), currentSearchQuery, card.media_type, AppState.pendingDetailPoster || null);
+    }
+    var overlay = getEl('playback-overlay'), overlayText = document.querySelector('.playback-text');
+    overlay.classList.add('active');
+    if (overlayText) overlayText.textContent = 'Добавление раздачи...';
+    var searchOverlay = getEl('search-overlay');
+    var restoreSearch = function () {
+        if (AppState.currentScreen === 'player') return;
+        AppState.playFromHash = false;
+        AppState.isCatalogSearch = false;
+        AppState.isCatalogSerials = false;
+        AppState.currentScreen = 'search';
+        if (searchOverlay) searchOverlay.classList.remove('hidden');
+        setTimeout(function () {
+            if (typeof window.focusLastSearchResult === 'function' && window.focusLastSearchResult()) return;
+            if (typeof window.focusSearchHome === 'function') window.focusSearchHome();
+        }, 80);
+    };
+    try {
+        var ctx = getCatalogSearchContext(searchResult);
+        var meta = card
+            ? { poster: ctx.poster, tmdbId: ctx.id, mediaType: ctx.mediaType }
+            : { poster: info.poster || null, tmdbId: info.tmdbId || null, mediaType: info.mediaType || ctx.mediaType };
+        var added = await addTorrentToServer(searchResult.magnet || hash, hash, searchResult, meta);
+        if (!added || added === true) {
+            await refreshTorrentsList();
+            added = AppState.torrents.find(function (t) { return String(t.hash || '').toLowerCase() === hash; });
+        }
+        if (!added || typeof added !== 'object') throw new Error('TorrServer не вернул раздачу');
+        added.poster = added.poster || meta.poster;
+        added.tmdbId = added.tmdbId || meta.tmdbId;
+        added.media_type = added.media_type || meta.mediaType;
+        knownTorrentMeta.set(hash, { id: meta.tmdbId, mediaType: meta.mediaType, poster: meta.poster, title: added.title });
+        lastAddedTorrentHash = hash;
+        if (overlayText) overlayText.textContent = 'Воспроизведение...';
+
+        if (card) {
+            AppState.playFromHash = true;
+            AppState.isCatalogSearch = true;
+            AppState.currentDetailItem = added;
+            await playSeriesFromSearch(added, { fileId: fileId, seek: null, index: episodeIndex }, restoreSearch);
+            return;
+        }
+
+        AppState.playFromHash = false;
+        AppState.isCatalogSearch = false;
+        AppState.isCatalogSerials = false;
+        AppState.currentDetailItem = added;
+        if (window.Nav) Nav.push('torrent-detail', { key: 't:' + hash, label: added.title || hash, torrent: added });
+        // Выдача уходит и под нативным плеером Android: по возврату на экране —
+        // карточка раздачи, а оверлей поиска лежал бы поверх неё
+        if (searchOverlay) searchOverlay.classList.add('hidden');
+        overlay.classList.remove('active');
+        var started = await startHLSPlayback(AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId, null, true, episodeIndex);
+        if (started === false) {
+            if (window.Nav) Nav.pop('torrent-detail');
+            AppState.currentDetailItem = AppState.androidBackCatalog;
+            restoreSearch();
+        }
+    } catch (error) {
+        console.error('❌ Ошибка запуска из окна серий:', error);
+        restoreSearch();
+        if (typeof window.showErrorBanner === 'function') window.showErrorBanner('Не удалось начать воспроизведение', error.message);
+    } finally {
+        overlay.classList.remove('active');
+        if (overlayText) overlayText.textContent = 'Воспроизведение...';
+    }
+}
+window.playSearchResultFile = playSearchResultFile;
 
 async function playFromHash(hash, magnet, searchResult = null) {
     if (!hash) {
@@ -7490,6 +7687,18 @@ function renderSearchResults() {
             if (button && !button.disabled) button.click();
         }
     };
+    // ПКМ на ПК, долгое касание на телефоне — окно серий раздачи, как долгое
+    // OK с пульта (episode-picker.js). Дальше событие не пускаем: на document
+    // contextmenu — это «Назад» (setupMouseControls, control.js), и он закрыл
+    // бы поиск из-под только что открытого окна
+    searchResultsDiv.oncontextmenu = function (event) {
+        var item = event.target.closest('.search-result-item');
+        if (!item || !window.EpisodePicker) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (typeof focusEl === 'function') focusEl(item);
+        EpisodePicker.openFor(item);
+    };
 
     var index = 0;
     // Первая порция — сразу, в ближайший кадр: 15 раздач с запасом покрывают
@@ -7588,7 +7797,6 @@ async function searchTMDB(query) {
         // Запись поиска в стеке переходов помнит, что это выдача TMDB и по
         // какому запросу, — чтобы вернуть её, если её подменят раздачами
         if (window.Nav) { var navSearch = Nav.top(); if (navSearch && navSearch.screen === 'search') { navSearch.data.tmdb = true; navSearch.data.query = query; navSearch.data.label = query; } }
-        if (currentSearchMode === 'globalsearch') showContentTypeFilter();
         showGlobalSearchResults();
     } catch (error) {
         if (!error || error.name !== 'AbortError') {
@@ -7624,7 +7832,7 @@ async function searchTMDBLegacy(encodedQuery, signal) {
 
 function getRatingColor(rating) { if (rating >= 8) return '#4caf50'; if (rating >= 6) return '#ffc107'; if (rating >= 4) return '#ff9800'; return '#f44336'; }
 
-function showGlobalSearchResults() { renderFilteredGlobalResults(globalSearchResults); }
+function showGlobalSearchResults() { updateGlobalYearOptions(); renderFilteredGlobalResults(getFilteredGlobalResults()); }
 
 /**
  * Вернуть выдачу TMDB, если её подменили.
@@ -7677,7 +7885,10 @@ function renderFilteredGlobalResults(results) {
     releaseGlobalPosters();
 
     if (results.length === 0) {
-        searchResultsDiv.innerHTML = '<div class="filter-stats">Всего найдено: <span>0</span></div><div class="search-result-empty">' + (currentSearchQuery ? 'Ничего не найдено для "' + escapeHtml(currentSearchQuery) + '" в TMDB' : 'Введите запрос для поиска') + '</div>';
+        var emptyText = !currentSearchQuery ? 'Введите запрос для поиска'
+            : globalSearchResults.length ? 'Нет результатов по фильтрам для "' + escapeHtml(currentSearchQuery) + '"'
+                : 'Ничего не найдено для "' + escapeHtml(currentSearchQuery) + '" в TMDB';
+        searchResultsDiv.innerHTML = '<div class="filter-stats">Всего найдено: <span>' + globalSearchResults.length + '</span></div><div class="search-result-empty">' + emptyText + '</div>';
         return;
     }
 
@@ -7848,25 +8059,6 @@ async function showGlobalSearchDetail(item) {
             throw e;
         }
     }
-}
-
-function showContentTypeFilter() {
-    var filterGroup = document.querySelector('.filter-group'); if (!filterGroup) return;
-    var contentTypeFilter = getEl('filter-content-type');
-    if (!contentTypeFilter) {
-        var newFilter = document.createElement('div'); newFilter.className = 'filter-group';
-        newFilter.innerHTML = `<label class="filter-label" for="filter-content-type">Тип контента</label><select id="filter-content-type" class="filter-select"><option value="all">Все</option><option value="movie">Фильмы</option><option value="tv">Сериалы</option></select>`;
-        var qualityFilter = getEl('filter-quality');
-        if (qualityFilter && qualityFilter.parentNode) qualityFilter.parentNode.parentNode.insertBefore(newFilter, qualityFilter.parentNode.nextSibling);
-        else filterGroup.parentNode.appendChild(newFilter);
-        getEl('filter-content-type').addEventListener('change', function (e) { filterGlobalSearchByType(e.target.value); });
-    }
-}
-
-function filterGlobalSearchByType(type) {
-    if (!globalSearchResults.length) return;
-    var filtered = type === 'all' ? globalSearchResults : globalSearchResults.filter(r => r.media_type === type);
-    renderFilteredGlobalResults(filtered);
 }
 
 function clearSearchResultsContainer() { resetSearchVisibilityWindow(); var searchResultsDiv = getEl('search-results'); if (searchResultsDiv) searchResultsDiv.innerHTML = ''; }

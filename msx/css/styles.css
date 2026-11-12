@@ -14927,3 +14927,339 @@ html.apple-tv-ui #loading-player-overlay {
   color: #fff;
   font-variant-numeric: tabular-nums;
 }
+
+/* ==================== ОКНО СЕРИЙ ИЗ ВЫДАЧИ ПОИСКА ====================
+   js/episode-picker.js: долгое OK на раздаче. Оформление — как у окна описания
+   сцены (.detail-overview-popup): полупрозрачный серый без backdrop-filter.
+   Плитки — те же пропорции, что у ленты серий карточки (.catalog-episode-card).
+   Единица --epu = --popup-u: на Apple TV она 20px, как и у остального окна. */
+.episode-picker {
+  --epu: var(--popup-u, 1.852vh);
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1200;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.episode-picker.hidden {
+  display: none;
+}
+
+.episode-picker-box {
+  position: relative;
+  width: 88%;
+  max-width: calc(var(--epu) * 96);
+  padding: calc(var(--epu) * 2) calc(var(--epu) * 2.4) calc(var(--epu) * 1.4);
+  box-sizing: border-box;
+  border-radius: calc(var(--epu) * 1.1);
+  /* Плотнее, чем у окна описания: под ним текст выдачи, и он просвечивал */
+  background: rgba(46, 48, 56, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+  color: #fff;
+}
+
+/* Фон фильма — справа сверху, гаснет к тексту */
+.episode-picker-bg {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 60%;
+  height: 70%;
+  background-position: center top;
+  background-size: cover;
+  opacity: 0.35;
+}
+
+.episode-picker-bg:after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(to right, rgba(46, 48, 56, 1) 0%, rgba(46, 48, 56, 0) 60%),
+    linear-gradient(to top, rgba(46, 48, 56, 1) 0%, rgba(46, 48, 56, 0) 60%);
+}
+
+.episode-picker-head {
+  position: relative;
+  max-width: 70%;
+}
+
+.episode-picker-title {
+  overflow: hidden;
+  font-size: calc(var(--epu) * 1.9 * var(--detail-text-scale, 1));
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.episode-picker-sub {
+  overflow: hidden;
+  margin-top: calc(var(--epu) * 0.4);
+  font-size: calc(var(--epu) * 1.05 * var(--detail-text-scale, 1));
+  font-weight: 600;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.82);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.episode-picker-sub:empty {
+  display: none;
+}
+
+/* Три строки всегда: окно не прыгает по высоте от серии к серии */
+.episode-picker-desc {
+  overflow: hidden;
+  height: calc(var(--epu) * 1 * 1.5 * 3 * var(--detail-text-scale, 1));
+  margin-top: calc(var(--epu) * 0.7);
+  font-size: calc(var(--epu) * 1 * var(--detail-text-scale, 1));
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.78);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.episode-picker-meta {
+  margin-top: calc(var(--epu) * 0.6);
+  font-size: calc(var(--epu) * 0.95);
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.episode-picker-status {
+  position: relative;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  height: calc(var(--epu) * 10.5);
+  margin-top: calc(var(--epu) * 1.2);
+  font-size: calc(var(--epu) * 1);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.episode-picker-status.hidden,
+.episode-picker-spinner.hidden {
+  display: none;
+}
+
+.episode-picker-spinner {
+  width: calc(var(--epu) * 1.4);
+  height: calc(var(--epu) * 1.4);
+  margin-right: calc(var(--epu) * 0.8);
+  border: calc(var(--epu) * 0.2) solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--focus-color, #ff8c00);
+  border-radius: 50%;
+  -webkit-animation: episode-picker-spin 0.9s linear infinite;
+  animation: episode-picker-spin 0.9s linear infinite;
+}
+
+@-webkit-keyframes episode-picker-spin { to { -webkit-transform: rotate(360deg); } }
+@keyframes episode-picker-spin { to { transform: rotate(360deg); } }
+
+/* Лента: прокрутку ведёт control.js — пульт через scrollToElementIfNeeded,
+   палец шагами фокуса (свайп по лентам), полосы не видно */
+.episode-picker-row {
+  position: relative;
+  display: -webkit-flex;
+  display: flex;
+  margin: calc(var(--epu) * 1) calc(var(--epu) * -0.3) 0;
+  padding: calc(var(--epu) * 0.3);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  /* Свайп пальцем — шаги фокуса, как у остальных лент (control.js) */
+  touch-action: pan-y;
+}
+
+.episode-picker-row::-webkit-scrollbar {
+  display: none;
+}
+
+.episode-picker-row:empty {
+  display: none;
+}
+
+.ep-picker-tile {
+  position: relative;
+  -webkit-flex: none;
+  flex: none;
+  box-sizing: border-box;
+  width: calc(var(--epu) * 16);
+  height: calc(var(--epu) * 10.5);
+  margin: 0 calc(var(--epu) * 1.2) 0 0;
+  border-radius: calc(var(--epu) * 0.5);
+  background: #1b1b2b;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.ep-picker-tile:last-child {
+  margin-right: 0;
+}
+
+.ep-picker-tile.focused {
+  box-shadow: 0 0 0 calc(var(--epu) * 0.25) var(--focus-color, #ff8c00) !important;
+}
+
+.ep-picker-tile img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  -o-object-fit: cover;
+  object-fit: cover;
+}
+
+.ep-picker-tile img.hidden {
+  display: none;
+}
+
+.ep-picker-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: calc(var(--epu) * 3.1);
+  height: calc(var(--epu) * 3.1);
+  margin: calc(var(--epu) * -2.3) 0 0 calc(var(--epu) * -1.55);
+  border-radius: 50%;
+  background: #fff;
+  color: #000;
+  font-size: calc(var(--epu) * 1.2);
+  line-height: calc(var(--epu) * 3.1);
+  text-align: center;
+  visibility: hidden;
+}
+
+.ep-picker-tile:hover .ep-picker-play,
+.ep-picker-tile.focused .ep-picker-play {
+  visibility: visible;
+}
+
+.ep-picker-info {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: calc(var(--epu) * 1.4) calc(var(--epu) * 0.7) calc(var(--epu) * 0.6);
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.78) 45%, rgba(0, 0, 0, 0) 100%);
+}
+
+.ep-picker-name {
+  overflow: hidden;
+  margin-bottom: calc(var(--epu) * 0.15);
+  font-size: calc(var(--epu) * 0.85);
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
+}
+
+.ep-picker-size {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: calc(var(--epu) * 0.7);
+  line-height: 1.25;
+}
+
+.episode-picker-hint {
+  position: relative;
+  margin-top: calc(var(--epu) * 1);
+  font-size: calc(var(--epu) * 0.75);
+  color: rgba(255, 255, 255, 0.45);
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .episode-picker-hint {
+    display: none;
+  }
+}
+
+/* Крестик — для мыши и пальца: с пульта окно закрывает «Назад», в фокус он
+   не попадает. На телефоне без кнопки «назад» (iPhone) иначе закрыть окно
+   можно было бы только касанием мимо него */
+.episode-picker-close {
+  position: absolute;
+  top: calc(var(--epu) * 1);
+  right: calc(var(--epu) * 1);
+  z-index: 1;
+  width: calc(var(--epu) * 2.6);
+  height: calc(var(--epu) * 2.6);
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: calc(var(--epu) * 1.1);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.episode-picker-close i {
+  display: block;
+  line-height: calc(var(--epu) * 2.6);
+}
+
+.episode-picker-close:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* Телефон: единица — как у карточки фильма там же (#detail-view.detail-cinema).
+   От высоты экрана в книжной она выходила крупной (плитка в 2/3 ширины), в
+   альбомной — мелкой, текст в 6 px */
+@media screen and (max-width: 600px) and (orientation: portrait) {
+  .episode-picker {
+    --epu: 3.4vw;
+  }
+}
+
+@media screen and (orientation: landscape) and (max-height: 500px) {
+  .episode-picker {
+    --epu: 2.9vh;
+  }
+
+  .episode-picker-box {
+    padding: calc(var(--epu) * 1.4) calc(var(--epu) * 2);
+  }
+}
+
+@media (orientation: portrait) {
+  .episode-picker-box {
+    width: 94%;
+    padding: calc(var(--epu) * 1.6) calc(var(--epu) * 1.4) calc(var(--epu) * 1.4);
+  }
+
+  /* Справа — место под крестик */
+  .episode-picker-head {
+    max-width: none;
+    padding-right: calc(var(--epu) * 3);
+  }
+
+  /* Узко: название в две строки, а не обрезанное на середине слова */
+  .episode-picker-title {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .episode-picker-bg {
+    width: 100%;
+  }
+}

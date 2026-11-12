@@ -1796,7 +1796,7 @@ function _addProgressToDetail() {
             if (detailView) detailView.style.pointerEvents = 'auto';
           });
         });
-        return function (_x42) {
+        return function (_x46) {
           return _ref3.apply(this, arguments);
         };
       }());
@@ -2745,7 +2745,8 @@ function buildEpisodeMetaByFile(files, seasonNumbers, allSeasonEpisodes) {
         episode: eps[e].episodeNumber,
         name: cleanEpisodeName(eps[e].name),
         overview: String(eps[e].overview || '').trim(),
-        stillPath: eps[e].stillPath || null
+        stillPath: eps[e].stillPath || null,
+        runtime: eps[e].runtime || null
       };
       ordered.push(ep);
       byKey[ep.season + '_' + ep.episode] = ep;
@@ -4816,27 +4817,72 @@ function updateAvailableYears() {
     }
   }
 }
-function initSearchModeToggle() {
-  var modeSelect = getEl('search-mode');
-  if (modeSelect) {
-    modeSelect.addEventListener('change', function (e) {
-      currentSearchMode = e.target.value;
-      var trackerFilter = getEl('filter-tracker');
-      var qualityFilter = getEl('filter-quality');
-      var contentTypeFilter = getEl('filter-content-type');
-      if (currentSearchMode === 'globalsearch') {
-        if (trackerFilter) trackerFilter.disabled = true;
-        if (qualityFilter) qualityFilter.disabled = true;
-        if (!contentTypeFilter) showContentTypeFilter();
-      } else {
-        if (trackerFilter) trackerFilter.disabled = false;
-        if (qualityFilter) qualityFilter.disabled = false;
-        if (contentTypeFilter && contentTypeFilter.remove) contentTypeFilter.remove();
-      }
-      if (currentSearchQuery) searchTorrents(currentSearchQuery);
-    });
-  }
+var globalYearFilter = 'all';
+var globalTypeFilter = 'all';
+function isGlobalSearchMode() {
+  var modeSelect = getEl('torrent-movie');
+  return (modeSelect ? modeSelect.value : currentSearchMode) === 'globalsearch';
 }
+function globalResultYear(r) {
+  var date = String(r.release_date || r.first_air_date || '');
+  return /^\d{4}/.test(date) ? date.substring(0, 4) : '';
+}
+function getFilteredGlobalResults() {
+  return globalSearchResults.filter(function (r) {
+    if (globalTypeFilter !== 'all' && (r.media_type === 'tv' ? 'tv' : 'movie') !== globalTypeFilter) return false;
+    if (globalYearFilter !== 'all' && globalResultYear(r) !== globalYearFilter) return false;
+    return true;
+  });
+}
+function updateGlobalYearOptions() {
+  var yearSelect = getEl('global-filter-year');
+  if (!yearSelect) return;
+  var yearSet = {};
+  globalSearchResults.forEach(function (r) {
+    var y = globalResultYear(r);
+    if (y) yearSet[y] = true;
+  });
+  var years = Object.keys(yearSet).sort(function (a, b) {
+    return b - a;
+  });
+  if (globalYearFilter !== 'all' && !yearSet[globalYearFilter]) globalYearFilter = 'all';
+  yearSelect.innerHTML = '<option value="all">Все</option>' + years.map(function (y) {
+    return '<option value="' + y + '">' + y + '</option>';
+  }).join('');
+  yearSelect.value = globalYearFilter;
+  var typeSelect = getEl('global-filter-type');
+  if (typeSelect) typeSelect.value = globalTypeFilter;
+  if (typeof window.updateFilterValueDisplays === 'function') window.updateFilterValueDisplays();
+}
+function setGlobalSearchFilter(filterId, value) {
+  if (filterId === 'global-filter-year') globalYearFilter = value || 'all';else if (filterId === 'global-filter-type') globalTypeFilter = value || 'all';
+  if (globalSearchResults.length) renderFilteredGlobalResults(getFilteredGlobalResults());
+}
+window.setGlobalSearchFilter = setGlobalSearchFilter;
+function resetGlobalFilters() {
+  globalYearFilter = 'all';
+  globalTypeFilter = 'all';
+  ['global-filter-year', 'global-filter-type'].forEach(function (id) {
+    var el = getEl(id);
+    if (el) el.value = 'all';
+  });
+  if (globalSearchResults.length) renderFilteredGlobalResults(getFilteredGlobalResults());
+}
+function syncSearchFilterScope() {
+  var panel = getEl('search-filters-panel');
+  if (!panel) return;
+  var scope = isGlobalSearchMode() ? 'global' : 'torrents';
+  var items = panel.querySelectorAll('.filter-item[data-scope]');
+  for (var i = 0; i < items.length; i++) items[i].classList.toggle('hidden', items[i].getAttribute('data-scope') !== scope);
+  if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
+}
+window.syncSearchFilterScope = syncSearchFilterScope;
+function onSearchModeChanged() {
+  getCurrentSearchMode();
+  syncSearchFilterScope();
+  if (currentSearchMode === 'globalsearch' && globalSearchResults.length) showGlobalSearchResults();else applyFiltersAndSort();
+}
+window.onSearchModeChanged = onSearchModeChanged;
 function updateAvailableTrackers() {
   var trackerSet = {};
   searchResults.forEach(function (r) {
@@ -5229,6 +5275,10 @@ function resetFiltersForCardSearch(key) {
 }
 window.resetFiltersForCardSearch = resetFiltersForCardSearch;
 function resetFilters() {
+  if (isGlobalSearchMode()) {
+    resetGlobalFilters();
+    return;
+  }
   currentTrackerFilter = 'all';
   currentYearFilter = '';
   currentSeasonFilter = 'all';
@@ -5524,7 +5574,129 @@ function _playSeriesFromSearch() {
   });
   return _playSeriesFromSearch.apply(this, arguments);
 }
-function playFromHash(_x33, _x34) {
+function getSearchResultForItem(el) {
+  if (!el || !el.dataset) return null;
+  var index = parseInt(el.dataset.index, 10);
+  return !isNaN(index) && filteredResults[index] ? filteredResults[index] : null;
+}
+window.getSearchResultForItem = getSearchResultForItem;
+function markSearchResultPicked(hash) {
+  var items = document.querySelectorAll('#search-results .search-result-item');
+  for (var i = 0; i < items.length; i++) {
+    var btn = items[i].querySelector('.search-result-play');
+    if (!btn || String(btn.dataset.hash || '').toLowerCase() !== hash) continue;
+    if (items[i].classList.contains('search-result-picked')) return;
+    items[i].classList.add('search-result-picked');
+    var titleEl = items[i].querySelector('.search-result-title');
+    if (titleEl) titleEl.insertAdjacentHTML('afterbegin', buildPickedBadge(Date.now()));
+    return;
+  }
+}
+function playSearchResultFile(_x33, _x34, _x35, _x36) {
+  return _playSearchResultFile.apply(this, arguments);
+}
+function _playSearchResultFile() {
+  _playSearchResultFile = _asyncToGenerator(function* (searchResult, fileId, episodeIndex, info) {
+    info = info || {};
+    var hash = String(searchResultHash(searchResult) || '').toLowerCase();
+    if (!hash) return;
+    if (!(yield ensureTorrserverOnline())) return;
+    var card = AppState.searchLocked && AppState.pendingDetailItem && AppState.pendingDetailItem.id ? AppState.pendingDetailItem : null;
+    AppState.lastSearchResultHash = hash;
+    SearchPicks.add(hash, searchResult);
+    markSearchResultPicked(hash);
+    AppState.androidBackCatalog = AppState.currentDetailItem;
+    if (card && window.addToWatchHistory) {
+      yield window.addToWatchHistory(String(card.id), currentSearchQuery, card.media_type, AppState.pendingDetailPoster || null);
+    }
+    var overlay = getEl('playback-overlay'),
+      overlayText = document.querySelector('.playback-text');
+    overlay.classList.add('active');
+    if (overlayText) overlayText.textContent = 'Добавление раздачи...';
+    var searchOverlay = getEl('search-overlay');
+    var restoreSearch = function () {
+      if (AppState.currentScreen === 'player') return;
+      AppState.playFromHash = false;
+      AppState.isCatalogSearch = false;
+      AppState.isCatalogSerials = false;
+      AppState.currentScreen = 'search';
+      if (searchOverlay) searchOverlay.classList.remove('hidden');
+      setTimeout(function () {
+        if (typeof window.focusLastSearchResult === 'function' && window.focusLastSearchResult()) return;
+        if (typeof window.focusSearchHome === 'function') window.focusSearchHome();
+      }, 80);
+    };
+    try {
+      var ctx = getCatalogSearchContext(searchResult);
+      var meta = card ? {
+        poster: ctx.poster,
+        tmdbId: ctx.id,
+        mediaType: ctx.mediaType
+      } : {
+        poster: info.poster || null,
+        tmdbId: info.tmdbId || null,
+        mediaType: info.mediaType || ctx.mediaType
+      };
+      var added = yield addTorrentToServer(searchResult.magnet || hash, hash, searchResult, meta);
+      if (!added || added === true) {
+        yield refreshTorrentsList();
+        added = AppState.torrents.find(function (t) {
+          return String(t.hash || '').toLowerCase() === hash;
+        });
+      }
+      if (!added || typeof added !== 'object') throw new Error('TorrServer не вернул раздачу');
+      added.poster = added.poster || meta.poster;
+      added.tmdbId = added.tmdbId || meta.tmdbId;
+      added.media_type = added.media_type || meta.mediaType;
+      knownTorrentMeta.set(hash, {
+        id: meta.tmdbId,
+        mediaType: meta.mediaType,
+        poster: meta.poster,
+        title: added.title
+      });
+      lastAddedTorrentHash = hash;
+      if (overlayText) overlayText.textContent = 'Воспроизведение...';
+      if (card) {
+        AppState.playFromHash = true;
+        AppState.isCatalogSearch = true;
+        AppState.currentDetailItem = added;
+        yield playSeriesFromSearch(added, {
+          fileId: fileId,
+          seek: null,
+          index: episodeIndex
+        }, restoreSearch);
+        return;
+      }
+      AppState.playFromHash = false;
+      AppState.isCatalogSearch = false;
+      AppState.isCatalogSerials = false;
+      AppState.currentDetailItem = added;
+      if (window.Nav) Nav.push('torrent-detail', {
+        key: 't:' + hash,
+        label: added.title || hash,
+        torrent: added
+      });
+      if (searchOverlay) searchOverlay.classList.add('hidden');
+      overlay.classList.remove('active');
+      var started = yield startHLSPlayback(AppState.currentTorrserverUrl + '/play/' + hash + '/' + fileId, null, true, episodeIndex);
+      if (started === false) {
+        if (window.Nav) Nav.pop('torrent-detail');
+        AppState.currentDetailItem = AppState.androidBackCatalog;
+        restoreSearch();
+      }
+    } catch (error) {
+      console.error('❌ Ошибка запуска из окна серий:', error);
+      restoreSearch();
+      if (typeof window.showErrorBanner === 'function') window.showErrorBanner('Не удалось начать воспроизведение', error.message);
+    } finally {
+      overlay.classList.remove('active');
+      if (overlayText) overlayText.textContent = 'Воспроизведение...';
+    }
+  });
+  return _playSearchResultFile.apply(this, arguments);
+}
+window.playSearchResultFile = playSearchResultFile;
+function playFromHash(_x37, _x38) {
   return _playFromHash.apply(this, arguments);
 }
 function _playFromHash() {
@@ -5862,7 +6034,7 @@ var SearchPicks = function () {
   };
 }();
 window.SearchPicks = SearchPicks;
-function addBestPickToServer(_x35, _x36, _x37) {
+function addBestPickToServer(_x39, _x40, _x41) {
   return _addBestPickToServer.apply(this, arguments);
 }
 function _addBestPickToServer() {
@@ -5997,6 +6169,14 @@ function renderSearchResults() {
       if (button && !button.disabled) button.click();
     }
   };
+  searchResultsDiv.oncontextmenu = function (event) {
+    var item = event.target.closest('.search-result-item');
+    if (!item || !window.EpisodePicker) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (typeof focusEl === 'function') focusEl(item);
+    EpisodePicker.openFor(item);
+  };
   var index = 0;
   var FIRST_CHUNK_SIZE = 15;
   var CHUNK_SIZE = 15;
@@ -6040,7 +6220,7 @@ function getCurrentSearchMode() {
   if (modeSelect) currentSearchMode = modeSelect.value;
   return currentSearchMode;
 }
-function searchTMDB(_x38) {
+function searchTMDB(_x42) {
   return _searchTMDB.apply(this, arguments);
 }
 function _searchTMDB() {
@@ -6081,7 +6261,6 @@ function _searchTMDB() {
           navSearch.data.label = query;
         }
       }
-      if (currentSearchMode === 'globalsearch') showContentTypeFilter();
       showGlobalSearchResults();
     } catch (error) {
       if (!error || error.name !== 'AbortError') {
@@ -6094,7 +6273,7 @@ function _searchTMDB() {
   });
   return _searchTMDB.apply(this, arguments);
 }
-function searchTMDBLegacy(_x39, _x40) {
+function searchTMDBLegacy(_x43, _x44) {
   return _searchTMDBLegacy.apply(this, arguments);
 }
 function _searchTMDBLegacy() {
@@ -6153,7 +6332,8 @@ function getRatingColor(rating) {
   return '#f44336';
 }
 function showGlobalSearchResults() {
-  renderFilteredGlobalResults(globalSearchResults);
+  updateGlobalYearOptions();
+  renderFilteredGlobalResults(getFilteredGlobalResults());
 }
 function restoreSearchEntry(entry) {
   var d = entry && entry.data;
@@ -6187,7 +6367,8 @@ function renderFilteredGlobalResults(results) {
   if (searchOverlay) searchOverlay.classList.remove('hidden');
   releaseGlobalPosters();
   if (results.length === 0) {
-    searchResultsDiv.innerHTML = '<div class="filter-stats">Всего найдено: <span>0</span></div><div class="search-result-empty">' + (currentSearchQuery ? 'Ничего не найдено для "' + escapeHtml(currentSearchQuery) + '" в TMDB' : 'Введите запрос для поиска') + '</div>';
+    var emptyText = !currentSearchQuery ? 'Введите запрос для поиска' : globalSearchResults.length ? 'Нет результатов по фильтрам для "' + escapeHtml(currentSearchQuery) + '"' : 'Ничего не найдено для "' + escapeHtml(currentSearchQuery) + '" в TMDB';
+    searchResultsDiv.innerHTML = '<div class="filter-stats">Всего найдено: <span>' + globalSearchResults.length + '</span></div><div class="search-result-empty">' + emptyText + '</div>';
     return;
   }
   var limit = Math.min(results.length, 40);
@@ -6280,7 +6461,7 @@ function renderFilteredGlobalResults(results) {
     }
   };
 }
-function showGlobalSearchDetail(_x41) {
+function showGlobalSearchDetail(_x45) {
   return _showGlobalSearchDetail.apply(this, arguments);
 }
 function _showGlobalSearchDetail() {
@@ -6321,26 +6502,6 @@ function _showGlobalSearchDetail() {
     }
   });
   return _showGlobalSearchDetail.apply(this, arguments);
-}
-function showContentTypeFilter() {
-  var filterGroup = document.querySelector('.filter-group');
-  if (!filterGroup) return;
-  var contentTypeFilter = getEl('filter-content-type');
-  if (!contentTypeFilter) {
-    var newFilter = document.createElement('div');
-    newFilter.className = 'filter-group';
-    newFilter.innerHTML = `<label class="filter-label" for="filter-content-type">Тип контента</label><select id="filter-content-type" class="filter-select"><option value="all">Все</option><option value="movie">Фильмы</option><option value="tv">Сериалы</option></select>`;
-    var qualityFilter = getEl('filter-quality');
-    if (qualityFilter && qualityFilter.parentNode) qualityFilter.parentNode.parentNode.insertBefore(newFilter, qualityFilter.parentNode.nextSibling);else filterGroup.parentNode.appendChild(newFilter);
-    getEl('filter-content-type').addEventListener('change', function (e) {
-      filterGlobalSearchByType(e.target.value);
-    });
-  }
-}
-function filterGlobalSearchByType(type) {
-  if (!globalSearchResults.length) return;
-  var filtered = type === 'all' ? globalSearchResults : globalSearchResults.filter(r => r.media_type === type);
-  renderFilteredGlobalResults(filtered);
 }
 function clearSearchResultsContainer() {
   resetSearchVisibilityWindow();

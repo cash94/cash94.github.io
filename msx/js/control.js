@@ -2219,11 +2219,11 @@ function handleFilterPanelNavigation(dir, currentElement) {
     invalidateFocusCache();
     updateFocusableElements();
 
-    if (window.AppState && AppState.searchLocked) {
-        var filterItems = Array.from(panel.querySelectorAll('.filter-item:not([data-filter="torrent-movie"])'));
-    } else {
-        var filterItems = Array.from(panel.querySelectorAll('.filter-item'));
-    }
+    // Только видимые пункты: у глобального поиска и торрентов свои фильтры,
+    // чужие скрыты (syncSearchFilterScope в torrents.js), «Категорию» прячет
+    // замок строки поиска. Раньше стрелки ходили и по скрытым — фокус
+    // пропадал с экрана на пункт, которого не видно.
+    var filterItems = Array.from(panel.querySelectorAll('.filter-item')).filter(VISIBLE);
     var filterValueItems = Array.from(panel.querySelectorAll('.filter-value-item'));
     var backBtn = getEl('filter-back-btn');
     var closeBtn = getEl('filter-close-btn');
@@ -2761,6 +2761,9 @@ function isHomeUnderneath() {
 function onBack() {
     // Сюда же приходит аппаратный «Назад» Android (сторож popstate), мимо keydown
     if (isBestTorrentsOpen()) { BestTorrents.close(); return true; }
+    // Окно серий из поиска: «Назад» закрывает только его — и с пульта, и правой
+    // кнопкой мыши / долгим касанием (contextmenu ниже), и жестом «назад»
+    if (isEpisodePickerOpen()) { EpisodePicker.close(); return true; }
     var s = getEl('search-overlay'), d = getEl('detail-view'), c = getEl('config-screen');
     var cat = currentScreen() === 'catalog', dn = currentScreen() === 'donate';
     var hm = currentScreen() === 'home';
@@ -3046,10 +3049,11 @@ function setupKeyboardHandlers() {
             return;
         }
 
-        // То же для карточки истории (главная, каталог): отпустили до срока —
-        // обычное OK, после удаления по таймеру — ничего
+        // То же для карточки истории (главная, каталог) и раздачи в выдаче
+        // поиска: отпустили до срока — обычное OK, после удаления или
+        // открытия окна серий по таймеру — ничего
         if (isOkKey(k) && okHoldFocused && !isCustomFilterMenuOpen() &&
-            (currentScreen() === 'home' || currentScreen() === 'catalog')) {
+            (currentScreen() === 'home' || currentScreen() === 'catalog' || currentScreen() === 'search')) {
             var hSame = document.querySelector('.focused') === okHoldFocused;
             var hDone = okHoldHandled;
             clearOkHold();
@@ -4323,7 +4327,8 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         container.id === 'catalog-detail-actors-wrap' ||
         container.id === 'catalog-detail-recommendations-wrap' ||
         container.id === 'catalog-detail-trailers-wrap' ||
-        container.id === 'files-list';
+        container.id === 'files-list' ||
+        container.id === 'episode-picker-row';
 
     if (isH) {
         var r = el.getBoundingClientRect();
@@ -4343,7 +4348,8 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
 
         // Серии обрезаны по линии остальных блоков (styles.css), и плитка у этой
         // линии видна целиком — запас от края окна ей не нужен
-        var isEpisodes = container.id === 'catalog-detail-episodes-wrap';
+        // Лента окна серий из поиска (episode-picker.js) шагает так же
+        var isEpisodes = container.id === 'catalog-detail-episodes-wrap' || container.id === 'episode-picker-row';
         var hp = isEpisodes ? 0 : 30;
         // А рамке фокуса нужен: окно режет всё, что вылезает за него. Левый
         // отступ ленты и есть запас под неё (styles.css), у правого края такой же
@@ -4399,6 +4405,8 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         // вылезает за экран хоть на пару пикселей (ТВ с DPR 1.25/1.5), экран
         // дрожал. Горизонталь выше уже отработала — больше двигать нечего.
         if (isRowViewport && el.classList && el.classList.contains('home-card')) return;
+        // Окно серий по вертикали не прокручивается
+        if (container.id === 'episode-picker-row') return;
 
         var vertEl = isRowViewport ? getEl('main-container') : getEl('detail-view');
         var dy = pendingScrollDelta(vertEl);        // сколько ещё дотянет твин
@@ -4631,6 +4639,7 @@ function focusEl(el, opts) {
     var isRC = el.classList && el.classList.contains('catalog-recommendation-card');
     var isTC = el.classList && el.classList.contains('catalog-trailer-card-item');
     var isRowCard = el.classList && el.classList.contains('catalog-row-card');
+    var isEpTile = el.classList && el.classList.contains('ep-picker-tile');
 
     // Оконная видимость каталога (catalog.js): элемент под фокусом обязан быть
     // видимым сразу, а колбэк IntersectionObserver придёт только через кадр-два
@@ -4673,7 +4682,10 @@ function focusEl(el, opts) {
     // стать .catalog-row-viewport (горизонтальная доводка каруселью). Сама
     // главная по вертикали не прокручивается — баннер и ряд считаны ровно на
     // высоту экрана, поэтому #main-container для её кнопок остаётся no-op.
-    if (s === 'config') {
+    if (isEpTile) {
+        // Лента окна серий (episode-picker.js) — поверх любого экрана
+        container = getEl('episode-picker-row');
+    } else if (s === 'config') {
         // Настройки лежат не в #main-container, а в своём #config-screen.
         // Раньше доводка шла по #main-container — впустую, и пункты ниже
         // экрана были недостижимы. Что именно прокручивается — см.
@@ -4877,6 +4889,8 @@ function openFilterPanelAndFocus() {
     var overlay = getEl('filter-overlay');
 
     if (panel) {
+        // Подписи и набор пунктов — по текущему режиму поиска
+        if (typeof window.updateFilterValueDisplays === 'function') window.updateFilterValueDisplays();
         panel.classList.add('active');
         if (toggleBtn) toggleBtn.classList.add('active');
         if (overlay) overlay.classList.add('active');
@@ -5141,6 +5155,12 @@ function scrollToActiveFilterOption() { var ao = document.querySelector('.custom
 function moveCustomFilterMenu(d) { if (!customFilterMenuState || !customFilterMenuState.options.length) return true; var l = customFilterMenuState.options.length, n = customFilterMenuState.index + d; if (n < 0 || n >= l) return true; customFilterMenuState.index = n; renderCustomFilterMenu(); setTimeout(scrollToActiveFilterOption, 10); return true; }
 function applyCustomFilterMenuSelection() { if (!customFilterMenuState || !customFilterMenuState.selectEl) return false; var s = customFilterMenuState.selectEl, o = customFilterMenuState.options, i = customFilterMenuState.index, c = o[i]; if (!c) return false; s.value = String(c.value); try { var e = document.createEvent('Event'); e.initEvent('change', true, true); s.dispatchEvent(e); } catch (e) { } if (typeof window.getCurrentSearchMode === 'function') window.getCurrentSearchMode(); closeCustomFilterMenu(); try { focusEl(s); } catch (e) { } return true; }
 function isBestTorrentsOpen() { return !!(window.BestTorrents && BestTorrents.isOpen()); }
+function isEpisodePickerOpen() { return !!(window.EpisodePicker && EpisodePicker.isOpen()); }
+// Стрелки в окне серий — через тот же пропускник шагов, что у остальных лент
+function runEpisodePickerNavigation(direction) {
+    if (!acceptNavStep(direction, runEpisodePickerNavigation)) return;
+    if (isEpisodePickerOpen()) EpisodePicker.handleArrow(direction);
+}
 function isCustomFilterMenuOpen() { var m = getEl('custom-filter-menu'); return !!(m && !m.classList.contains('hidden') && customFilterMenuState); }
 function openNativeSearchControl(el) {
     if (!VISIBLE(el)) return false;
@@ -5182,6 +5202,7 @@ function setupFocusRescue() {
             if (ip) { cancelCurrentPlayback(); if (typeof window.releasePreloadScreen === 'function') window.releasePreloadScreen(true); return; }
             if (isCustomFilterMenuOpen()) { closeCustomFilterMenu(); return; }
             if (isBestTorrentsOpen()) { BestTorrents.close(); return; }
+            if (isEpisodePickerOpen()) { EpisodePicker.close(); return; }
             if (s === 'catalog' && window.catalogState && window.catalogState.currentCatalog) { window.catalogState.lastSelectedIndex = 0; window.catalogState.lastSelectedId = null; localStorage.removeItem('lastCatalogCardIndex'); }
             onBack();
             return;
@@ -5192,6 +5213,12 @@ function setupFocusRescue() {
             var d = arrowDir(e.keyCode);
             if (isCustomFilterMenuOpen()) { if (d === 'up') moveCustomFilterMenu(-1); else if (d === 'down') moveCustomFilterMenu(1); return; }
             if (isBestTorrentsOpen()) { BestTorrents.handleArrow(d); return; }
+            if (isEpisodePickerOpen()) {
+                navKeyRepeat = !!e.repeat;
+                setNavHold(d);
+                runEpisodePickerNavigation(d);
+                return;
+            }
             // Ряды каталога и главной идут сюда, а не через navigate(), поэтому
             // флаг удержания взводим здесь: на нём висит откладывание постеров
             // в catalog.js (вставка карточки посреди твина = фриз).
@@ -5213,6 +5240,25 @@ function setupFocusRescue() {
             okKeyLastDown = okNow;
             if (isCustomFilterMenuOpen()) { applyCustomFilterMenuSelection(); return; }
             if (isBestTorrentsOpen()) { if (!okRepeat) BestTorrents.handleOk(); return; }
+            if (isEpisodePickerOpen()) { if (!okRepeat) EpisodePicker.handleOk(); return; }
+            // Долгое OK на раздаче в выдаче поиска — окно её серий
+            // (episode-picker.js); обычное нажатие — на отпускании (keyup)
+            if (s === 'search' && window.EpisodePicker) {
+                if (okRepeat && okHoldFocused) return;
+                var sf = document.querySelector('.focused');
+                if (sf && sf.classList.contains('search-result-item')) {
+                    if (!okRepeat) {
+                        okHoldHandled = false;
+                        okHoldFocused = sf;
+                        clearOkHold();
+                        okHoldTimer = setTimeout(function () {
+                            okHoldHandled = true;
+                            if (okHoldFocused && document.querySelector('.focused') === okHoldFocused) EpisodePicker.openFor(okHoldFocused);
+                        }, OK_HOLD_DELETE_MS);
+                    }
+                    return;
+                }
+            }
             if (s === 'torrents') {
                 var f = document.querySelector('.focused');
                 if (f && f.classList.contains('torrent-card')) {
@@ -5731,12 +5777,13 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
         '.catalog-detail-actors-grid, ' +
         '.catalog-detail-recommendations-grid, ' +
         '.catalog-row-viewport, ' +
-        '.catalog-row';
+        '.catalog-row, ' +
+        '.episode-picker-row';
 
     // Элементы лент, по которым ходит пульт: карточки рядов главной и
     // каталога, файлы и серии, актёры и съёмочная группа, похожие и сборник
     var LANE_ITEM_SELECTOR = '.catalog-row-card, .file-item, .catalog-episode-card, ' +
-        '.catalog-actor-card, .catalog-recommendation-card';
+        '.catalog-actor-card, .catalog-recommendation-card, .ep-picker-tile';
 
     // Столько же, сколько APP_CONSTANTS.TOUCH_MOVE_THRESHOLD_PX в app.js: до
     // этого порога касание там ещё считается тапом и открывает карточку,
@@ -5874,6 +5921,8 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
         if (!lane || lane.isConnected === false) return null;
         var sc = currentScreen();
         if (sc === 'player' || !ScreenStrategies[sc] || !ScreenStrategies[sc].handleNavigation) return null;
+        // Окно серий (episode-picker.js) лежит поверх экрана, вне его разметки
+        if (lane.id === 'episode-picker-row') return isEpisodePickerOpen() ? sc : null;
         return belongsToScreen(lane, sc) ? sc : null;
     }
 
@@ -5910,6 +5959,12 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
         var f = document.querySelector('.focused');
         var fi = f ? items.indexOf(f) : -1;
         stopGlide(lane);
+        // Окно серий: фокус всегда на одной из его плиток, шаг — его собственный
+        if (lane.id === 'episode-picker-row') {
+            if (fi === -1 || (right ? fi === items.length - 1 : fi === 0)) return false;
+            runEpisodePickerNavigation(dir);
+            return true;
+        }
         if (fi === -1) {
             // Фокус не в этой ленте (шапка, кнопки карточки, другой ряд или его
             // нет вовсе на телефоне) — первый шаг ставит его в ленту

@@ -169,7 +169,6 @@ async function init() {
     setupAutoFullscreen();
     setupSpeedTest();
 
-    if (typeof initSearchModeToggle === 'function') initSearchModeToggle();
 
     initialServerCheck();
     setupCheckboxes();
@@ -1466,6 +1465,57 @@ function setupFavoritesTab() {
 }
 
 // ==================== ФИЛЬТРЫ ПОИСКА ====================
+// Фильтры раздач Jacred — в глобальном поиске (TMDB) они скрыты
+var TORRENT_ONLY_FILTERS = ['sort-by', 'filter-quality', 'filter-tracker', 'filter-year',
+  'filter-season', 'filter-voice', 'filter-videotype'];
+// Фильтры глобального поиска — в режиме «Торренты» скрыты (torrents.js)
+var GLOBAL_SEARCH_FILTERS = [
+  { id: 'global-filter-year', label: 'Год', options: [['all', 'Все']] },
+  { id: 'global-filter-type', label: 'Тип', options: [['all', 'Все'], ['movie', 'Фильмы'], ['tv', 'Сериалы']] }
+];
+
+/**
+ * Разметить пункты панели по режимам и добавить пункты глобального поиска.
+ * Создаются здесь, а не в index.html: index.html из пакета сервера бывает
+ * старым, а js приходит свежий. Видимость по режиму — syncSearchFilterScope.
+ */
+function ensureSearchFilterScopes() {
+  var panel = getEl('search-filters-panel'); if (!panel) return;
+  for (var i = 0; i < TORRENT_ONLY_FILTERS.length; i++) {
+    var ti = panel.querySelector('.filter-item[data-filter="' + TORRENT_ONLY_FILTERS[i] + '"]');
+    if (ti) ti.setAttribute('data-scope', 'torrents');
+  }
+  var modeItem = panel.querySelector('.filter-item[data-filter="torrent-movie"]');
+  var list = panel.querySelector('.filter-list');
+  if (!list) return;
+  var after = modeItem;
+  var selectHost = getEl('filter-videotype');
+  for (var g = 0; g < GLOBAL_SEARCH_FILTERS.length; g++) {
+    var def = GLOBAL_SEARCH_FILTERS[g];
+    if (!getEl(def.id)) {
+      var sel = document.createElement('select');
+      sel.id = def.id; sel.style.display = 'none';
+      sel.innerHTML = def.options.map(function (o) { return '<option value="' + o[0] + '">' + o[1] + '</option>'; }).join('');
+      if (selectHost && selectHost.parentNode) selectHost.parentNode.insertBefore(sel, selectHost.nextSibling);
+      else document.body.appendChild(sel);
+      selectHost = sel;
+    }
+    var item = panel.querySelector('.filter-item[data-filter="' + def.id + '"]');
+    if (!item) {
+      item = document.createElement('button');
+      item.className = 'filter-item hidden';
+      item.setAttribute('data-filter', def.id);
+      item.innerHTML = '<span class="filter-item-label">' + def.label + '</span>' +
+        '<span class="filter-item-value" id="filter-value-' + def.id + '">Все</span>' +
+        '<i class="fi fi-rr-angle-right"></i>';
+      list.insertBefore(item, after ? after.nextSibling : list.firstChild);
+    }
+    item.setAttribute('data-scope', 'global');
+    after = item;
+  }
+  if (typeof window.syncSearchFilterScope === 'function') window.syncSearchFilterScope();
+}
+
 function createFilterHandler(setter) {
   return function (e) {
     setter(e.target.value);
@@ -1483,6 +1533,7 @@ function setupSearchFilters() {
   var resetFiltersBtn = getEl('reset-filters');
   var filterSeason = getEl('filter-season');
   var filterVoice = getEl('filter-voice');
+  ensureSearchFilterScopes();
   var filtervideotype = getEl('filter-videotype');
 
   // ==================== ОТКРЫТИЕ ПАНЕЛИ ФИЛЬТРОВ ====================
@@ -1531,7 +1582,6 @@ function setupSearchFilters() {
 
   // ==================== ОБРАБОТЧИКИ SELECT'ов (для совместимости) ====================
   var filterConfigs = [
-    { el: torrentmovie, setter: function (v) { if (typeof currentSearchMode !== 'undefined') currentSearchMode = v; } },
     { el: sortBy, setter: function (v) { if (typeof currentSort !== 'undefined') currentSort = v; } },
     { el: filterQuality, setter: function (v) { if (typeof currentQualityFilter !== 'undefined') currentQualityFilter = v; } },
     { el: filterTracker, setter: function (v) { if (typeof currentTrackerFilter !== 'undefined') currentTrackerFilter = v; } },
@@ -1546,6 +1596,17 @@ function setupSearchFilters() {
       config.el.addEventListener('change', createFilterHandler(config.setter));
     }
   });
+
+  // Смена режима поиска: свой набор фильтров и своя выдача (torrents.js)
+  if (torrentmovie) {
+    torrentmovie.addEventListener('change', function (e) {
+      if (typeof onSearchModeChanged === 'function') onSearchModeChanged();
+      else {
+        if (typeof currentSearchMode !== 'undefined') currentSearchMode = e.target.value;
+        if (typeof applyFiltersAndSort === 'function') applyFiltersAndSort();
+      }
+    });
+  }
 
   if (resetFiltersBtn && typeof resetFilters === 'function') {
     resetFiltersBtn.addEventListener('click', function () {
@@ -1708,16 +1769,23 @@ function setupSearchFilters() {
           case 'filter-videotype':
             if (typeof currentvideotypeFilter !== 'undefined') currentvideotypeFilter = value;
             break;
+          case 'global-filter-year':
+          case 'global-filter-type':
+            if (typeof window.setGlobalSearchFilter === 'function') window.setGlobalSearchFilter(filterId, value);
+            break;
         }
 
-        // Dispatch change event для совместимости
+        // Dispatch change event для совместимости (у torrent-movie на нём
+        // висит смена режима — onSearchModeChanged сама перерисует выдачу)
         try {
           var event = new Event('change', { bubbles: true });
           filterSelect.dispatchEvent(event);
         } catch (e) { }
 
-        // Применяем фильтры
-        if (typeof applyFiltersAndSort === 'function') {
+        // Применяем фильтры раздач — только для них: выдачу TMDB фильтры
+        // глобального поиска перерисовали сами, а режим — его обработчик
+        var ownRender = filterId === 'torrent-movie' || filterId.indexOf('global-filter-') === 0;
+        if (!ownRender && typeof applyFiltersAndSort === 'function') {
           applyFiltersAndSort();
         }
       }
@@ -1738,9 +1806,12 @@ function setupSearchFilters() {
 
     // Обновить отображаемые значения на главном экране
     function updateFilterValueDisplays() {
+      // Какие пункты показать — по текущему режиму поиска
+      if (typeof window.syncSearchFilterScope === 'function') window.syncSearchFilterScope();
       var filterIds = [
         'torrent-movie', 'sort-by', 'filter-quality', 'filter-tracker',
-        'filter-year', 'filter-season', 'filter-voice', 'filter-videotype'
+        'filter-year', 'filter-season', 'filter-voice', 'filter-videotype',
+        'global-filter-year', 'global-filter-type'
       ];
       for (var i = 0; i < filterIds.length; i++) {
         var fid = filterIds[i];
@@ -1834,7 +1905,8 @@ function setupSearchFilters() {
 
     // Наблюдатель за изменениями select'ов (для синхронизации при внешних изменениях)
     var observeIds = ['torrent-movie', 'sort-by', 'filter-quality', 'filter-tracker',
-      'filter-year', 'filter-season', 'filter-voice', 'filter-videotype'];
+      'filter-year', 'filter-season', 'filter-voice', 'filter-videotype',
+      'global-filter-year', 'global-filter-type'];
     for (var oi = 0; oi < observeIds.length; oi++) {
       var obsSel = getEl(observeIds[oi]);
       if (obsSel) {
