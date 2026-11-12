@@ -4385,6 +4385,13 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
                 if (tileStep > 0) targetLeft = (direction === 'right' ? Math.ceil(targetLeft / tileStep) : Math.floor(targetLeft / tileStep)) * tileStep;
             }
             if (laneEdge) targetLeft = laneEdge < 0 ? 0 : getMaxScrollX(con);
+            // Окно серий: крайние плитки — до упора. У первой нет соседа слева,
+            // шаг плитками выше не срабатывал, и лента вставала в паре px от
+            // нуля — плитка у самого края, рамку фокуса срезало
+            if (container.id === 'episode-picker-row') {
+                if (!el.previousElementSibling) targetLeft = 0;
+                else if (!el.nextElementSibling) targetLeft = getMaxScrollX(con);
+            }
             targetLeft = Math.max(0, Math.min(getMaxScrollX(con), targetLeft));
             // Сравниваем с целью уже запущенного твина, а не с текущим
             // положением: иначе тот же самый доводчик пересоздавал бы твин

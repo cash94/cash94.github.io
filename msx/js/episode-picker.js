@@ -54,7 +54,6 @@
         root.innerHTML =
             '<div class="episode-picker-box">' +
             '<div class="episode-picker-bg"></div>' +
-            '<button class="episode-picker-close" type="button" aria-label="Закрыть"><i class="fi fi-rr-cross"></i></button>' +
             '<div class="episode-picker-head">' +
             '<div class="episode-picker-title"></div>' +
             '<div class="episode-picker-sub"></div>' +
@@ -79,7 +78,6 @@
 
         // Мышь и касание: клик по плитке — смотреть, мимо окна — закрыть
         root.addEventListener('click', function (e) {
-            if (e.target.closest && e.target.closest('.episode-picker-close')) { close(); return; }
             var tile = e.target.closest ? e.target.closest('.ep-picker-tile') : null;
             if (tile) { choose(tile._idx); return; }
             if (!els.box.contains(e.target)) close();

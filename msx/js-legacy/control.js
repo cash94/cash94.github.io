@@ -3673,6 +3673,9 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         if (tileStep > 0) targetLeft = (direction === 'right' ? Math.ceil(targetLeft / tileStep) : Math.floor(targetLeft / tileStep)) * tileStep;
       }
       if (laneEdge) targetLeft = laneEdge < 0 ? 0 : getMaxScrollX(con);
+      if (container.id === 'episode-picker-row') {
+        if (!el.previousElementSibling) targetLeft = 0;else if (!el.nextElementSibling) targetLeft = getMaxScrollX(con);
+      }
       targetLeft = Math.max(0, Math.min(getMaxScrollX(con), targetLeft));
       var fromLeft = dx ? curLeft + dx : curLeft;
       var needsHScroll = Math.abs(fromLeft - targetLeft) > (laneEdge ? 1 : 10);

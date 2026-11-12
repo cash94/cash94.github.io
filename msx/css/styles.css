@@ -15077,8 +15077,12 @@ html.apple-tv-ui #loading-player-overlay {
   position: relative;
   display: -webkit-flex;
   display: flex;
-  margin: calc(var(--epu) * 1) calc(var(--epu) * -0.3) 0;
-  padding: calc(var(--epu) * 0.3);
+  /* Запас под рамку фокуса (0,25 --epu, в «Внешнем виде» 3–5 px) с каждой
+     стороны: при 0,3 у края оставался пиксель, и на ТВ с дробным масштабом
+     рамку первой плитки срезало. Отрицательные поля держат плитки на линии
+     текста */
+  margin: calc(var(--epu) * 0.7) calc(var(--epu) * -0.6) calc(var(--epu) * -0.3);
+  padding: calc(var(--epu) * 0.6);
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -15191,35 +15195,6 @@ html.apple-tv-ui #loading-player-overlay {
   }
 }
 
-/* Крестик — для мыши и пальца: с пульта окно закрывает «Назад», в фокус он
-   не попадает. На телефоне без кнопки «назад» (iPhone) иначе закрыть окно
-   можно было бы только касанием мимо него */
-.episode-picker-close {
-  position: absolute;
-  top: calc(var(--epu) * 1);
-  right: calc(var(--epu) * 1);
-  z-index: 1;
-  width: calc(var(--epu) * 2.6);
-  height: calc(var(--epu) * 2.6);
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.45);
-  color: #fff;
-  font-size: calc(var(--epu) * 1.1);
-  line-height: 1;
-  cursor: pointer;
-}
-
-.episode-picker-close i {
-  display: block;
-  line-height: calc(var(--epu) * 2.6);
-}
-
-.episode-picker-close:hover {
-  background: rgba(255, 255, 255, 0.18);
-}
-
 /* Телефон: единица — как у карточки фильма там же (#detail-view.detail-cinema).
    От высоты экрана в книжной она выходила крупной (плитка в 2/3 ширины), в
    альбомной — мелкой, текст в 6 px */
@@ -15245,10 +15220,8 @@ html.apple-tv-ui #loading-player-overlay {
     padding: calc(var(--epu) * 1.6) calc(var(--epu) * 1.4) calc(var(--epu) * 1.4);
   }
 
-  /* Справа — место под крестик */
   .episode-picker-head {
     max-width: none;
-    padding-right: calc(var(--epu) * 3);
   }
 
   /* Узко: название в две строки, а не обрезанное на середине слова */

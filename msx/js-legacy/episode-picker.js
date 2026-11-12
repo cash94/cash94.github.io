@@ -30,7 +30,7 @@
     root = document.createElement('div');
     root.id = 'episode-picker';
     root.className = 'episode-picker hidden';
-    root.innerHTML = '<div class="episode-picker-box">' + '<div class="episode-picker-bg"></div>' + '<button class="episode-picker-close" type="button" aria-label="Закрыть"><i class="fi fi-rr-cross"></i></button>' + '<div class="episode-picker-head">' + '<div class="episode-picker-title"></div>' + '<div class="episode-picker-sub"></div>' + '<div class="episode-picker-desc"></div>' + '<div class="episode-picker-meta"></div>' + '</div>' + '<div class="episode-picker-status"><span class="episode-picker-spinner"></span><span class="episode-picker-status-text"></span></div>' + '<div class="episode-picker-row" id="episode-picker-row"></div>' + '<div class="episode-picker-hint">OK — смотреть · Назад — закрыть</div>' + '</div>';
+    root.innerHTML = '<div class="episode-picker-box">' + '<div class="episode-picker-bg"></div>' + '<div class="episode-picker-head">' + '<div class="episode-picker-title"></div>' + '<div class="episode-picker-sub"></div>' + '<div class="episode-picker-desc"></div>' + '<div class="episode-picker-meta"></div>' + '</div>' + '<div class="episode-picker-status"><span class="episode-picker-spinner"></span><span class="episode-picker-status-text"></span></div>' + '<div class="episode-picker-row" id="episode-picker-row"></div>' + '<div class="episode-picker-hint">OK — смотреть · Назад — закрыть</div>' + '</div>';
     document.body.appendChild(root);
     els.box = root.querySelector('.episode-picker-box');
     els.bg = root.querySelector('.episode-picker-bg');
@@ -43,10 +43,6 @@
     els.spinner = root.querySelector('.episode-picker-spinner');
     els.row = root.querySelector('.episode-picker-row');
     root.addEventListener('click', function (e) {
-      if (e.target.closest && e.target.closest('.episode-picker-close')) {
-        close();
-        return;
-      }
       var tile = e.target.closest ? e.target.closest('.ep-picker-tile') : null;
       if (tile) {
         choose(tile._idx);
