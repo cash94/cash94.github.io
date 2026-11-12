@@ -151,6 +151,9 @@ var AppState = {
   // бездействия (player.js, resetMouseIdleTimer), его убирают «Назад» или
   // «вверх» на ползунке перемотки (control.js). Из localStorage.
   playerManualHide: false,
+  // Настройка «Запоминать масштаб видео» (раздел «Плеер» и шестерёнка): режим
+  // кнопки масштаба переживает перезапуск (app.js, setPlayerRememberZoom).
+  playerRememberZoom: false,
   // Настройка «Скринсейвер» (раздел «Прочее»): общий выключатель заставки
   // (screensaver.js). Выключена — нет ни заставки, ни пелены в плеере, что бы
   // ни стояло в playerScreensaver. Из localStorage; по умолчанию включена.

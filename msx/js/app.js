@@ -286,13 +286,23 @@ function setupVideoPlayerControls() {
   document.addEventListener('fullscreenchange', applyVideoBox);
   document.addEventListener('webkitfullscreenchange', applyVideoBox);
 
-  setVideoObjectFit('contain');
+  // «Запоминать масштаб» (раздел «Плеер» и шестерёнка): режим кнопки переживает
+  // перезапуск приложения. На Tizen с AVPlay отдельно делать ничего не нужно:
+  // его слой повторяет рамку <video> (tizen-avplay.js, syncRect/cropRect) и
+  // выставляется заново после старта кадра (rectAfterStart) — Tizen 9 рамку,
+  // заданную до play(), не держит. Внутри одного запуска режим и так общий
+  // для всех роликов: zoomMode при новом видео не сбрасывается
+  var savedZoom = getRememberedZoomMode();
+  if (savedZoom) modeIndex = modes.indexOf(savedZoom);
+  setVideoObjectFit(savedZoom || 'contain');
+  window.getVideoZoomMode = function () { return zoomMode; };
 
   var zoomBtn = getEl('zoom-mode-btn');
   if (zoomBtn) {
     zoomBtn.onclick = function () {
       modeIndex = (modeIndex + 1) % modes.length;
       setVideoObjectFit(modes[modeIndex]);
+      rememberZoomMode(modes[modeIndex]);
       var modeNames = {
         'contain': 'С полосами',
         'fill': 'Растянуть',
@@ -2359,6 +2369,21 @@ function setupCheckboxes() {
     });
   }
 
+  // Запоминать масштаб видео (кнопка масштаба в плеере). В Android-приложении
+  // фильм идёт в нативном плеере со своим масштабом — галку прячем.
+  var rememberZoomCheckbox = getEl('player-remember-zoom');
+  if (rememberZoomCheckbox) {
+    if (window.AndroidJS) {
+      var rememberZoomContainer = rememberZoomCheckbox.closest('.checkbox-container');
+      if (rememberZoomContainer) rememberZoomContainer.classList.add('hidden');
+    }
+    AppState.playerRememberZoom = isRememberZoomOn();
+    rememberZoomCheckbox.checked = AppState.playerRememberZoom;
+    rememberZoomCheckbox.addEventListener('change', function (e) {
+      setPlayerRememberZoom(e.target.checked);
+    });
+  }
+
   // Встроенная экранная клавиатура (раздел «Прочее»). Сама клавиатура — в
   // js/osk.js, флаг она читает из AppState на каждом открытии поля.
   var builtinKeyboardCheckbox = getEl('builtin-keyboard');
@@ -2750,6 +2775,44 @@ function setPlayerManualHide(on) {
   }
 }
 window.setPlayerManualHide = setPlayerManualHide;
+
+/**
+ * «Запоминать масштаб видео»: галка в разделе «Плеер» и пункт в шестерёнке.
+ * Включена — последний режим кнопки масштаба (playerZoomMode) ставится при
+ * следующем запуске приложения; выключена — каждый запуск «С полосами».
+ * Флаг читаем прямо из localStorage: setupVideoPlayerControls идёт раньше,
+ * чем галки раздела «Плеер» заполняют AppState.
+ */
+function isRememberZoomOn() {
+  try { return localStorage.getItem('playerRememberZoom') === 'true'; } catch (e) { return false; }
+}
+
+function getRememberedZoomMode() {
+  if (!isRememberZoomOn()) return null;
+  var m = null;
+  try { m = localStorage.getItem('playerZoomMode'); } catch (e) { }
+  return /^(contain|fill|cover|zoom|none)$/.test(m || '') ? m : null;
+}
+
+function rememberZoomMode(mode) {
+  if (!isRememberZoomOn()) return;
+  try { localStorage.setItem('playerZoomMode', mode); } catch (e) { }
+}
+
+function setPlayerRememberZoom(on) {
+  AppState.playerRememberZoom = !!on;
+  try {
+    localStorage.setItem('playerRememberZoom', AppState.playerRememberZoom);
+    // Включили — запоминаем режим, что сейчас на экране (его и выбрали);
+    // выключили — забываем, следующий запуск начнётся «С полосами»
+    if (!AppState.playerRememberZoom) localStorage.removeItem('playerZoomMode');
+    else if (typeof window.getVideoZoomMode === 'function') rememberZoomMode(window.getVideoZoomMode());
+  } catch (e) { }
+  var cb = getEl('player-remember-zoom');
+  if (cb) cb.checked = AppState.playerRememberZoom;
+  if (typeof window.updatePlayerSettingsMenu === 'function') window.updatePlayerSettingsMenu();
+}
+window.setPlayerRememberZoom = setPlayerRememberZoom;
 
 /**
  * Галка скринсейвера в разделе «Плеер». В Android-приложении фильм идёт в

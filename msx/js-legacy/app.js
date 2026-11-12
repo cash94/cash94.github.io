@@ -206,12 +206,18 @@ function setupVideoPlayerControls() {
   window.addEventListener('resize', applyVideoBox);
   document.addEventListener('fullscreenchange', applyVideoBox);
   document.addEventListener('webkitfullscreenchange', applyVideoBox);
-  setVideoObjectFit('contain');
+  var savedZoom = getRememberedZoomMode();
+  if (savedZoom) modeIndex = modes.indexOf(savedZoom);
+  setVideoObjectFit(savedZoom || 'contain');
+  window.getVideoZoomMode = function () {
+    return zoomMode;
+  };
   var zoomBtn = getEl('zoom-mode-btn');
   if (zoomBtn) {
     zoomBtn.onclick = function () {
       modeIndex = (modeIndex + 1) % modes.length;
       setVideoObjectFit(modes[modeIndex]);
+      rememberZoomMode(modes[modeIndex]);
       var modeNames = {
         'contain': 'С полосами',
         'fill': 'Растянуть',
@@ -1833,6 +1839,18 @@ function setupCheckboxes() {
       setPlayerManualHide(e.target.checked);
     });
   }
+  var rememberZoomCheckbox = getEl('player-remember-zoom');
+  if (rememberZoomCheckbox) {
+    if (window.AndroidJS) {
+      var rememberZoomContainer = rememberZoomCheckbox.closest('.checkbox-container');
+      if (rememberZoomContainer) rememberZoomContainer.classList.add('hidden');
+    }
+    AppState.playerRememberZoom = isRememberZoomOn();
+    rememberZoomCheckbox.checked = AppState.playerRememberZoom;
+    rememberZoomCheckbox.addEventListener('change', function (e) {
+      setPlayerRememberZoom(e.target.checked);
+    });
+  }
   var builtinKeyboardCheckbox = getEl('builtin-keyboard');
   if (builtinKeyboardCheckbox) {
     AppState.builtinKeyboard = localStorage.getItem('builtinKeyboard') === 'true';
@@ -2163,6 +2181,38 @@ function setPlayerManualHide(on) {
   }
 }
 window.setPlayerManualHide = setPlayerManualHide;
+function isRememberZoomOn() {
+  try {
+    return localStorage.getItem('playerRememberZoom') === 'true';
+  } catch (e) {
+    return false;
+  }
+}
+function getRememberedZoomMode() {
+  if (!isRememberZoomOn()) return null;
+  var m = null;
+  try {
+    m = localStorage.getItem('playerZoomMode');
+  } catch (e) {}
+  return /^(contain|fill|cover|zoom|none)$/.test(m || '') ? m : null;
+}
+function rememberZoomMode(mode) {
+  if (!isRememberZoomOn()) return;
+  try {
+    localStorage.setItem('playerZoomMode', mode);
+  } catch (e) {}
+}
+function setPlayerRememberZoom(on) {
+  AppState.playerRememberZoom = !!on;
+  try {
+    localStorage.setItem('playerRememberZoom', AppState.playerRememberZoom);
+    if (!AppState.playerRememberZoom) localStorage.removeItem('playerZoomMode');else if (typeof window.getVideoZoomMode === 'function') rememberZoomMode(window.getVideoZoomMode());
+  } catch (e) {}
+  var cb = getEl('player-remember-zoom');
+  if (cb) cb.checked = AppState.playerRememberZoom;
+  if (typeof window.updatePlayerSettingsMenu === 'function') window.updatePlayerSettingsMenu();
+}
+window.setPlayerRememberZoom = setPlayerRememberZoom;
 function updatePlayerScreensaverRow() {
   var cb = getEl('player-screensaver');
   var row = cb && cb.closest('.checkbox-container');

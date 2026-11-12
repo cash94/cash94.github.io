@@ -134,7 +134,7 @@
       "js-legacy/legacy-polyfills.js": "e0e9de38",
       "js/account.js": "65c22e09",
       "js/animations.js": "f5352ec9",
-      "js/app.js": "f82fff08",
+      "js/app.js": "361cced1",
       "js/best-torrents-pick.js": "cd63487a",
       "js/best-torrents.js": "b0a98d04",
       "js/catalog-idb-patch.js": "72557f9c",
@@ -145,7 +145,7 @@
       "js/catalog-worker.js": "e736d314",
       "js/catalog.js": "c2613f26",
       "js/category-banners.js": "46ea538e",
-      "js/config.js": "8832f0c8",
+      "js/config.js": "20e80b02",
       "js/control.js": "8476adb0",
       "js/donate.js": "7d86fb27",
       "js/episode-picker.js": "a5064462",
@@ -156,7 +156,7 @@
       "js/osk.js": "a9e73b09",
       "js/perf-probe.js": "7143cc61",
       "js/player-memory-fix.js": "2fbf8c05",
-      "js/player.js": "ba7d0275",
+      "js/player.js": "133cb23b",
       "js/poster-db.js": "5133286b",
       "js/poster-prefetch.js": "a3173518",
       "js/screensaver.js": "01f61cc9",
@@ -845,6 +845,10 @@
                   <span>Скрывать интерфейс плеера вручную<small class="setting-desc">Панель не гаснет сама: убрать её — «Назад», а с ползунка перемотки — одним нажатием «вверх»</small></span>
                 </div>
                 <div class="checkbox-container">
+                  <input type="checkbox" id="player-remember-zoom">
+                  <span>Запоминать масштаб видео<small class="setting-desc">Выбранный кнопкой масштаба режим сохраняется и после перезапуска. Выключено — каждый запуск «С полосами»</small></span>
+                </div>
+                <div class="checkbox-container">
                   <input type="checkbox" id="auto-skip-intro">
                   <span>Автопропуск заставки и титров<small class="setting-desc">Через 5 секунд; титры — переходом на следующую серию, если она есть. ОК на кнопке — смотреть</small></span>
                 </div>
@@ -1473,7 +1477,8 @@
          строка буфера, автопропуск (тот же, что в разделе «Плеер»; app.js:
          setAutoSkip), ручное скрытие панели (тот же, что в разделе «Плеер»;
          app.js: setPlayerManualHide), скринсейвер на паузе (тот же, что в разделе
-         «Плеер»; app.js: setPlayerScreensaver) и размер субтитров (тот же, что в разделе «Плеер»;
+         «Плеер»; app.js: setPlayerScreensaver), запоминание масштаба (тот же, что в
+         разделе «Плеер»; app.js: setPlayerRememberZoom) и размер субтитров (тот же, что в разделе «Плеер»;
          ОК — следующий размер, player.js: setSubtitleSize) -->
     <div id="player-settings-panel" class="player-menu-panel hidden">
       <div class="player-menu-header">
@@ -1518,6 +1523,14 @@
           <div class="player-menu-info">
             <div class="player-menu-title">Скринсейвер</div>
             <div class="player-menu-value">Затемнение и заставка на паузе</div>
+          </div>
+          <div class="player-menu-switch"></div>
+        </div>
+        <div class="player-menu-item" id="psetting-zoom">
+          <div class="player-menu-icon"><svg class="hud-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M16 21h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/><rect x="7.5" y="8.5" width="9" height="7" rx="1"/></svg></div>
+          <div class="player-menu-info">
+            <div class="player-menu-title">Запоминать масштаб</div>
+            <div class="player-menu-value">Режим остаётся после перезапуска</div>
           </div>
           <div class="player-menu-switch"></div>
         </div>

@@ -2146,6 +2146,8 @@ function updatePlayerSettingsMenu() {
     saver.classList.toggle('is-on', AppState.playerScreensaver !== false);
     saver.style.display = window.AndroidJS || AppState.screensaver === false ? 'none' : '';
   }
+  var rememberZoom = getEl('psetting-zoom');
+  if (rememberZoom) rememberZoom.classList.toggle('is-on', !!AppState.playerRememberZoom);
   var subSize = getEl('psetting-subsize-value');
   if (subSize) subSize.textContent = SUBTITLE_SIZES[getSubtitleSize()].label;
 }
@@ -2158,6 +2160,8 @@ function setupPlayerSettingsButton() {
   if (autoSkipItem && window.AndroidJS) autoSkipItem.style.display = 'none';
   var manualHideItem = getEl('psetting-manualhide');
   if (manualHideItem && window.AndroidJS) manualHideItem.style.display = 'none';
+  var zoomItem = getEl('psetting-zoom');
+  if (zoomItem && window.AndroidJS) zoomItem.style.display = 'none';
   var btn = getEl('player-settings-btn');
   var panel = getEl('player-settings-panel');
   if (!btn || !panel) return;
@@ -2176,6 +2180,8 @@ function setupPlayerSettingsButton() {
       setAutoSkip(!AppState.autoSkipIntro);
     } else if (item && item.id === 'psetting-manualhide' && typeof setPlayerManualHide === 'function') {
       setPlayerManualHide(!AppState.playerManualHide);
+    } else if (item && item.id === 'psetting-zoom' && typeof setPlayerRememberZoom === 'function') {
+      setPlayerRememberZoom(!AppState.playerRememberZoom);
     } else if (item && item.id === 'psetting-screensaver' && typeof setPlayerScreensaver === 'function') {
       setPlayerScreensaver(AppState.playerScreensaver === false);
     } else if (item && item.id === 'psetting-subsize') {
