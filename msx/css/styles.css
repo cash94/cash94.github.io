@@ -11427,6 +11427,42 @@ html.apple-device {
   text-shadow: 0 0.08em 0.3em rgba(0, 0, 0, 0.65);
 }
 
+/* Диагностика плеера (js/player-diag.js): поверх видео, ниже панелей
+   шестерёнки и дорожек (240). Подложка нужна — текст поверх любого кадра,
+   а пользователь фотографирует экран */
+#player-diag {
+  position: absolute;
+  top: 8vh;
+  left: 2vw;
+  z-index: 235;
+  max-width: 70vw;
+  padding: 0.8vh 1vw;
+  border-radius: 0.8vh;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-family: monospace;
+  font-size: 1.7vh;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+#player-diag.hidden {
+  display: none;
+}
+
+#player-diag .player-diag-verdict {
+  margin-top: 0.5vh;
+  color: #ffd166;
+  font-weight: 700;
+}
+
+#player-diag .player-diag-log {
+  margin-top: 0.6vh;
+  padding-top: 0.5vh;
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.8);
+}
+
 /* Строка: пиры · скорость · процент (или сообщение об ошибке). Без плашки —
    белые цифры прямо по фону, читаемость на светлом кадре даёт тень текста */
 .preload-status {

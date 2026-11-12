@@ -127,7 +127,7 @@
       "css/flex-gap-fallback.css": "8acd2bbb",
       "css/inter.css": "2caa5b93",
       "css/legacy.css": "100d5c5a",
-      "css/styles.css": "43666f48",
+      "css/styles.css": "4b62d742",
       "css/uicons-regular-rounded.css": "feee56fb",
       "css/uicons-thin-chubby.css": "1d6159cb",
       "css/uicons-thin-rounded.css": "365fbd61",
@@ -155,8 +155,9 @@
       "js/nav.js": "02a98d5e",
       "js/osk.js": "a9e73b09",
       "js/perf-probe.js": "7143cc61",
+      "js/player-diag.js": "776a28db",
       "js/player-memory-fix.js": "2fbf8c05",
-      "js/player.js": "133cb23b",
+      "js/player.js": "b7ac99ee",
       "js/poster-db.js": "5133286b",
       "js/poster-prefetch.js": "a3173518",
       "js/screensaver.js": "01f61cc9",
@@ -1335,6 +1336,8 @@
     <div id="online-subs-box" class="hidden"></div>
     <!-- Индикатор скорости перемотки -->
     <div id="seek-speed-indicator" class="seek-speed-indicator hidden"></div>
+    <!-- Диагностика (шестерёнка → Диагностика): рисует js/player-diag.js -->
+    <div id="player-diag" class="hidden"></div>
     <!-- Название текущего воспроизводимого файла -->
     <div class="player-title-container" id="player-title-container">
       <div id="player-title" class="player-title hidden">Загрузка...</div>
@@ -1478,7 +1481,7 @@
          setAutoSkip), ручное скрытие панели (тот же, что в разделе «Плеер»;
          app.js: setPlayerManualHide), скринсейвер на паузе (тот же, что в разделе
          «Плеер»; app.js: setPlayerScreensaver), запоминание масштаба (тот же, что в
-         разделе «Плеер»; app.js: setPlayerRememberZoom) и размер субтитров (тот же, что в разделе «Плеер»;
+         разделе «Плеер»; app.js: setPlayerRememberZoom), диагностика (js/player-diag.js) и размер субтитров (тот же, что в разделе «Плеер»;
          ОК — следующий размер, player.js: setSubtitleSize) -->
     <div id="player-settings-panel" class="player-menu-panel hidden">
       <div class="player-menu-header">
@@ -1531,6 +1534,14 @@
           <div class="player-menu-info">
             <div class="player-menu-title">Запоминать масштаб</div>
             <div class="player-menu-value">Режим остаётся после перезапуска</div>
+          </div>
+          <div class="player-menu-switch"></div>
+        </div>
+        <div class="player-menu-item" id="psetting-diag">
+          <div class="player-menu-icon"><svg class="hud-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6"/></svg></div>
+          <div class="player-menu-info">
+            <div class="player-menu-title">Диагностика</div>
+            <div class="player-menu-value">Буфер, загрузка и TorrServer поверх видео</div>
           </div>
           <div class="player-menu-switch"></div>
         </div>
@@ -1629,6 +1640,8 @@
     document.write('<script src="https://cash94.github.io/msx/js/player.js?v=' + assetV('js/player.js') + '"><\/script>');
     // Samsung Tizen: прямой файл через нативный AVPlay (дорожки, субтитры)
     document.write('<script src="https://cash94.github.io/msx/js/tizen-avplay.js?v=' + assetV('js/tizen-avplay.js') + '"><\/script>');
+    // Диагностика плеера: <video>, буфер и читатель TorrServer поверх видео
+    document.write('<script src="https://cash94.github.io/msx/js/player-diag.js?v=' + assetV('js/player-diag.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/control.js?v=' + assetV('js/control.js') + '"><\/script>');
     // Встроенная экранная клавиатура — после control.js: берёт его хелперы
     // клавиш (isOkKey, isBackKey, arrowDir) и focusEl

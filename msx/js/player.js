@@ -2373,6 +2373,11 @@ function updatePlayerSettingsMenu() {
     // Android прячет его всегда: там нативный плеер
     saver.style.display = (window.AndroidJS || AppState.screensaver === false) ? 'none' : '';
   }
+  var diag = getEl('psetting-diag');
+  if (diag) {
+    diag.classList.toggle('is-on', !!(window.PlayerDiag && PlayerDiag.enabled()));
+    diag.style.display = (window.AndroidJS || !window.PlayerDiag) ? 'none' : '';
+  }
   var rememberZoom = getEl('psetting-zoom');
   if (rememberZoom) rememberZoom.classList.toggle('is-on', !!AppState.playerRememberZoom);
   var subSize = getEl('psetting-subsize-value');
@@ -2413,6 +2418,8 @@ function setupPlayerSettingsButton() {
       setAutoSkip(!AppState.autoSkipIntro);
     } else if (item && item.id === 'psetting-manualhide' && typeof setPlayerManualHide === 'function') {
       setPlayerManualHide(!AppState.playerManualHide);
+    } else if (item && item.id === 'psetting-diag' && window.PlayerDiag) {
+      PlayerDiag.setEnabled(!PlayerDiag.enabled());
     } else if (item && item.id === 'psetting-zoom' && typeof setPlayerRememberZoom === 'function') {
       setPlayerRememberZoom(!AppState.playerRememberZoom);
     } else if (item && item.id === 'psetting-screensaver' && typeof setPlayerScreensaver === 'function') {
