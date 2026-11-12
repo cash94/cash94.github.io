@@ -11427,7 +11427,8 @@ html.apple-device {
   text-shadow: 0 0.08em 0.3em rgba(0, 0, 0, 0.65);
 }
 
-/* Плашка: пиры · скорость · процент (или сообщение об ошибке) */
+/* Строка: пиры · скорость · процент (или сообщение об ошибке). Без плашки —
+   белые цифры прямо по фону, читаемость на светлом кадре даёт тень текста */
 .preload-status {
   position: absolute;
   left: 50%;
@@ -11436,12 +11437,9 @@ html.apple-device {
   display: flex;
   align-items: center;
   max-width: 88%;
-  padding: 0.7em 1.35em;
-  border-radius: 2em;
-  background: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 0.35em 1.2em rgba(0, 0, 0, 0.28);
-  color: rgba(255, 255, 255, 0.72);
+  color: #fff;
   font-size: 20px;
+  text-shadow: 0 0.08em 0.3em rgba(0, 0, 0, 0.65);
   white-space: nowrap;
   -webkit-transform: translateX(-50%);
   transform: translateX(-50%);
@@ -11454,7 +11452,6 @@ html.apple-device {
 .preload-peers {
   display: flex;
   align-items: center;
-  color: rgba(255, 255, 255, 0.92);
 }
 
 .preload-peers-icon {
@@ -11466,7 +11463,8 @@ html.apple-device {
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
-  opacity: 0.82;
+  -webkit-filter: drop-shadow(0 0.08em 0.25em rgba(0, 0, 0, 0.65));
+  filter: drop-shadow(0 0.08em 0.25em rgba(0, 0, 0, 0.65));
 }
 
 .preload-sep {
@@ -11475,11 +11473,11 @@ html.apple-device {
   height: 0.22em;
   margin: 0 0.8em;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.55);
+  background: #fff;
+  box-shadow: 0 0.08em 0.3em rgba(0, 0, 0, 0.65);
 }
 
 .preload-percent {
-  color: #fff;
   font-weight: 600;
 }
 
@@ -11606,7 +11604,6 @@ html.apple-device {
 
   .preload-status {
     bottom: 10vh;
-    padding: 0.6em 1em;
     font-size: 15px;
   }
 
