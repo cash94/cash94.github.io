@@ -7687,15 +7687,18 @@ function renderSearchResults() {
             if (button && !button.disabled) button.click();
         }
     };
-    // ПКМ на ПК, долгое касание на телефоне — окно серий раздачи, как долгое
-    // OK с пульта (episode-picker.js). Дальше событие не пускаем: на document
-    // contextmenu — это «Назад» (setupMouseControls, control.js), и он закрыл
-    // бы поиск из-под только что открытого окна
+    // ПКМ на ПК — окно серий раздачи, как долгое OK с пульта (episode-picker.js).
+    // Долгое касание на Android тоже шлёт contextmenu — окно тогда откроет
+    // таймер удержания там же. Дальше событие не пускаем в обоих случаях: на
+    // document contextmenu — это «Назад» (setupMouseControls, control.js), и он
+    // закрыл бы поиск
     searchResultsDiv.oncontextmenu = function (event) {
         var item = event.target.closest('.search-result-item');
         if (!item || !window.EpisodePicker) return;
         event.preventDefault();
         event.stopPropagation();
+        // Долгое касание: окно откроет таймер удержания (episode-picker.js)
+        if (EpisodePicker.isTouchHolding() || EpisodePicker.isOpen()) return;
         if (typeof focusEl === 'function') focusEl(item);
         EpisodePicker.openFor(item);
     };

@@ -2226,6 +2226,7 @@ function updateFocusableElements() {
       var ris = resultsHost.querySelectorAll('.search-result-item, .global-search-card');
       for (var i = 0; i < ris.length; i++) res.push(ris[i]);
     }
+    if (cs && !VISIBLE(cs)) cs = null;
     var fl = [vb, q, ft, sb, cs];
     var filterPanel = getEl('search-filters-panel');
     if (filterPanel && filterPanel.classList.contains('active')) {

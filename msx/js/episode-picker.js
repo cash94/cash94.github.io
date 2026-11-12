@@ -476,8 +476,101 @@
         if (state.open && state.tiles.length) choose(state.index);
     }
 
+    /* ==================== УДЕРЖАНИЕ ПАЛЬЦЕМ И МЫШЬЮ ====================
+     * То же, что долгое OK с пульта: держим раздачу в выдаче HOLD_MS — окно.
+     * Палец или курсор сдвинулся дальше HOLD_MOVE_PX — это прокрутка, не
+     * удержание. Окно открылось — отпускание уже ничего не запускает: гасим
+     * следующий за ним клик (и у касания — сам touchend, иначе браузер
+     * досочинит из него клик мышью).
+     *
+     * Долгое касание на Android шлёт ещё и contextmenu (около 500 мс) — в
+     * приложении это «Назад». Его на раздаче глотает обработчик выдачи
+     * (torrents.js) и, пока идёт удержание пальцем, окно не открывает: откроет
+     * таймер. */
+    var HOLD_MS = 600;
+    var HOLD_MOVE_PX = 10;
+    var CLICK_SUPPRESS_MS = 700;
+    var hold = null;
+    var suppressClickUntil = 0;
+    var lastTouchAt = 0;
+
+    function holdItem(target) {
+        if (!target || !target.closest || state.open) return null;
+        var item = target.closest('.search-result-item');
+        if (!item || !item.closest('#search-results')) return null;
+        if (typeof currentScreen === 'function' && currentScreen() !== 'search') return null;
+        return item;
+    }
+
+    function holdStart(item, x, y, touch) {
+        holdCancel();
+        hold = { item: item, x: x, y: y, touch: touch, fired: false, timer: null };
+        hold.timer = setTimeout(function () {
+            if (!hold || hold.item !== item) return;
+            hold.timer = null;
+            hold.fired = true;
+            suppressClickUntil = Date.now() + 60000;   // до отпускания
+            if (typeof focusEl === 'function') focusEl(item);
+            openFor(item);
+        }, HOLD_MS);
+    }
+
+    function holdMove(x, y) {
+        if (!hold || hold.fired) return;
+        if (Math.abs(x - hold.x) > HOLD_MOVE_PX || Math.abs(y - hold.y) > HOLD_MOVE_PX) holdCancel();
+    }
+
+    /** @returns {boolean} удержание сработало — отпускание надо погасить */
+    function holdEnd() {
+        if (!hold) return false;
+        var fired = hold.fired;
+        holdCancel();
+        if (fired) suppressClickUntil = Date.now() + CLICK_SUPPRESS_MS;
+        return fired;
+    }
+
+    function holdCancel() {
+        if (hold && hold.timer) clearTimeout(hold.timer);
+        hold = null;
+    }
+
+    document.addEventListener('touchstart', function (e) {
+        lastTouchAt = Date.now();
+        if (!e.touches || e.touches.length !== 1) { holdCancel(); return; }
+        var item = holdItem(e.target);
+        if (item) holdStart(item, e.touches[0].clientX, e.touches[0].clientY, true);
+        else holdCancel();
+    }, { passive: true });
+    document.addEventListener('touchmove', function (e) {
+        if (e.touches && e.touches.length) holdMove(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: true });
+    document.addEventListener('touchend', function (e) {
+        lastTouchAt = Date.now();
+        if (holdEnd() && e.cancelable) e.preventDefault();
+    }, { passive: false });
+    document.addEventListener('touchcancel', holdCancel, { passive: true });
+
+    document.addEventListener('mousedown', function (e) {
+        // Мышь, которую браузер досочинил из касания, — не мышь
+        if (e.button !== 0 || Date.now() - lastTouchAt < 1000) return;
+        var item = holdItem(e.target);
+        if (item) holdStart(item, e.clientX, e.clientY, false);
+    }, true);
+    document.addEventListener('mousemove', function (e) { holdMove(e.clientX, e.clientY); }, true);
+    document.addEventListener('mouseup', function (e) { if (e.button === 0) holdEnd(); }, true);
+
+    // Клик после сработавшего удержания — в перехвате, раньше выдачи
+    document.addEventListener('click', function (e) {
+        if (Date.now() >= suppressClickUntil) return;
+        suppressClickUntil = 0;
+        e.preventDefault();
+        e.stopPropagation();
+    }, true);
+
     window.EpisodePicker = {
         isOpen: function () { return state.open; },
+        /** Идёт удержание пальцем (contextmenu от него окно не открывает) */
+        isTouchHolding: function () { return !!(hold && hold.touch) || Date.now() - lastTouchAt < 1000; },
         openFor: openFor,
         open: open,
         close: close,

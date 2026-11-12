@@ -15236,3 +15236,27 @@ html.apple-tv-ui #loading-player-overlay {
     width: 100%;
   }
 }
+
+/* Удержание пальцем раздачи в выдаче открывает окно серий (episode-picker.js):
+   системное меню ссылки и выделение текста на iOS его бы перебили */
+#search-results .search-result-item {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ==================== КНОПКИ ЗАКРЫТИЯ УБРАНЫ ====================
+   Поиск, панель фильтров и выезжающие панели плеера закрывает «Назад» (пульт,
+   жест, правая кнопка мыши). Крестики лишние: скрыты, и фокус на них не
+   попадает — списки фокуса берут только видимое (VISIBLE / offsetParent в
+   control.js).
+   Из разметки их не удаляем: «Назад» в поиске закрывает его кликом по
+   #close-search (onBack), к кнопкам панелей привязано их закрытие (player.js),
+   а index.html из пакета сервера бывает старым. */
+#close-search,
+.close-search-btn,
+#filter-close-btn,
+.filter-close-btn,
+.close-panel-btn {
+  display: none !important;
+}

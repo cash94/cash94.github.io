@@ -6174,6 +6174,7 @@ function renderSearchResults() {
     if (!item || !window.EpisodePicker) return;
     event.preventDefault();
     event.stopPropagation();
+    if (EpisodePicker.isTouchHolding() || EpisodePicker.isOpen()) return;
     if (typeof focusEl === 'function') focusEl(item);
     EpisodePicker.openFor(item);
   };

@@ -2491,6 +2491,9 @@ function updateFocusableElements() {
             for (var i = 0; i < ris.length; i++) res.push(ris[i]);
         }
 
+        // Кнопка закрытия поиска скрыта (styles.css) — в навигацию не берём.
+        // Сама она на месте: «Назад» закрывает поиск её кликом (onBack)
+        if (cs && !VISIBLE(cs)) cs = null;
         var fl = [vb, q, ft, sb, cs];
 
         // ★ НОВАЯ ПАНЕЛЬ ФИЛЬТРОВ — добавляем её элементы
