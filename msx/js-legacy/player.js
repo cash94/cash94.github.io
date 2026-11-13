@@ -2530,6 +2530,7 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       if (playlist) playerData.playlist = playlist;
     }
     playerData.auto_next = !!AppState.autoSwitchEpisodes;
+    playerData.auto_skip = !!AppState.autoSkipIntro;
     var authHeaders = getAuthHeaders();
     if (authHeaders && authHeaders.Authorization) playerData.headers = {
       Authorization: authHeaders.Authorization

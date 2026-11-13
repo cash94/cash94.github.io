@@ -2919,6 +2919,9 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       if (playlist) playerData.playlist = playlist;
     }
     playerData.auto_next = !!AppState.autoSwitchEpisodes;
+    // «Автопропуск заставки и титров»: встроенный плеер приложения (с 1.1.31)
+    // отсчитывает на кнопке пропуска и пропускает сам, как веб-плеер
+    playerData.auto_skip = !!AppState.autoSkipIntro;
     // Basic-авторизация TorrServer. Встроенный плеер вешает эти заголовки и на
     // видеопоток, и на опрос /cache (строка статистики под заголовком): без них
     // при включённой авторизации TorrServer отвечает 401 на то и на другое
