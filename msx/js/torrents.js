@@ -7258,6 +7258,11 @@ async function playFromHash(hash, magnet, searchResult = null) {
                 if (AppState.preloadBeforePlay && typeof runPlaybackPreload === 'function' &&
                     !(await runPlaybackPreload(hash, fileId, addedTorrent.title))) return false;
                 var playURL = AppState.currentTorrserverUrl + "/stream?link=" + hash + "&index=" + fileId + "&play=play";
+                // Признак «вернуться на главную» (player.js) ставит каждый запуск
+                // через playInExternalPlayer, а этот идёт мимо него: оставшийся от
+                // прошлого «Продолжить» уводил по выходу на главную и останавливал
+                // ту, прошлую раздачу, а эта качалась дальше
+                androidReturnHome = null;
                 // Через openAndroidPlayer, а не напрямую: там дедуп повторного
                 // запуска и запись currentTimecodeData, от которой зависит
                 // сохранение таймкода при выходе из плеера.

@@ -5848,6 +5848,7 @@ function _playFromHash() {
           getEl('playback-overlay').classList.remove('active');
           if (AppState.preloadBeforePlay && typeof runPlaybackPreload === 'function' && !(yield runPlaybackPreload(hash, fileId, addedTorrent.title))) return false;
           var playURL = AppState.currentTorrserverUrl + "/stream?link=" + hash + "&index=" + fileId + "&play=play";
+          androidReturnHome = null;
           window.openAndroidPlayer(playURL, {
             url: playURL,
             title: addedTorrent.title || 'Видео',
