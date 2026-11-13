@@ -119,7 +119,7 @@ var AppState = {
   // у страницы из пакета Tizen location.protocol — «file:»
   protocol: window.TS_SERVER ? window.TS_SERVER.split('//')[0] : window.location.protocol,
   currentTorrserverUrl: '',
-  currentVersion: 'TorrStream.1.0.60',
+  currentVersion: 'TorrStream.1.0.61',
   authEnabled: false,
   serverOnline: false,
   // Ответ /api/info, если торрент-сервер — MonoServer (checkServer в torrents.js),
