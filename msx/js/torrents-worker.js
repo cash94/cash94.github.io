@@ -617,16 +617,37 @@ function getTorrentFiles(torrent) {
 }
 
 // ==================== getVideoFilesFromTorrent ====================
+// Те же правила, что pickPlayableVideoFiles в torrents.js (воркер их не видит):
+// видео — и .m2ts/.ts/.wmv…, из каждой папки BDMV/STREAM — самый большой файл
+var PLAYABLE_VIDEO_EXTS = ['.mkv', '.mp4', '.avi', '.mov', '.webm', '.m4v', '.m2ts', '.mts', '.ts',
+    '.wmv', '.flv', '.mpg', '.mpeg'];
+
+function isPlayableVideoPath(path) {
+    var name = String(path || '').toLowerCase();
+    if (/(^|\/)bdmv\/backup\//.test(name)) return false;
+    for (var i = 0; i < PLAYABLE_VIDEO_EXTS.length; i++) {
+        var ext = PLAYABLE_VIDEO_EXTS[i];
+        if (name.length > ext.length && name.slice(-ext.length) === ext) return true;
+    }
+    return false;
+}
+
 function getVideoFilesFromTorrent(torrent) {
-    var files = getTorrentFiles(torrent);
-    var exts = ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'];
-    return files.filter(function (f) {
-        var name = (f.path || '').toLowerCase();
-        for (var i = 0; i < exts.length; i++) {
-            if (name.indexOf(exts[i]) !== -1) return true;
-        }
-        return false;
+    var out = [];
+    var bdmvBest = {};
+    var bdmvOrder = [];
+    getTorrentFiles(torrent).forEach(function (f) {
+        var path = String((f && (f.path || f.name)) || '');
+        if (!isPlayableVideoPath(path)) return;
+        var at = path.toLowerCase().search(/(^|\/)bdmv\/stream\//);
+        if (at === -1) { out.push(f); return; }
+        var root = path.slice(0, at).toLowerCase();
+        var best = bdmvBest[root];
+        if (!best) bdmvOrder.push(root);
+        if (!best || (f.length || 0) > (best.length || 0)) bdmvBest[root] = f;
     });
+    bdmvOrder.forEach(function (root) { out.push(bdmvBest[root]); });
+    return out;
 }
 
 // ==================== inferSearchResultIsSeries ====================

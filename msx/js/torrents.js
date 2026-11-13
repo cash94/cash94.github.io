@@ -436,12 +436,62 @@ function getTorrentFiles(torrent) {
     return [];
 }
 
+// ==================== Какие файлы раздачи — видео ====================
+// Раньше видео считались только .mp4/.mkv/.avi/.mov/.webm/.m4v, а если таких в
+// раздаче не было, запускался «файл № 1». У раздач-папок Blu-ray это служебный
+// BDMV/BACKUP/CLIPINF/00000.clpi, у подделок — .exe, и плеер получал не видео
+// (отчёты диагностики Android 1.1.30). Теперь видео — и .m2ts/.ts/.wmv…, а из
+// каждой папки BDMV/STREAM берётся самый большой файл — сам фильм или серия;
+// меню, заставки и BACKUP отбрасываются.
+var PLAYABLE_VIDEO_EXTS = ['.mkv', '.mp4', '.avi', '.mov', '.webm', '.m4v', '.m2ts', '.mts', '.ts',
+    '.wmv', '.flv', '.mpg', '.mpeg'];
+
+function isPlayableVideoPath(path) {
+    var name = String(path || '').toLowerCase();
+    if (/(^|\/)bdmv\/backup\//.test(name)) return false;
+    for (var i = 0; i < PLAYABLE_VIDEO_EXTS.length; i++) {
+        var ext = PLAYABLE_VIDEO_EXTS[i];
+        if (name.length > ext.length && name.slice(-ext.length) === ext) return true;
+    }
+    return false;
+}
+
+/** Видео раздачи: без служебных файлов Blu-ray, по одному .m2ts на папку BDMV. */
+function pickPlayableVideoFiles(files) {
+    var out = [];
+    var bdmvBest = {};
+    var bdmvOrder = [];
+    (files || []).forEach(function (f) {
+        var path = String((f && (f.path || f.name)) || '');
+        if (!isPlayableVideoPath(path)) return;
+        var at = path.toLowerCase().search(/(^|\/)bdmv\/stream\//);
+        if (at === -1) { out.push(f); return; }
+        var root = path.slice(0, at).toLowerCase();
+        var best = bdmvBest[root];
+        if (!best) bdmvOrder.push(root);
+        if (!best || (f.length || 0) > (best.length || 0)) bdmvBest[root] = f;
+    });
+    bdmvOrder.forEach(function (root) { out.push(bdmvBest[root]); });
+    return out;
+}
+
+/** Почему в раздаче нечего играть — текст для человека. */
+function describeUnplayableTorrent(files) {
+    var names = (files || []).map(function (f) { return String((f && (f.path || f.name)) || '').toLowerCase(); });
+    var has = function (re) { return names.some(function (n) { return re.test(n); }); };
+    if (has(/\.(exe|msi|scr|bat|cmd|com|lnk|apk)$/)) {
+        return 'В раздаче программа, а не видео — похоже на подделку. Выберите другую раздачу';
+    }
+    if (has(/\.(iso|img|bin|nrg|mdf)$/)) return 'Образ диска (ISO) воспроизвести нельзя — выберите другую раздачу';
+    return 'В раздаче нет видео, которое можно воспроизвести';
+}
+
+window.isPlayableVideoPath = isPlayableVideoPath;
+window.pickPlayableVideoFiles = pickPlayableVideoFiles;
+window.describeUnplayableTorrent = describeUnplayableTorrent;
+
 function getVideoFilesFromTorrent(torrent) {
-    var files = getTorrentFiles(torrent);
-    return sortEpisodeFiles(files.filter(f => {
-        var name = (f.path || '').toLowerCase();
-        return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(ext => name.includes(ext));
-    }));
+    return sortEpisodeFiles(pickPlayableVideoFiles(getTorrentFiles(torrent)));
 }
 
 function inferSearchResultIsSeries(searchResult, torrent) {
@@ -4281,10 +4331,7 @@ async function showDetail(torrent) {
             showFilesListMessage('📁 Нет файлов', 'files-list-msg-compact');
         } else {
             // === РЕНДЕР ФАЙЛОВ СРАЗУ (не ждём прогресс) ===
-            var videoFiles = sortEpisodeFiles(files.filter(f => {
-                var n = f.path.split('/').pop().toLowerCase();
-                return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(ext => n.includes(ext));
-            }));
+            var videoFiles = sortEpisodeFiles(pickPlayableVideoFiles(files));
             var addedItems = renderFileItems(videoFiles, torrent.hash, torrent.title);
             // Карточка этой раздачи собрана — повторный вход её переиспользует
             // (isTorrentDetailReusable)
@@ -5285,16 +5332,7 @@ function applyProgressToItem(item, timecode, duration) {
 }
 
 function getVideoFilesForProgress(files) {
-    var videoFiles = [];
-    for (var i = 0; i < (files || []).length; i++) {
-        var file = files[i];
-        var name = String(file.path || file.name || '').toLowerCase();
-        if (['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(function (ext) {
-            return name.indexOf(ext) !== -1;
-        })) {
-            videoFiles.push(file);
-        }
-    }
+    var videoFiles = pickPlayableVideoFiles(files);
     // Номер — в списке серий (как в плеере и на плитках), по нему «Продолжить»
     // берёт следующую серию. Раньше это был номер среди всех файлов раздачи:
     // .srt/.nfo перед видео сдвигали его, а порядок был как в .torrent

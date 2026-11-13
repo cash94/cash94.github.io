@@ -1354,13 +1354,7 @@ function _seekStream() {
 }
 function extractVideoFiles(files) {
   if (files === undefined) files = [];
-  var videoFiles = [];
-  for (var i = 0; i < files.length; i++) {
-    var name = (files[i].path || '').toLowerCase();
-    if (name.indexOf('.mp4') !== -1 || name.indexOf('.mkv') !== -1 || name.indexOf('.avi') !== -1 || name.indexOf('.mov') !== -1 || name.indexOf('.webm') !== -1 || name.indexOf('.m4v') !== -1) {
-      videoFiles.push(files[i]);
-    }
-  }
+  var videoFiles = window.pickPlayableVideoFiles(files);
   return typeof window.sortEpisodeFiles === 'function' ? window.sortEpisodeFiles(videoFiles) : videoFiles;
 }
 function resolveTorrentWithFiles(_x9, _x0, _x1) {
@@ -2472,6 +2466,21 @@ var lastExternalOpen = {
 var EXTERNAL_OPEN_DEDUP_MS = 2500;
 function openAndroidPlayer(playURL, playerData) {
   if (!window.AndroidJS || !playURL) return false;
+  var playable = resolvePlayableStream(playURL);
+  if (playable.error) {
+    if (typeof showErrorBanner === 'function') showErrorBanner(playable.error);else if (typeof window.showToast === 'function') window.showToast(playable.error);
+    return false;
+  }
+  if (playable.fileId && playable.url !== playURL) {
+    var oldUrl = playURL;
+    playURL = playable.url;
+    if (playerData) {
+      if (playerData.url === oldUrl) playerData.url = playURL;
+      if (playerData.timeline && playerData.timeline.hash) {
+        playerData.timeline.hash = String(playerData.timeline.hash).replace(/_\d+$/, '_' + playable.fileId);
+      }
+    }
+  }
   var urlData = parseHashFromUrl(playURL);
   if (urlData) {
     currentTimecodeData.hash = urlData.torrentHash;
@@ -3844,11 +3853,54 @@ function parseStreamRef(url) {
     fileId: indexParam
   } : null;
 }
+function resolvePlayableStream(url) {
+  var ref = parseStreamRef(url);
+  if (!ref || typeof window.pickPlayableVideoFiles !== 'function') return {
+    url: url
+  };
+  var hashLower = String(ref.hash).toLowerCase();
+  var torrent = null;
+  var list = AppState.torrents || [];
+  for (var i = 0; i < list.length && !torrent; i++) {
+    if (list[i].hash && list[i].hash.toLowerCase() === hashLower) torrent = list[i];
+  }
+  if (!torrent && AppState.currentDetailItem && String(AppState.currentDetailItem.hash || '').toLowerCase() === hashLower) {
+    torrent = AppState.currentDetailItem;
+  }
+  var files = torrent && typeof getTorrentFiles === 'function' ? getTorrentFiles(torrent) : [];
+  if (!files.length) return {
+    url: url
+  };
+  var file = null;
+  for (var k = 0; k < files.length && !file; k++) {
+    if (String(files[k].id) === String(ref.fileId)) file = files[k];
+  }
+  if (!file || window.isPlayableVideoPath(file.path || file.name)) return {
+    url: url
+  };
+  var videos = sortEpisodeFiles(window.pickPlayableVideoFiles(files));
+  if (!videos.length) return {
+    error: window.describeUnplayableTorrent(files)
+  };
+  var id = String(videos[0].id);
+  console.log('▶️ Файл ' + ref.fileId + ' не видео (' + (file.path || '') + ') — играем ' + id + ' (' + (videos[0].path || '') + ')');
+  return {
+    url: url.replace(/(\/play\/[a-fA-F0-9]{40}\/)\d+/, '$1' + id).replace(/([?&]index=)\d+/, '$1' + id),
+    fileId: id
+  };
+}
+window.resolvePlayableStream = resolvePlayableStream;
 function startHLSPlayback(_x52, _x53, _x54, _x55, _x56) {
   return _startHLSPlayback.apply(this, arguments);
 }
 function _startHLSPlayback() {
   _startHLSPlayback = _asyncToGenerator(function* (originalUrl, initialSeek, fromSearch, episodeIndex, audioTrack) {
+    var playable = resolvePlayableStream(originalUrl);
+    if (playable.error) {
+      if (typeof showErrorBanner === 'function') showErrorBanner(playable.error);else if (typeof window.showToast === 'function') window.showToast(playable.error);
+      return false;
+    }
+    originalUrl = playable.url;
     if (initialSeek === undefined) initialSeek = null;
     if (fromSearch === undefined) fromSearch = false;
     if (episodeIndex === undefined) episodeIndex = null;

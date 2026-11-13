@@ -383,12 +383,58 @@ function getTorrentFiles(torrent) {
   }
   return [];
 }
+var PLAYABLE_VIDEO_EXTS = ['.mkv', '.mp4', '.avi', '.mov', '.webm', '.m4v', '.m2ts', '.mts', '.ts', '.wmv', '.flv', '.mpg', '.mpeg'];
+function isPlayableVideoPath(path) {
+  var name = String(path || '').toLowerCase();
+  if (/(^|\/)bdmv\/backup\//.test(name)) return false;
+  for (var i = 0; i < PLAYABLE_VIDEO_EXTS.length; i++) {
+    var ext = PLAYABLE_VIDEO_EXTS[i];
+    if (name.length > ext.length && name.slice(-ext.length) === ext) return true;
+  }
+  return false;
+}
+function pickPlayableVideoFiles(files) {
+  var out = [];
+  var bdmvBest = {};
+  var bdmvOrder = [];
+  (files || []).forEach(function (f) {
+    var path = String(f && (f.path || f.name) || '');
+    if (!isPlayableVideoPath(path)) return;
+    var at = path.toLowerCase().search(/(^|\/)bdmv\/stream\//);
+    if (at === -1) {
+      out.push(f);
+      return;
+    }
+    var root = path.slice(0, at).toLowerCase();
+    var best = bdmvBest[root];
+    if (!best) bdmvOrder.push(root);
+    if (!best || (f.length || 0) > (best.length || 0)) bdmvBest[root] = f;
+  });
+  bdmvOrder.forEach(function (root) {
+    out.push(bdmvBest[root]);
+  });
+  return out;
+}
+function describeUnplayableTorrent(files) {
+  var names = (files || []).map(function (f) {
+    return String(f && (f.path || f.name) || '').toLowerCase();
+  });
+  var has = function (re) {
+    return names.some(function (n) {
+      return re.test(n);
+    });
+  };
+  if (has(/\.(exe|msi|scr|bat|cmd|com|lnk|apk)$/)) {
+    return 'В раздаче программа, а не видео — похоже на подделку. Выберите другую раздачу';
+  }
+  if (has(/\.(iso|img|bin|nrg|mdf)$/)) return 'Образ диска (ISO) воспроизвести нельзя — выберите другую раздачу';
+  return 'В раздаче нет видео, которое можно воспроизвести';
+}
+window.isPlayableVideoPath = isPlayableVideoPath;
+window.pickPlayableVideoFiles = pickPlayableVideoFiles;
+window.describeUnplayableTorrent = describeUnplayableTorrent;
 function getVideoFilesFromTorrent(torrent) {
-  var files = getTorrentFiles(torrent);
-  return sortEpisodeFiles(files.filter(f => {
-    var name = (f.path || '').toLowerCase();
-    return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(ext => name.includes(ext));
-  }));
+  return sortEpisodeFiles(pickPlayableVideoFiles(getTorrentFiles(torrent)));
 }
 function inferSearchResultIsSeries(searchResult, torrent) {
   if (searchResult && searchResult.types && Array.isArray(searchResult.types) && searchResult.types.includes('tv')) return true;
@@ -3526,10 +3572,7 @@ function _showDetail() {
       if (files.length === 0) {
         showFilesListMessage('📁 Нет файлов', 'files-list-msg-compact');
       } else {
-        var videoFiles = sortEpisodeFiles(files.filter(f => {
-          var n = f.path.split('/').pop().toLowerCase();
-          return ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(ext => n.includes(ext));
-        }));
+        var videoFiles = sortEpisodeFiles(pickPlayableVideoFiles(files));
         var addedItems = renderFileItems(videoFiles, torrent.hash, torrent.title);
         if (detailViewDiv) detailViewDiv.dataset.torrentHash = String(torrent.hash || '');
         if (filesList) {
@@ -4235,16 +4278,7 @@ function applyProgressToItem(item, timecode, duration) {
   item.dataset.progressDuration = duration;
 }
 function getVideoFilesForProgress(files) {
-  var videoFiles = [];
-  for (var i = 0; i < (files || []).length; i++) {
-    var file = files[i];
-    var name = String(file.path || file.name || '').toLowerCase();
-    if (['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v'].some(function (ext) {
-      return name.indexOf(ext) !== -1;
-    })) {
-      videoFiles.push(file);
-    }
-  }
+  var videoFiles = pickPlayableVideoFiles(files);
   videoFiles = sortEpisodeFiles(videoFiles);
   for (var k = 0; k < videoFiles.length; k++) videoFiles[k]._progressIndex = k;
   return videoFiles;
