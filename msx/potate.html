@@ -880,6 +880,7 @@
         <button class="tab-btn" onclick="switchTab('modules', event)">🧩 Модули</button>
         <button class="tab-btn" onclick="switchTab('traffic', event)">📊 Трафик</button>
         <button class="tab-btn" onclick="switchTab('monitoring', event)">📊 Мониторинг</button>
+        <button class="tab-btn" onclick="switchTab('diagnostics', event)">🩺 Диагностика</button>
         <button class="tab-btn" onclick="switchTab('settings', event)">🛠️ Настройки</button>
         <button class="tab-btn" id="systemTabBtn" onclick="switchTab('system', event)">⚙️ Система<span id="updateBadge" class="badge badge-success" style="display:none; margin-left:6px;">новая версия</span></button>
         <button class="tab-btn" onclick="switchTab('access', event)">🔐 Доступ</button>
@@ -1007,6 +1008,46 @@
             </div>
         </div>
 
+        <!-- Диагностика встроенного плеера Android (/api/admin/diagnostics, сервер 1.0.60) -->
+        <div class="tab-content" id="tab-diagnostics">
+            <div class="section">
+                <div class="section-header">
+                    <h2>🩺 Сбои встроенного плеера Android</h2>
+                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                        <label style="color:#8899a6; font-size:13px;">За:</label>
+                        <select id="diagDays" onchange="loadDiagnostics()">
+                            <option value="7">7 дней</option>
+                            <option value="30" selected>30 дней</option>
+                            <option value="120">120 дней</option>
+                        </select>
+                        <button class="btn" onclick="loadDiagnostics()">🔄</button>
+                        <button class="btn" onclick="exportDiagnostics()">⬇️ Выгрузить JSON</button>
+                        <button class="btn btn-danger" onclick="clearDiagnostics()">🗑️ Очистить всё</button>
+                    </div>
+                </div>
+                <p style="color:#5a6c7d; margin:0 0 12px;">Плеер присылает отчёт, когда ExoPlayer не справился с файлом: переключился на VLC, на программный декодер, сменил вывод звука или не смог воспроизвести совсем. Одинаковые сбои с разных устройств — одна строка. Нажмите на строку — отчёты по ней; «Исправлено» удаляет группу.</p>
+                <div class="traffic-summary-card">
+                    <div class="traffic-summary-grid">
+                        <div class="traffic-summary-item"><div class="label">Отчётов за период</div><div class="value" id="diagTotalPeriod">—</div></div>
+                        <div class="traffic-summary-item"><div class="label">Видов сбоев</div><div class="value" id="diagSignatures">—</div></div>
+                        <div class="traffic-summary-item"><div class="label">Устройств</div><div class="value" id="diagDevices">—</div></div>
+                        <div class="traffic-summary-item"><div class="label">Всего в базе</div><div class="value" id="diagTotal">—</div></div>
+                    </div>
+                </div>
+                <div id="diagSummary" class="table-wrap" style="margin-top:16px;"><div class="loading">Загрузка...</div></div>
+            </div>
+            <div class="section">
+                <div class="section-header">
+                    <h2 id="diagReportsTitle">📄 Последние отчёты</h2>
+                    <button class="btn" id="diagShowAllBtn" style="display:none;" onclick="loadDiagReports()">Все отчёты</button>
+                </div>
+                <div id="diagReports" class="table-wrap"><div class="loading">Загрузка...</div></div>
+            </div>
+            <div class="section">
+                <div class="section-header"><h2>📺 Устройства</h2></div>
+                <div id="diagDevicesList" class="table-wrap"><div class="loading">Загрузка...</div></div>
+            </div>
+        </div>
 
         <!-- Доступ: вход по паролю, пользователи, очистка -->
         <div class="tab-content" id="tab-access">
@@ -1114,6 +1155,16 @@
         </div>
     </div>
 
+    <div class="modal" id="diagReportModal">
+        <div class="modal-content" style="max-width:960px;">
+            <div class="modal-header">
+                <h3 id="diagReportTitle">🩺 Отчёт</h3>
+                <button class="close-btn" onclick="closeDiagReport()">×</button>
+            </div>
+            <div id="diagReportContent"><div class="loading">Загрузка...</div></div>
+        </div>
+    </div>
+
     <!-- Toast уведомления -->
     <div class="toast" id="toast"></div>
 
@@ -1193,6 +1244,7 @@
             else if (id === 'modules') loadModules();
             else if (id === 'traffic') loadTrafficMonths();
             else if (id === 'monitoring') loadMonitoring();
+            else if (id === 'diagnostics') loadDiagnostics();
             else if (id === 'system') loadSystemInfo();
             else if (id === 'settings') { loadHlsTracks(); loadHlsCache(); }
             else if (id === 'access') loadAccess();
@@ -1506,6 +1558,271 @@
                 document.body.removeChild(ta);
                 showToast('📋 Скопировано');
             });
+        }
+
+        // ====== ДИАГНОСТИКА ПЛЕЕРА ANDROID ======
+        // Отчёты шлёт приложение Android (PlaybackDiagnostics.kt), хранит
+        // сервер (services/diagnostics.js). signature — «вид|код ошибки|кодек
+        // или container:…»: одинаковые сбои с разных устройств — одна строка
+        const DIAG_KINDS = {
+            vlc_fallback: '🔁 Переход на VLC',
+            vlc_unsupported_track: '🔁 VLC: дорожку нечем декодировать',
+            software_video_fallback: '🖥️ Программный декодер видео',
+            pcm_audio_fallback: '🔊 Звук: битстрим → PCM',
+            safe_audio_fallback: '🔊 Звук: безопасный режим',
+            playback_failed: '❌ Не воспроизвелось'
+        };
+        let diagSignatures = [];
+        let diagSelected = null;
+
+        function diagKind(kind) { return DIAG_KINDS[kind] || escapeHtml(kind || '—'); }
+        function diagSplit(sig) {
+            const p = String(sig || '').split('|');
+            return { kind: p[0] || '', code: (p[1] || '').replace(/^ERROR_CODE_/, ''), what: p.slice(2).join('|') };
+        }
+        function diagFail(el, e) {
+            const old = /404/.test(e.message) ? ' Нужен сервер 1.0.60 или новее.' : '';
+            el.innerHTML = '<div class="empty-state">❌ ' + escapeHtml(e.message) + old + '</div>';
+        }
+
+        async function loadDiagnostics() {
+            const el = document.getElementById('diagSummary');
+            const devEl = document.getElementById('diagDevicesList');
+            el.innerHTML = '<div class="loading">Загрузка...</div>';
+            devEl.innerHTML = '<div class="loading">Загрузка...</div>';
+            const days = document.getElementById('diagDays').value;
+            try {
+                const data = await apiFetch('/api/admin/diagnostics/summary?days=' + days);
+                diagSignatures = data.signatures || [];
+                const devices = data.devices || [];
+                document.getElementById('diagTotal').textContent = data.total || 0;
+                document.getElementById('diagTotalPeriod').textContent = diagSignatures.reduce((n, s) => n + s.reports, 0);
+                document.getElementById('diagSignatures').textContent = diagSignatures.length;
+                document.getElementById('diagDevices').textContent = devices.length;
+
+                if (!diagSignatures.length) {
+                    el.innerHTML = '<div class="empty-state"><div class="icon">✅</div>Отчётов за период нет</div>';
+                } else {
+                    let html = `<table><thead><tr>
+      <th>Что произошло</th><th>Ошибка</th><th>Кодек / контейнер</th><th>Отчётов</th><th>Устройств</th><th>Последний</th><th></th>
+    </tr></thead><tbody>`;
+                    diagSignatures.forEach((s, i) => {
+                        const p = diagSplit(s.signature);
+                        html += `<tr onclick="loadDiagReports(${i})" style="cursor:pointer;">
+        <td>${diagKind(p.kind)}</td>
+        <td class="mono">${escapeHtml(p.code || '—')}</td>
+        <td class="mono">${escapeHtml(p.what || '—')}</td>
+        <td><b>${s.reports}</b></td>
+        <td>${s.devices}</td>
+        <td title="${formatDate(s.last)}">${timeAgo(s.last)}</td>
+        <td><button class="btn" style="white-space:nowrap;" onclick="event.stopPropagation(); resolveDiagSignature(${i})" title="Удалить отчёты этой группы">✓ Исправлено</button></td>
+      </tr>`;
+                    });
+                    el.innerHTML = html + '</tbody></table>';
+                }
+
+                if (!devices.length) {
+                    devEl.innerHTML = '<div class="empty-state">Нет устройств</div>';
+                } else {
+                    let html = `<table><thead><tr><th>Устройство</th><th>Отчётов</th><th>Видов сбоев</th><th>Приложение</th><th>Последний</th></tr></thead><tbody>`;
+                    devices.forEach((d) => {
+                        html += `<tr>
+        <td>${escapeHtml(d.device || '—')}</td><td>${d.reports}</td><td>${d.signatures}</td>
+        <td class="mono">${escapeHtml(d.appVersion || '—')}</td><td title="${formatDate(d.last)}">${timeAgo(d.last)}</td>
+      </tr>`;
+                    });
+                    devEl.innerHTML = html + '</tbody></table>';
+                }
+                loadDiagReports(diagSelected !== null && diagSelected < diagSignatures.length ? diagSelected : undefined);
+            } catch (e) {
+                diagFail(el, e);
+                devEl.innerHTML = '';
+                document.getElementById('diagReports').innerHTML = '';
+            }
+        }
+
+        /** Отчёты группы сбоев (индекс в сводке) или последние все. */
+        async function loadDiagReports(index) {
+            const el = document.getElementById('diagReports');
+            const sig = index !== undefined && diagSignatures[index] ? diagSignatures[index].signature : null;
+            diagSelected = sig ? index : null;
+            const title = document.getElementById('diagReportsTitle');
+            if (sig) {
+                const p = diagSplit(sig);
+                title.innerHTML = '📄 Отчёты: ' + diagKind(p.kind) + ' <span class="mono" style="font-size:13px; color:#8899a6;">' + escapeHtml([p.code, p.what].filter(Boolean).join(' · ')) + '</span>';
+            } else {
+                title.textContent = '📄 Последние отчёты';
+            }
+            document.getElementById('diagShowAllBtn').style.display = sig ? '' : 'none';
+            el.innerHTML = '<div class="loading">Загрузка...</div>';
+            try {
+                const q = sig ? '&signature=' + encodeURIComponent(sig) : '';
+                const data = await apiFetch('/api/admin/diagnostics?limit=100' + q);
+                const items = data.items || [];
+                if (!items.length) {
+                    el.innerHTML = '<div class="empty-state">Отчётов нет</div>';
+                    return;
+                }
+                let html = `<table><thead><tr><th>#</th><th>Когда</th><th>Устройство</th><th>Что произошло</th><th>Файл</th><th>Причина</th><th>Версия</th></tr></thead><tbody>`;
+                items.forEach((r) => {
+                    const file = r.media ? (r.media.fileName || '') : '';
+                    const short = file.split('/').pop();
+                    html += `<tr onclick="showDiagReport(${r.id})" style="cursor:pointer;">
+        <td class="mono">${r.id}</td>
+        <td title="${formatDate(r.receivedAt)}">${timeAgo(r.receivedAt)}</td>
+        <td>${escapeHtml(r.device || '—')}</td>
+        <td>${diagKind(r.kind)}</td>
+        <td class="mono" style="max-width:260px; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(file)}">${escapeHtml(short || '—')}</td>
+        <td style="max-width:320px; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(r.reason || '')}">${escapeHtml(r.reason || '—')}</td>
+        <td class="mono">${escapeHtml(r.appVersion || '—')}</td>
+      </tr>`;
+                });
+                el.innerHTML = html + '</tbody></table>';
+            } catch (e) {
+                diagFail(el, e);
+            }
+        }
+
+        function diagRow(label, value) {
+            if (value === undefined || value === null || value === '') return '';
+            return `<div class="info-row"><div class="info-label">${label}</div><div class="info-value">${value}</div></div>`;
+        }
+
+        function diagTrackRes(t) {
+            if (t.width && t.height) return t.width + '×' + t.height + (t.fps ? ' @' + Math.round(t.fps * 100) / 100 : '');
+            if (t.channels) return t.channels + ' кан' + (t.sampleRate ? ', ' + t.sampleRate + ' Гц' : '');
+            return '';
+        }
+
+        let diagCurrentReport = null;
+
+        async function showDiagReport(id) {
+            document.getElementById('diagReportModal').classList.add('active');
+            document.getElementById('diagReportTitle').textContent = '🩺 Отчёт #' + id;
+            const content = document.getElementById('diagReportContent');
+            content.innerHTML = '<div class="loading">Загрузка...</div>';
+            try {
+                const data = await apiFetch('/api/admin/diagnostics/' + id);
+                const r = data.report || {};
+                diagCurrentReport = r;
+                const d = r.device || {}, e = r.error || {}, m = r.media || {}, pl = r.player || {}, app = r.app || {}, au = r.audio || {};
+                const esc = (v) => escapeHtml(v === undefined || v === null ? '' : String(v));
+                const causes = e.causes || [];
+                const decoder = causes.map((c) => c.decoder).filter(Boolean)[0];
+                const diag = causes.map((c) => c.diagnostic).filter(Boolean)[0];
+
+                let html = `<div class="config-block"><h4>Что произошло</h4>
+                    ${diagRow('Вид:', diagKind(data.kind))}
+                    ${diagRow('Причина:', esc(r.reason))}
+                    ${diagRow('Получен:', formatDate(data.receivedAt))}
+                    ${diagRow('Ошибка:', e.codeName ? '<span class="mono">' + esc(e.codeName) + '</span>' + (e.code ? ' (' + esc(e.code) + ')' : '') : '')}
+                    ${diagRow('Сообщение:', esc(e.message))}
+                    ${diagRow('Кодек:', e.mime ? '<span class="mono">' + esc(e.mime) + '</span>' : '')}
+                    ${diagRow('Декодер:', decoder ? '<span class="mono">' + esc(decoder) + '</span>' : '')}
+                    ${diagRow('MediaCodec:', diag ? '<span class="mono">' + esc(diag) + '</span>' : '')}
+                    ${diagRow('Шаги откатов:', (pl.steps || []).map((s) => diagKind(s.kind) + ' <span style="color:#5a6c7d;">' + Math.round((s.atMs || 0) / 1000) + ' с</span>').join(' → '))}
+                </div>`;
+
+                html += `<div class="config-block"><h4>Устройство</h4>
+                    ${diagRow('Модель:', esc([d.manufacturer, d.model].filter(Boolean).join(' ')) + (d.tv ? ' <span class="badge badge-info">ТВ</span>' : ''))}
+                    ${diagRow('SoC:', esc([d.socManufacturer, d.socModel].filter(Boolean).join(' ') || d.hardware))}
+                    ${diagRow('Android:', d.android ? esc(d.android) + ' (SDK ' + esc(d.sdk) + ')' : '')}
+                    ${diagRow('Прошивка:', d.buildId ? '<span class="mono">' + esc(d.buildId) + '</span>' : '')}
+                    ${diagRow('Экран:', d.display ? esc(d.display.mode || '') + (d.display.hdr && d.display.hdr.length ? ' · HDR: ' + esc(d.display.hdr.join(', ')) : '') : '')}
+                    ${diagRow('Память:', d.ramMb ? esc(d.ramMb) + ' МБ' : '')}
+                    ${diagRow('Звук:', 'битстрим: ' + esc((au.passthrough || []).join(', ') || 'нет') + (au.maxChannels ? ' · до ' + esc(au.maxChannels) + ' кан' : ''))}
+                    ${diagRow('Приложение:', esc(app.version) + (app.media3 ? ' · Media3 ' + esc(app.media3) : ''))}
+                    ${diagRow('Плеер:', esc([pl.current === 'vlc' ? 'libVLC' : 'ExoPlayer', 'декодер ' + (pl.decoderMode || '?'), 'звук ' + (pl.effectiveAudioMode || '?')].join(' · ')))}
+                </div>`;
+
+                html += `<div class="config-block"><h4>Файл</h4>
+                    ${diagRow('Название:', esc(m.title))}
+                    ${diagRow('Раздача:', esc(m.torrentTitle))}
+                    ${diagRow('Файл:', m.fileName ? '<span class="mono">' + esc(m.fileName) + '</span>' + (m.fileSize ? ' · ' + formatBytes(m.fileSize) : '') : '')}
+                    ${diagRow('Hash:', m.hash ? '<span class="mono">' + esc(m.hash) + '</span> <button class="btn-copy" onclick="copyToClipboard(\'' + esc(m.hash) + '\')">📋</button>' + (m.fileIndex ? ' · файл ' + esc(m.fileIndex) : '') : '')}
+                    ${diagRow('Позиция:', m.positionMs !== undefined ? Math.round(m.positionMs / 1000) + ' с' + (m.durationMs ? ' из ' + Math.round(m.durationMs / 1000) + ' с' : '') : '')}`;
+                const tracks = m.tracks || [];
+                if (tracks.length) {
+                    html += `<table style="margin-top:10px;"><thead><tr><th>Тип</th><th>Кодек</th><th>codecs</th><th>Параметры</th><th>Язык</th><th>Поддержка</th></tr></thead><tbody>`;
+                    tracks.forEach((t) => {
+                        const ok = t.support === 'YES';
+                        html += `<tr><td>${esc(t.type)}${t.selected ? ' ✓' : ''}</td><td class="mono">${esc(t.mime)}</td><td class="mono">${esc(t.codecs)}</td>
+                            <td>${esc(diagTrackRes(t))}</td><td>${esc(t.lang)}</td>
+                            <td><span class="badge ${ok ? 'badge-success' : 'badge-danger'}">${esc(t.support)}</span></td></tr>`;
+                    });
+                    html += '</tbody></table>';
+                }
+                html += '</div>';
+
+                const codecs = r.codecs || [];
+                html += `<div class="config-block"><h4>Отчёт целиком</h4>
+                    <div style="margin-bottom:8px; color:#8899a6;">Декодеров устройства: ${codecs.length}${r.exoDecoders ? ' · для сломавшегося кодека: ' + esc(r.exoDecoders.map((x) => x.name).join(', ') || 'нет') : ''}</div>
+                    <button class="btn" onclick="copyDiagReport()">📋 Скопировать JSON</button>
+                    <details style="margin-top:10px;"><summary style="cursor:pointer; color:#1da1f2;">Показать JSON</summary>
+                    <pre class="mono" style="white-space:pre-wrap; word-break:break-all; max-height:420px; overflow:auto; background:#0f1419; padding:12px; border-radius:8px; font-size:12px;">${esc(JSON.stringify(r, null, 2))}</pre></details>
+                </div>`;
+                content.innerHTML = html;
+            } catch (e) {
+                diagFail(content, e);
+            }
+        }
+
+        function copyDiagReport() {
+            if (!diagCurrentReport) return;
+            const text = JSON.stringify(diagCurrentReport, null, 2);
+            navigator.clipboard.writeText(text).then(() => showToast('📋 Отчёт скопирован'))
+                .catch(() => showToast('Не удалось скопировать', true));
+        }
+
+        function closeDiagReport() {
+            document.getElementById('diagReportModal').classList.remove('active');
+        }
+        document.getElementById('diagReportModal').addEventListener('click', (e) => {
+            if (e.target.id === 'diagReportModal') closeDiagReport();
+        });
+
+        async function resolveDiagSignature(index) {
+            const s = diagSignatures[index];
+            if (!s) return;
+            const p = diagSplit(s.signature);
+            if (!confirm('Удалить ' + s.reports + ' отч. группы «' + (DIAG_KINDS[p.kind] || p.kind) + ' · ' + [p.code, p.what].filter(Boolean).join(' · ') + '»? Новые отчёты с этим сбоем снова появятся.')) return;
+            try {
+                const r = await apiFetch('/api/admin/diagnostics?signature=' + encodeURIComponent(s.signature), { method: 'DELETE' });
+                showToast('Удалено отчётов: ' + r.deleted);
+                diagSelected = null;
+                loadDiagnostics();
+            } catch (e) {
+                showToast('❌ ' + e.message, true);
+            }
+        }
+
+        async function clearDiagnostics() {
+            if (!confirm('Удалить все отчёты диагностики? Это нельзя отменить.')) return;
+            try {
+                const r = await apiFetch('/api/admin/diagnostics', { method: 'DELETE' });
+                showToast('Удалено отчётов: ' + r.deleted);
+                diagSelected = null;
+                loadDiagnostics();
+            } catch (e) {
+                showToast('❌ ' + e.message, true);
+            }
+        }
+
+        async function exportDiagnostics() {
+            const days = document.getElementById('diagDays').value;
+            try {
+                const data = await apiFetch('/api/admin/diagnostics/export?days=' + days);
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'torrstream-diagnostics-' + new Date().toISOString().slice(0, 10) + '.json';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+                showToast('⬇️ Выгружено отчётов: ' + data.length);
+            } catch (e) {
+                showToast('❌ ' + e.message, true);
+            }
         }
 
         // ====== ПОТОКИ ======
