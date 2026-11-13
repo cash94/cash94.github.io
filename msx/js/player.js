@@ -1278,6 +1278,7 @@ async function loadTimecodeFromServer(hash, fileId) {
     // фильмом и для нативных плееров (Android, Apple), которые шлют только hash
     await ensureCollectionMap(hash, 1500);
     noteCollectionPlayback(hash, fileId);
+    await ensureTorrentLoaded(hash, fileId, 2500);
     var mediaKey = getTimecodeMediaKey(hash, fileId);
     var response = await fetchWithTimeout(SERVER_URL + '/api/timecode/get?hash=' + hash + '&fileId=' + fileId + '&clientId=' + encodeURIComponent(savedClientId) +
       (mediaKey ? '&mediaKey=' + encodeURIComponent(mediaKey) : ''));
@@ -1732,6 +1733,40 @@ function torrentVideoFiles(torrent) {
   return extractVideoFiles(files);
 }
 
+/**
+ * Раздача с файлами — в загруженный список, если её там ещё нет.
+ *
+ * Запасной путь для ключа серии (getTimecodeMediaKey): раздачу запускают сразу
+ * после добавления, и её файлов в загруженном списке ещё нет, а номер серии
+ * берётся из имени файла. Без ключа сервер не связывал файл с сериалом, и
+ * после встроенного плеера Android не было позиции ни в карточке, ни в
+ * «Продолжить просмотр». Фильму хватает типа и id с запуска — сюда он не
+ * доходит. Спрашиваем у TorrServer одну эту раздачу — без перерисовки списка,
+ * как в refreshTorrentsList. Не ответил за timeoutMs — идём без неё.
+ */
+async function ensureTorrentLoaded(hash, fileId, timeoutMs) {
+  if (!hash || typeof torrServerFetch !== 'function') return;
+  var h = String(hash).toLowerCase();
+  // Ключ уже есть (фильм — по типу и id с запуска) — TorrServer не нужен
+  if (getTimecodeMediaKey(h, fileId)) return;
+  if (torrentVideoFiles(findLoadedTorrent(h)).length) return;
+  try {
+    var got = await Promise.race([
+      torrServerFetch('/torrents', { method: 'POST', body: JSON.stringify({ action: 'get', hash: h }) })
+        .then(function (r) { return r.ok ? r.json() : null; }),
+      new Promise(function (resolve) { setTimeout(function () { resolve(null); }, timeoutMs || 2500); })
+    ]);
+    if (!got || !got.hash || !torrentVideoFiles(got).length) return;
+    if (typeof normalizeServerTorrents === 'function') normalizeServerTorrents([got]);
+    if (!Array.isArray(AppState.torrents)) AppState.torrents = [];
+    for (var i = 0; i < AppState.torrents.length; i++) {
+      var t = AppState.torrents[i];
+      if (t && t.hash && String(t.hash).toLowerCase() === h) { AppState.torrents[i] = got; return; }
+    }
+    AppState.torrents.unshift(got);
+  } catch (e) { /* TorrServer не ответил — ключа не будет, как раньше */ }
+}
+
 /** Торрент из загруженного списка по hash или null */
 function findLoadedTorrent(hash) {
   if (!hash || !Array.isArray(AppState.torrents)) return null;
@@ -1802,6 +1837,11 @@ function getTimecodeMediaKey(hash, fileId, files) {
     return (season >= 0 && episode > 0) ? 'tv:' + tmdbId + ':' + season + ':' + episode : null;
   }
   if (files && files.length === 1 && file) return 'movie:' + tmdbId;
+  // Файлов раздачи ещё не знаем (только что добавлена — метаданных нет), а что
+  // это фильм, знаем: тип и id записал запуск из карточки или поиска
+  // (knownTorrentMeta, поле раздачи). Выбрать файл сборника без списка файлов
+  // запуск не мог — играет единственный фильм этой раздачи.
+  if ((!files || !files.length) && type === 'movie') return 'movie:' + tmdbId;
   // Сборник фильмов: у файла свой фильм коллекции (collectionPartFor ниже)
   var part = collectionPartFor(h, fileId);
   return part ? 'movie:' + part.id : null;
@@ -6874,9 +6914,17 @@ function updatePlayerTimeline(timelineData) {
       var timecodeToSave = isCompleted ? Math.floor(currentTimecodeData.duration) : Math.floor(data.time);
       // Через trackTimecodeSave — иначе updateDetailProgress ниже прочитает батч
       // раньше, чем это сохранение доедет, и покажет предыдущую серию
-      trackTimecodeSave(bgFetch(SERVER_URL + '/api/timecode/save', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId: savedClientId, hash: currentTimecodeData.hash, fileId: currentTimecodeData.fileId, timecode: timecodeToSave, duration: currentTimecodeData.duration, completed: isCompleted, mediaKey: currentTimecodeMediaKey() })
+      // Ключ фильма — после ensureTorrentLoaded: фильм из поиска раздач
+      // запускают сразу после добавления, и без этого ключ был пустым, а
+      // встроенный плеер Android сам его не шлёт
+      var saveBody = { clientId: savedClientId, hash: currentTimecodeData.hash, fileId: currentTimecodeData.fileId, timecode: timecodeToSave, duration: currentTimecodeData.duration, completed: isCompleted };
+      trackTimecodeSave(ensureTorrentLoaded(saveBody.hash, saveBody.fileId, 2500).then(function () {
+        var key = getTimecodeMediaKey(saveBody.hash, saveBody.fileId);
+        if (key) saveBody.mediaKey = key;
+        return bgFetch(SERVER_URL + '/api/timecode/save', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(saveBody)
+        });
       }));
     }
     if (typeof window.refreshDetailResume === 'function') window.refreshDetailResume();
