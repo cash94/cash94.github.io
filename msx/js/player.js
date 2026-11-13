@@ -1718,6 +1718,20 @@ function getTorrentTmdbId(torrent) {
   return m ? m[1] : null;
 }
 
+/** Видеофайлы раздачи из её file_stats / data (TorrServer.Files); [] — не знаем */
+function torrentVideoFiles(torrent) {
+  if (!torrent) return [];
+  var files = [];
+  if (Array.isArray(torrent.file_stats)) files = torrent.file_stats;
+  else if (torrent.data) {
+    try {
+      var data = typeof torrent.data === 'string' ? JSON.parse(torrent.data) : torrent.data;
+      if (data && data.TorrServer && Array.isArray(data.TorrServer.Files)) files = data.TorrServer.Files;
+    } catch (e) { /* data не JSON — файлов не знаем */ }
+  }
+  return extractVideoFiles(files);
+}
+
 /** Торрент из загруженного списка по hash или null */
 function findLoadedTorrent(hash) {
   if (!hash || !Array.isArray(AppState.torrents)) return null;
@@ -1761,6 +1775,14 @@ function getTimecodeMediaKey(hash, fileId, files) {
   var seasons = typeof window.getTorrentSeasons === 'function' ? window.getTorrentSeasons(torrent) : [];
   var type = torrent.media_type || (known && known.mediaType) || (seasons.length ? 'tv' : null);
   if (!files) files = (currentTorrentHash && String(currentTorrentHash).toLowerCase() === h) ? currentEpisodeFiles : null;
+  // Список серий плеера заполняет только карточка раздачи («Мои торренты»).
+  // Фильм из карточки фильма или поиска раздач его не получал — ключа не было,
+  // и таймкод не доходил до «Продолжить просмотр», пока раздачу не откроют в
+  // «Моих торрентах». Файлы есть у самой раздачи в загруженном списке.
+  if (!files || !files.length) {
+    var own = torrentVideoFiles(torrent);
+    if (own.length) files = own;
+  }
   var file = null;
   for (var i = 0; files && i < files.length; i++) {
     if (String(files[i].id) === String(fileId)) { file = files[i]; break; }

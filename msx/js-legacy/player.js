@@ -1546,6 +1546,17 @@ function getTorrentTmdbId(torrent) {
   var m = String(torrent.title || '').match(/\[(\d+)\]/);
   return m ? m[1] : null;
 }
+function torrentVideoFiles(torrent) {
+  if (!torrent) return [];
+  var files = [];
+  if (Array.isArray(torrent.file_stats)) files = torrent.file_stats;else if (torrent.data) {
+    try {
+      var data = typeof torrent.data === 'string' ? JSON.parse(torrent.data) : torrent.data;
+      if (data && data.TorrServer && Array.isArray(data.TorrServer.Files)) files = data.TorrServer.Files;
+    } catch (e) {}
+  }
+  return extractVideoFiles(files);
+}
 function findLoadedTorrent(hash) {
   if (!hash || !Array.isArray(AppState.torrents)) return null;
   var h = String(hash).toLowerCase();
@@ -1572,6 +1583,10 @@ function getTimecodeMediaKey(hash, fileId, files) {
   var seasons = typeof window.getTorrentSeasons === 'function' ? window.getTorrentSeasons(torrent) : [];
   var type = torrent.media_type || known && known.mediaType || (seasons.length ? 'tv' : null);
   if (!files) files = currentTorrentHash && String(currentTorrentHash).toLowerCase() === h ? currentEpisodeFiles : null;
+  if (!files || !files.length) {
+    var own = torrentVideoFiles(torrent);
+    if (own.length) files = own;
+  }
   var file = null;
   for (var i = 0; files && i < files.length; i++) {
     if (String(files[i].id) === String(fileId)) {
