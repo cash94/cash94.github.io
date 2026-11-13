@@ -1353,16 +1353,21 @@
         if (box) {
             var cur = box.querySelector('img');
             // Уже загруженный элемент (preloadLogo) — вставляем его самого:
-            // src у разметки запросил бы ту же картинку второй раз
+            // src у разметки запросил бы ту же картинку второй раз.
+            // Элемент уже вытеснен из logoImgs (там HERO_LOGO_KEEP штук, а
+            // loaded у логотипа остаётся) — новый элемент из HTTP-кэша. Менять
+            // src у стоящего в баннере нельзя: он же лежит в logoImgs под
+            // адресом прошлой карточки, и та потом показывала бы чужой логотип
             var ready = logoImgs.get(url);
-            if (ready) {
-                if (cur !== ready) {
-                    ready.alt = '';
-                    if (cur) box.replaceChild(ready, cur);
-                    else box.appendChild(ready);
-                }
-            } else if (cur && cur.getAttribute('src') !== url) {
-                cur.setAttribute('src', url);
+            if (!ready && url) {
+                ready = new Image();
+                ready.src = url;
+                logoImgs.put(url, ready);
+            }
+            if (ready && cur !== ready) {
+                ready.alt = '';
+                if (cur) box.replaceChild(ready, cur);
+                else box.appendChild(ready);
             }
         }
         // Классы трогаем, только если они меняются: каждое касание — пересчёт

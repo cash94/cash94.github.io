@@ -984,13 +984,14 @@
     if (box) {
       var cur = box.querySelector('img');
       var ready = logoImgs.get(url);
-      if (ready) {
-        if (cur !== ready) {
-          ready.alt = '';
-          if (cur) box.replaceChild(ready, cur);else box.appendChild(ready);
-        }
-      } else if (cur && cur.getAttribute('src') !== url) {
-        cur.setAttribute('src', url);
+      if (!ready && url) {
+        ready = new Image();
+        ready.src = url;
+        logoImgs.put(url, ready);
+      }
+      if (ready && cur !== ready) {
+        ready.alt = '';
+        if (cur) box.replaceChild(ready, cur);else box.appendChild(ready);
       }
     }
     var cl = body.classList;
