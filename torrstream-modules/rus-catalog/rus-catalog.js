@@ -1,0 +1,278 @@
+// module.js — Модуль «Русские» (rus-catalog)
+// Собирает элементы с countries=["RU"] из movie/tv/cartoons/cartoons_tv,
+// сортирует по дате торрента и отдаёт как каталог «Русские».
+
+var SOURCE_CATALOGS = ['movie', 'tv', 'cartoons', 'cartoons_tv'];
+var UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;   // автообновление раз в 6 часов
+var REQUEST_TIMEOUT = 15000;
+// Сервер отдаёт каталог страницами не больше 500 элементов
+// (routes: Math.min(500, limit)). Раньше модуль просил limit=100000 и получал
+// только первые 500 — всё, что дальше, в «Русские» не попадало
+// (movie 955, tv 834, cartoons_tv 723 элемента).
+var PAGE_SIZE = 500;
+// Страховка от бесконечного цикла, если сервер перестанет отдавать hasMore
+var MAX_PAGES = 200;
+var INIT_DELAY_MS = 8000;                        // задержка первой сборки
+var MAX_RETRIES = 5;
+
+var rusState = {
+    items: [],
+    allIndex: 0,
+    lastUpdated: 0,
+    building: false,
+    // Promise текущей сборки: второй запрос ждёт её, а не получает пустоту
+    buildPromise: null
+};
+var updateTimer = null;
+var serverUrl = '';
+
+var detectedPort = null;
+
+function getServerUrl() {
+    return 'http://127.0.0.1:' + (detectedPort || 4000);
+}
+
+// Функция захвата — вызывается в каждом обработчике
+function capturePort(req) {
+    if (!detectedPort && req.socket && req.socket.localPort) {
+        detectedPort = req.socket.localPort;
+    }
+}
+
+// ==================== УТИЛИТЫ ====================
+
+// Дата формата DD.MM.YYYY → timestamp
+function parseRuDate(dateStr) {
+    if (!dateStr) return 0;
+    var parts = String(dateStr).split('.');
+    if (parts.length !== 3) return 0;
+    var d = parseInt(parts[0], 10);
+    var m = parseInt(parts[1], 10) - 1;
+    var y = parseInt(parts[2], 10);
+    if (isNaN(d) || isNaN(m) || isNaN(y)) return 0;
+    return new Date(y, m, d).getTime();
+}
+
+// Свежая дата среди всех торрентов элемента (fallback: release_date)
+function getItemDate(item) {
+    var maxDate = 0;
+    if (item.torrent && Array.isArray(item.torrent)) {
+        for (var i = 0; i < item.torrent.length; i++) {
+            var t = parseRuDate(item.torrent[i] && item.torrent[i].date);
+            if (t > maxDate) maxDate = t;
+        }
+    }
+    if (maxDate === 0 && item.release_date) {
+        maxDate = parseRuDate(item.release_date);
+    }
+    return maxDate;
+}
+
+// Элемент российский?
+function isRussian(item) {
+    if (!item || !item.countries || !Array.isArray(item.countries)) return false;
+    for (var i = 0; i < item.countries.length; i++) {
+        if (String(item.countries[i]).toUpperCase() === 'RU') return true;
+    }
+    return false;
+}
+
+// ==================== ЗАГРУЗКА ИСХОДНЫХ КАТАЛОГОВ ====================
+
+// Способ 1: прямое чтение файла (нативный режим, не зависит от порта/гот��вности HTTP)
+function loadItemsDirect(name) {
+    if (typeof require === 'undefined') return null;
+    try {
+        var fs = require('fs');
+        var path = require('path');
+        var os = require('os');
+        var filePath = path.join(os.homedir(), '.videoloop-server', 'catalog', name + '.json');
+        var data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        return (data && Array.isArray(data.items)) ? data.items : [];
+    } catch (e) {
+        return null;   // fs недоступен / файла нет → fallback на HTTP
+    }
+}
+
+// Способ 2: внутренний HTTP API — постранично, до конца каталога
+async function loadItemsHttp(name, log) {
+    var all = [];
+    var from = 0;
+    try {
+        for (var page = 0; page < MAX_PAGES; page++) {
+            var url = getServerUrl() + '/api/catalog/' + name + '/items?from=' + from + '&limit=' + PAGE_SIZE;
+            var resp = await fetch(url);
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            var data = await resp.json();
+            var items = (data && data.success && Array.isArray(data.items)) ? data.items : [];
+            for (var i = 0; i < items.length; i++) all.push(items[i]);
+            var more = data && data.pagination && data.pagination.hasMore;
+            if (!items.length || !more) break;
+            from += items.length;
+        }
+        return all;
+    } catch (e) {
+        // Недочитанный каталог хуже прежнего: отдаём пусто, сборка решит сама
+        // (пустой результат не затирает готовый каталог, см. buildRusCatalog)
+        log.error('[' + name + '] HTTP-загрузка (с ' + from + '): ' + (e.cause && e.cause.code || e.message));
+        return [];
+    }
+}
+
+// Единая точка загрузки: сначала диск, потом HTTP
+async function loadItems(name, log) {
+    var direct = loadItemsDirect(name);
+    if (direct !== null) return direct;
+    return await loadItemsHttp(name, log);
+}
+
+// ==================== СБОРКА КАТАЛОГА ====================
+
+function buildRusCatalog(log, retryCount) {
+    if (rusState.building && rusState.buildPromise) return rusState.buildPromise;
+    rusState.buildPromise = doBuildRusCatalog(log, retryCount).then(function () {
+        rusState.buildPromise = null;
+    });
+    return rusState.buildPromise;
+}
+
+async function doBuildRusCatalog(log, retryCount) {
+    retryCount = retryCount || 0;
+    rusState.building = true;
+    log.log('Сборка каталога «Русские»...');
+    try {
+        var collected = [];
+        for (var i = 0; i < SOURCE_CATALOGS.length; i++) {
+            var items = await loadItems(SOURCE_CATALOGS[i], log);
+            for (var j = 0; j < items.length; j++) {
+                if (isRussian(items[j])) collected.push(items[j]);
+            }
+        }
+
+        // Пусто — каталоги могли ещё не загрузиться (или не ответил сервер).
+        // Готовый каталог пустотой не затираем.
+        if (collected.length === 0 && rusState.items.length) {
+            log.log('Исходные каталоги пусты — оставляем прежние ' + rusState.items.length + ' элементов');
+            return;
+        }
+        // Пусто и есть попытки — повторяем
+        if (collected.length === 0 && retryCount < MAX_RETRIES) {
+            rusState.building = false;
+            log.log('Пусто, повтор через 10с (попытка ' + (retryCount + 1) + '/' + MAX_RETRIES + ')');
+            setTimeout(function () { buildRusCatalog(log, retryCount + 1); }, 10000);
+            return;
+        }
+
+        // Сортировка по дате торрента — новые сверху
+        collected.sort(function (a, b) {
+            return getItemDate(b) - getItemDate(a);
+        });
+
+        // Пересчёт индексов под новый каталог
+        for (var k = 0; k < collected.length; k++) {
+            collected[k].num_index = k;
+        }
+
+        rusState.items = collected;
+        rusState.allIndex = collected.length;
+        rusState.lastUpdated = Date.now();
+        log.log('Каталог «Русские» собран: ' + collected.length + ' элементов');
+
+        tryWriteRusJson(collected, log);
+    } catch (e) {
+        log.error('Ошибка сборки «Русские»: ' + e.message);
+    } finally {
+        rusState.building = false;
+    }
+}
+
+// Оп��ионально: физически записываем rus.json (только если доступен fs)
+function tryWriteRusJson(items, log) {
+    try {
+        if (typeof require === 'undefined') return;
+        var fs = require('fs');
+        var path = require('path');
+        var os = require('os');
+        var filePath = path.join(os.homedir(), '.videoloop-server', 'catalog', 'rus.json');
+        fs.writeFileSync(filePath, JSON.stringify({ all_index: items.length, items: items }, null, 2), 'utf8');
+        log.log('rus.json записан: ' + filePath);
+    } catch (e) {
+        // песочница без fs — не критично, каталог отдаётся из памяти
+    }
+}
+
+// ==================== МОДУЛЬ ====================
+
+module.exports = {
+    name: 'rus-catalog',
+    version: '1.1.0',
+
+    init: function (app, ctx) {
+        var log = ctx.log;
+
+        // Элементы с пагинацией (формат совместим с /api/catalog/:name/items)
+        app.get('/api/rus/items', function (req, res) {
+            capturePort(req);
+            var from = parseInt(req.query.from, 10) || 0;
+            var limit = parseInt(req.query.limit, 10) || 50;
+
+            function respond() {
+                var slice = rusState.items.slice(from, from + limit);
+                res.json({
+                    success: true,
+                    items: slice,
+                    pagination: {
+                        from: from,
+                        limit: limit,
+                        returned: slice.length,
+                        total: rusState.allIndex,
+                        hasMore: from + slice.length < rusState.allIndex
+                    }
+                });
+            }
+
+            // Ленивая сборка при первом запросе. Идёт уже — ждём её же
+            // (buildRusCatalog вернёт текущую), а не отдаём пустоту.
+            if (rusState.items.length === 0) {
+                buildRusCatalog(log, 0).then(respond);
+            } else {
+                respond();
+            }
+        });
+
+        // Метаданные каталога
+        app.get('/api/rus', function (req, res) {
+            capturePort(req);
+            res.json({
+                success: true,
+                name: 'rus',
+                displayName: 'Русские',
+                itemsCount: rusState.allIndex,
+                lastModified: rusState.lastUpdated,
+                lastModifiedISO: rusState.lastUpdated ? new Date(rusState.lastUpdated).toISOString() : null
+            });
+        });
+
+        // Принудительное обновление
+        app.post('/api/rus/update', function (req, res) {
+            capturePort(req);
+            buildRusCatalog(log, 0).then(function () {
+                res.json({ success: true, count: rusState.allIndex });
+            });
+        });
+
+        // Первая сборка (с задержкой — даём серверу загрузить исходные каталоги)
+        //setTimeout(function () { buildRusCatalog(log, 0); }, INIT_DELAY_MS);
+
+        // Автообновление
+        updateTimer = setInterval(function () { buildRusCatalog(log, 0); }, UPDATE_INTERVAL_MS);
+
+        log.log('Модуль «Русские» зарегистрирован.');
+        return { ready: true };
+    },
+
+    destroy: function () {
+        if (updateTimer) { clearInterval(updateTimer); updateTimer = null; }
+        console.log('[rus-catalog] Уничтожение...');
+    }
+};
