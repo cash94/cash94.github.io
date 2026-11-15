@@ -1,6 +1,12 @@
 {
  "images": [
   {
+   "url": "https://www.bing.com/th?id=OHR.FirstFrost_ROW5798320108_1920x1080.jpg",
+   "title": "Frozen azalea with red leaves",
+   "copyright": "© avoferten/Shutterstock",
+   "date": "20261115"
+  },
+  {
    "url": "https://www.bing.com/th?id=OHR.BlueHK_ROW5600938316_1920x1080.jpg",
    "title": "Victoria Harbour, Hong Kong, China",
    "copyright": "© Juan Romero/Cavan Images",
@@ -83,12 +89,6 @@
    "title": "Black Forest, Baden-Württemberg, Germany",
    "copyright": "© Britus/Getty Images",
    "date": "20261101"
-  },
-  {
-   "url": "https://www.bing.com/th?id=OHR.AlpineBraies_ROW3051494546_1920x1080.jpg",
-   "title": "Lake Braies, Fanes‑Sennes‑Braies Nature Park, Dolomites, Italy",
-   "copyright": "© leonid_tit/Getty Images",
-   "date": "20261031"
   }
  ]
 }
