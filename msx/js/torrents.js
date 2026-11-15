@@ -934,7 +934,10 @@ function lockDeviceTorrServerFields(on) {
  * torrserv.matrix.app). Без root — только уже работающий TorrServer на 8090.
  *
  * Бинарник — официальная сборка YouROK/TorrServer под linux-arm7 (пользовательское
- * пространство webOS 32-битное). Всё лежит в DIR: сам TorrServer, его база,
+ * пространство webOS 32-битное), версия закреплена — PINNED (последний MatriX:
+ * с ноября 2026 апстрим выпускает Silo с другим API, releases/latest не берём;
+ * уже скачанный не-MatriX refreshRooted сам меняет на PINNED). Всё лежит в
+ * DIR: сам TorrServer, его база,
  * version, pid и журнал. Загрузка и сервер идут в фоне (nohup … &) — exec ждёт
  * закрытия вывода команды, поэтому вывод фоновых процессов уходит в файлы.
  * Автозапуск при включении ТВ — скрипт в /var/lib/webosbrew/init.d (его
@@ -945,7 +948,12 @@ var WebOSTorrServer = (function () {
     var DIR = '/media/developer/torrstream-torrserver';
     var INIT = '/var/lib/webosbrew/init.d/60-torrstream-torrserver';
     var ASSET = 'TorrServer-linux-arm7';
-    var RELEASE_API = 'https://api.github.com/repos/YouROK/TorrServer/releases/latest';
+    // Закреплённая версия: размер — для процента загрузки (TorrServer.part / size)
+    var PINNED = {
+        tag: 'MatriX.150',
+        url: 'https://github.com/YouROK/TorrServer/releases/download/MatriX.150/' + ASSET,
+        size: 62259360
+    };
     var HB = 'luna://org.webosbrew.hbchannel.service';
     // Сторонний ipk TorrServer (torrserv.matrix.app, @aabytt): бинарник
     // torrserver (строчными — у нас TorrServer), автозапуск — ссылка в init.d и
@@ -959,7 +967,7 @@ var WebOSTorrServer = (function () {
 
     var st = {
         supported: true, installed: false, version: '', running: false, own: false,
-        runningVersion: '', downloading: false, progress: 0, error: '', latest: '',
+        runningVersion: '', downloading: false, progress: 0, error: '', latest: PINNED.tag,
         unsupportedText: '', note: '', matrix: false, matrixAutostart: false,
         canReplace: false,   // работает чужой TorrServer, а root есть — можно заменить встроенным
         ask: '',             // вопрос «убрать ли matrix из автозапуска», ждём ответа
@@ -973,7 +981,8 @@ var WebOSTorrServer = (function () {
     // запусками, чтобы не спрашивать каждый раз; кнопка «Остановить его и
     // запустить встроенный» в панели остаётся
     var KEEP_FOREIGN_KEY = 'tsDeviceKeepForeign';
-    var release = null;        // {tag, url, size} последнего релиза
+    var release = PINNED;      // {tag, url, size} — что ставим
+    var replacing = false;     // не-MatriX уже меняем на PINNED (раз за сеанс)
     var refreshing = false;
     var afterInstall = '';     // 'start' — запустить, когда скачается
     var probedAt = 0;
@@ -1148,27 +1157,9 @@ var WebOSTorrServer = (function () {
         } catch (e) { finish(''); }
     }
 
-    function fetchRelease(done) {
-        var x = new XMLHttpRequest();
-        try {
-            x.open('GET', RELEASE_API, true);
-            x.timeout = 15000;
-            x.onload = function () {
-                var rel = null;
-                try {
-                    var d = JSON.parse(x.responseText);
-                    for (var i = 0; i < (d.assets || []).length; i++) {
-                        if (d.assets[i].name === ASSET) {
-                            rel = { tag: d.tag_name, url: d.assets[i].browser_download_url, size: d.assets[i].size };
-                        }
-                    }
-                } catch (e) { }
-                if (rel) { release = rel; st.latest = rel.tag; }
-                done(rel);
-            };
-            x.onerror = x.ontimeout = function () { done(null); };
-            x.send();
-        } catch (e) { done(null); }
+    /** Совместима ли версия: приложение работает только с API MatriX (Silo — другой) */
+    function isMatrix(ver) {
+        return /^MatriX\./.test(ver || '');
     }
 
     /** Состояние: что установлено, что качается, жив ли наш процесс, кто на 8090 */
@@ -1202,7 +1193,8 @@ var WebOSTorrServer = (function () {
             '[ -f dl ] && echo D; ' +
             '[ -f TorrServer.part ] && echo P:$(wc -c < TorrServer.part); ' +
             '[ -f err ] && sed "s/^/E:/" err | head -1; ' +
-            '[ -f port ] && sed "s/^/PORT:/" port | head -1; true';
+            '[ -f port ] && sed "s/^/PORT:/" port | head -1; ' +
+            '[ -e ' + INIT + ' ] && echo A; true';
         exec(cmd, function (err, out) {
             if (err) {
                 refreshing = false;
@@ -1228,6 +1220,7 @@ var WebOSTorrServer = (function () {
             st.matrix = has('M');
             st.matrixAutostart = has('MA');
             st.port = val('PORT:') || '8090';
+            var autostart = has('A');   // запускали и не останавливали
             // Свой жив — спрашиваем его порт; иначе — 8090, где бывает чужой
             echo(function (ver) {
                 refreshing = false;
@@ -1236,6 +1229,16 @@ var WebOSTorrServer = (function () {
                 st.canReplace = !!ver && !st.own;
                 // Поднялся позже, чем ждал verifyStart, — его ошибка уже неправда
                 if (ver && st.own && st.error) { st.error = ''; exec('rm -f ' + DIR + '/err', function () { }); }
+                // Скачан или работает не MatriX (Silo из releases/latest прежних
+                // версий) — меняем на PINNED; работал или стоит в автозапуске —
+                // install остановит его и запустит новый
+                var have = (st.own && ver) || st.version;
+                if (st.installed && !st.downloading && have && !isMatrix(have) && !replacing) {
+                    replacing = true;
+                    install(st.own || autostart);
+                    return;
+                }
+                if (wasDownloading && !st.downloading && st.installed && !st.error) replacing = false;
                 // Скачалось — запускаем (при обновлении старый процесс уже остановлен)
                 if (wasDownloading && !st.downloading && afterInstall && st.installed && !st.error) {
                     afterInstall = '';
@@ -1251,12 +1254,12 @@ var WebOSTorrServer = (function () {
         return st;
     }
 
-    function install() {
+    /** Скачать PINNED; startAfter === false — не запускать после загрузки */
+    function install(startAfter) {
         st.error = '';
         var go = function (rel) {
-            if (!rel) { st.error = 'не удалось получить релиз TorrServer с GitHub'; return; }
             st.downloading = true; st.progress = 0;
-            afterInstall = 'start';
+            afterInstall = startAfter === false ? '' : 'start';
             // Обновление поверх работающего: наш процесс останавливаем, файл
             // заменяем целиком (mv), после загрузки refresh запустит заново
             var cmd = 'mkdir -p ' + DIR + ' && cd ' + DIR + ' && rm -f err && touch dl && ' +
@@ -1268,7 +1271,7 @@ var WebOSTorrServer = (function () {
                 '> /dev/null 2>&1 < /dev/null &';
             exec(cmd, function (err) { if (err) { st.error = String(err); st.downloading = false; } refresh(); });
         };
-        if (release) go(release); else fetchRelease(go);
+        go(release);
     }
 
     /** Выключить автозапуск torrserv.matrix.app */
@@ -1487,7 +1490,7 @@ var WebOSTorrServer = (function () {
             function () { setTimeout(refresh, 800); });
     }
 
-    function checkUpdate() { fetchRelease(function () { }); }
+    function checkUpdate() { st.latest = PINNED.tag; }
 
     return {
         enabled: enabled, status: status, install: install, start: start, stop: stop,
@@ -1789,7 +1792,9 @@ var deviceTorrServerPanel = (function () {
         show('ts-device-install', st.supported && !st.installed && !st.monoInstalled && !external && !busy);
         show('ts-device-start', (st.installed || monoIdle) && !st.running && !busy);
         show('ts-device-stop', st.own && !busy);
-        show('ts-device-update', st.installed && !monoIdle && !external && !busy && st.latest && st.latest !== st.version);
+        // Обновляем только до MatriX: прежние версии Android-приложения берут
+        // latest с GitHub, а там Silo с другим API
+        show('ts-device-update', st.installed && !monoIdle && !external && !busy && /^MatriX\./.test(st.latest || '') && st.latest !== st.version);
         show('ts-device-replace', external && !!st.canReplace && !busy);
         show('ts-device-autostart-off', !!st.ask);
         show('ts-device-autostart-keep', !!st.ask);

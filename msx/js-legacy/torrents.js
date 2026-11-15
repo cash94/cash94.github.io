@@ -798,7 +798,11 @@ var WebOSTorrServer = function () {
   var DIR = '/media/developer/torrstream-torrserver';
   var INIT = '/var/lib/webosbrew/init.d/60-torrstream-torrserver';
   var ASSET = 'TorrServer-linux-arm7';
-  var RELEASE_API = 'https://api.github.com/repos/YouROK/TorrServer/releases/latest';
+  var PINNED = {
+    tag: 'MatriX.150',
+    url: 'https://github.com/YouROK/TorrServer/releases/download/MatriX.150/' + ASSET,
+    size: 62259360
+  };
   var HB = 'luna://org.webosbrew.hbchannel.service';
   var MATRIX_DIR = '/media/developer/apps/usr/palm/applications/torrserv.matrix.app';
   var MATRIX_INIT = '/var/lib/webosbrew/init.d/60-torrservmatrixapp';
@@ -813,7 +817,7 @@ var WebOSTorrServer = function () {
     downloading: false,
     progress: 0,
     error: '',
-    latest: '',
+    latest: PINNED.tag,
     unsupportedText: '',
     note: '',
     matrix: false,
@@ -827,7 +831,8 @@ var WebOSTorrServer = function () {
   var pendingNo = null;
   var asked = false;
   var KEEP_FOREIGN_KEY = 'tsDeviceKeepForeign';
-  var release = null;
+  var release = PINNED;
+  var replacing = false;
   var refreshing = false;
   var afterInstall = '';
   var probedAt = 0;
@@ -972,38 +977,8 @@ var WebOSTorrServer = function () {
       finish('');
     }
   }
-  function fetchRelease(done) {
-    var x = new XMLHttpRequest();
-    try {
-      x.open('GET', RELEASE_API, true);
-      x.timeout = 15000;
-      x.onload = function () {
-        var rel = null;
-        try {
-          var d = JSON.parse(x.responseText);
-          for (var i = 0; i < (d.assets || []).length; i++) {
-            if (d.assets[i].name === ASSET) {
-              rel = {
-                tag: d.tag_name,
-                url: d.assets[i].browser_download_url,
-                size: d.assets[i].size
-              };
-            }
-          }
-        } catch (e) {}
-        if (rel) {
-          release = rel;
-          st.latest = rel.tag;
-        }
-        done(rel);
-      };
-      x.onerror = x.ontimeout = function () {
-        done(null);
-      };
-      x.send();
-    } catch (e) {
-      done(null);
-    }
+  function isMatrix(ver) {
+    return /^MatriX\./.test(ver || '');
   }
   function refresh() {
     if (refreshing) return;
@@ -1027,7 +1002,7 @@ var WebOSTorrServer = function () {
     });
   }
   function refreshRooted() {
-    var cmd = '[ -d ' + MATRIX_DIR + ' ] && echo M; ' + '[ -e ' + MATRIX_INIT + ' ] && echo MA; ' + 'cd ' + DIR + ' 2>/dev/null || { echo NODIR; exit 0; }; ' + '[ -x TorrServer ] && echo I; ' + '[ -f version ] && sed "s/^/V:/" version | head -1; ' + '[ -f pid ] && kill -0 $(cat pid) 2>/dev/null && echo R; ' + '[ -f dl ] && echo D; ' + '[ -f TorrServer.part ] && echo P:$(wc -c < TorrServer.part); ' + '[ -f err ] && sed "s/^/E:/" err | head -1; ' + '[ -f port ] && sed "s/^/PORT:/" port | head -1; true';
+    var cmd = '[ -d ' + MATRIX_DIR + ' ] && echo M; ' + '[ -e ' + MATRIX_INIT + ' ] && echo MA; ' + 'cd ' + DIR + ' 2>/dev/null || { echo NODIR; exit 0; }; ' + '[ -x TorrServer ] && echo I; ' + '[ -f version ] && sed "s/^/V:/" version | head -1; ' + '[ -f pid ] && kill -0 $(cat pid) 2>/dev/null && echo R; ' + '[ -f dl ] && echo D; ' + '[ -f TorrServer.part ] && echo P:$(wc -c < TorrServer.part); ' + '[ -f err ] && sed "s/^/E:/" err | head -1; ' + '[ -f port ] && sed "s/^/PORT:/" port | head -1; ' + '[ -e ' + INIT + ' ] && echo A; true';
     exec(cmd, function (err, out) {
       if (err) {
         refreshing = false;
@@ -1055,6 +1030,7 @@ var WebOSTorrServer = function () {
       st.matrix = has('M');
       st.matrixAutostart = has('MA');
       st.port = val('PORT:') || '8090';
+      var autostart = has('A');
       echo(function (ver) {
         refreshing = false;
         st.running = !!ver;
@@ -1064,6 +1040,13 @@ var WebOSTorrServer = function () {
           st.error = '';
           exec('rm -f ' + DIR + '/err', function () {});
         }
+        var have = st.own && ver || st.version;
+        if (st.installed && !st.downloading && have && !isMatrix(have) && !replacing) {
+          replacing = true;
+          install(st.own || autostart);
+          return;
+        }
+        if (wasDownloading && !st.downloading && st.installed && !st.error) replacing = false;
         if (wasDownloading && !st.downloading && afterInstall && st.installed && !st.error) {
           afterInstall = '';
           start();
@@ -1078,16 +1061,12 @@ var WebOSTorrServer = function () {
     }
     return st;
   }
-  function install() {
+  function install(startAfter) {
     st.error = '';
     var go = function (rel) {
-      if (!rel) {
-        st.error = 'не удалось получить релиз TorrServer с GitHub';
-        return;
-      }
       st.downloading = true;
       st.progress = 0;
-      afterInstall = 'start';
+      afterInstall = startAfter === false ? '' : 'start';
       var cmd = 'mkdir -p ' + DIR + ' && cd ' + DIR + ' && rm -f err && touch dl && ' + '( [ -f pid ] && kill -0 $(cat pid) 2>/dev/null && echo "[TorrStream] $(date "+%F %T") остановлен для обновления" >> ts.log; ' + '[ -f pid ] && kill $(cat pid) 2>/dev/null; ' + '( curl -fsSL -o TorrServer.part "' + rel.url + '" || wget -q -O TorrServer.part "' + rel.url + '" ) ' + '&& chmod +x TorrServer.part && mv -f TorrServer.part TorrServer && echo "' + rel.tag + '" > version ' + '|| { echo "не удалось скачать TorrServer" > err; rm -f TorrServer.part; }; rm -f dl ) ' + '> /dev/null 2>&1 < /dev/null &';
       exec(cmd, function (err) {
         if (err) {
@@ -1097,7 +1076,7 @@ var WebOSTorrServer = function () {
         refresh();
       });
     };
-    if (release) go(release);else fetchRelease(go);
+    go(release);
   }
   function disableMatrixAutostart(done) {
     var cmd = 'rm -f ' + MATRIX_INIT + ' ' + MATRIX_FLAG + '; ' + '[ -d ' + MATRIX_DIR + ' ] && { echo disabled > ' + MATRIX_DIR + '/status; echo enable > ' + MATRIX_DIR + '/action; }; true';
@@ -1257,7 +1236,7 @@ var WebOSTorrServer = function () {
     });
   }
   function checkUpdate() {
-    fetchRelease(function () {});
+    st.latest = PINNED.tag;
   }
   return {
     enabled: enabled,
@@ -1546,7 +1525,7 @@ var deviceTorrServerPanel = function () {
     show('ts-device-install', st.supported && !st.installed && !st.monoInstalled && !external && !busy);
     show('ts-device-start', (st.installed || monoIdle) && !st.running && !busy);
     show('ts-device-stop', st.own && !busy);
-    show('ts-device-update', st.installed && !monoIdle && !external && !busy && st.latest && st.latest !== st.version);
+    show('ts-device-update', st.installed && !monoIdle && !external && !busy && /^MatriX\./.test(st.latest || '') && st.latest !== st.version);
     show('ts-device-replace', external && !!st.canReplace && !busy);
     show('ts-device-autostart-off', !!st.ask);
     show('ts-device-autostart-keep', !!st.ask);
