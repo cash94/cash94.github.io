@@ -1959,7 +1959,14 @@
             };
             video.addEventListener('playing', catGuard);
             video.addEventListener('ended', catNext);
-            video.addEventListener('error', catNext);
+            video.addEventListener('error', function () {
+                // Прямой ролик RuTube не пошёл — setTrailerVideoSrc (catalog.js)
+                // в этом же событии ставит его через сервер: ждём и его
+                setTimeout(function () {
+                    if (video._trailerRetrying) { video._trailerRetrying = false; return; }
+                    catNext();
+                }, 0);
+            });
         }
 
         if (window.trailerUsesHlsJs ? window.trailerUsesHlsJs() : (window.Hls && Hls.isSupported())) {
@@ -1984,7 +1991,8 @@
             }
             homeState.hero.hls = hls;
         } else {
-            video.src = hlsUrl(url);
+            if (typeof window.setTrailerVideoSrc === 'function') window.setTrailerVideoSrc(video, url);
+            else video.src = hlsUrl(url);
             video.play().catch(function () { });
         }
 

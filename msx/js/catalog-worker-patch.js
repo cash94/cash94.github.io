@@ -188,8 +188,10 @@
     // ==================== fetchRutubeTrailer ====================
     window.fetchRutubeTrailer = fetchRutubeTrailer = function (title, originalTitle, releaseDate) {
         // Прямой режим Android держится на перехвате запросов страницы, из воркера
-        // ходить нельзя: ответ без заголовка CORS браузер не отдаст
-        if (typeof isRutubeDirect === 'function' && isRutubeDirect()) {
+        // ходить нельзя: ответ без заголовка CORS браузер не отдаст. Служба на
+        // телевизоре (webOS — Luna, Tizen — порт 8096) воркеру тоже недоступна
+        if ((typeof isRutubeDirect === 'function' && isRutubeDirect()) ||
+            (typeof rutubeDeviceAvailable === 'function' && rutubeDeviceAvailable())) {
             return _origFetchRutubeTrailer(title, originalTitle, releaseDate);
         }
         return CatalogWorker.fetchRutubeTrailer(title, originalTitle, releaseDate)

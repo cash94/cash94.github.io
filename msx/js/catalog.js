@@ -841,8 +841,92 @@ function isRutubeDirect() {
 }
 window.isRutubeDirect = isRutubeDirect;
 
+/*
+ * Приложения TorrStream на телевизорах — webOS и Tizen. Трейлер, как в Android,
+ * идёт с телевизора мимо сервера, но иначе: перехватить запросы страницы здесь
+ * нечем, а RuTube не отдаёт Access-Control-Allow-Origin.
+ *  - Видео (плейлисты и сегменты) — прямой адрес RuTube в <video>: медиаплеер
+ *    телевизора CORS не проверяет. hls.js так не может — ответа без заголовка
+ *    CORS он не получит, поэтому здесь трейлер играет плеер телевизора.
+ *  - API (поиск, play/options) — через свою службу на телевизоре: на Tizen —
+ *    служба дорожек (порт 8096, /rutube), на webOS — com.torrstream.app.service
+ *    (метод rutube). В приложении без такой службы API, как раньше, — через сервер.
+ * Прямое видео не пошло — ролик сразу же через прокси сервера (setTrailerVideoSrc),
+ * и дальше до перезапуска приложения — тоже.
+ */
+function rutubeTvApp() {
+    return !!(window.AppState && (AppState.tizenApp || AppState.platform === 'webos'));
+}
+
+var rutubeVideoDirectBroken = false;
+
+function rutubeVideoDirect() {
+    return !rutubeVideoDirectBroken && !isRutubeDirect() && rutubeTvApp();
+}
+window.rutubeVideoDirect = rutubeVideoDirect;
+
+// Служба на телевизоре не ответила или не умеет rutube (приложение старое,
+// служба не запущена) — не спрашиваем её до этого времени
+var rutubeDeviceOffUntil = 0;
+var RUTUBE_DEVICE_RETRY_MS = 5 * 60 * 1000;
+var RUTUBE_DEVICE_TIMEOUT_MS = 12000;
+
+function rutubeDeviceAvailable() {
+    if (isRutubeDirect() || !rutubeTvApp() || Date.now() < rutubeDeviceOffUntil) return false;
+    if (AppState.tizenApp) return typeof tizenServiceGet === 'function';
+    return typeof lunaRequest === 'function' && typeof lunaAvailable === 'function' && lunaAvailable();
+}
+window.rutubeDeviceAvailable = rutubeDeviceAvailable;
+
+/**
+ * Ответ API RuTube через службу на телевизоре. Promise с данными или null —
+ * тогда спрашиваем сервер. Ошибку самого RuTube (ролик удалён) служба
+ * пересылает как есть, начиная текст с «RuTube»: служба тогда жива
+ */
+function rutubeDeviceJson(apiUrl) {
+    return new Promise(function (resolve) {
+        var done = false;
+        var finish = function (data, serviceDown) {
+            if (done) return;
+            done = true;
+            if (serviceDown) rutubeDeviceOffUntil = Date.now() + RUTUBE_DEVICE_RETRY_MS;
+            resolve(data || null);
+        };
+        setTimeout(function () { finish(null, true); }, RUTUBE_DEVICE_TIMEOUT_MS + 1000);
+        try {
+            if (AppState.tizenApp) {
+                var port = window.TIZEN_TRACKS_PORT || 8096;
+                tizenServiceGet(port, '/rutube?url=' + encodeURIComponent(apiUrl), RUTUBE_DEVICE_TIMEOUT_MS, function (err, xhr) {
+                    if (err || !xhr) { finish(null, true); return; }
+                    var text = xhr.responseText || '';
+                    if (xhr.status === 200) {
+                        try { finish(JSON.parse(text), false); } catch (e) { finish(null, false); }
+                        return;
+                    }
+                    // Служба до 1.2.0 /rutube не знает: 404 «нет такого адреса»
+                    finish(null, text.indexOf('RuTube') === -1);
+                });
+                return;
+            }
+            lunaRequest('luna://com.torrstream.app.service', 'rutube', { url: apiUrl }, function (r) {
+                try { finish(JSON.parse(r.data), false); } catch (e) { finish(null, false); }
+            }, function (r) {
+                // Ipk до 1.0.6 метода rutube не знает: ошибка Luna, не RuTube
+                var text = String((r && r.errorText) || '');
+                finish(null, text.indexOf('RuTube') !== 0);
+            }, true);
+        } catch (e) {
+            finish(null, true);
+        }
+    });
+}
+
 /** Ответ API RuTube: напрямую, если умеем, иначе (и при сбое) — через прокси сервера */
 async function rutubeApiJson(apiUrl) {
+    if (rutubeDeviceAvailable()) {
+        var viaDevice = await rutubeDeviceJson(apiUrl);
+        if (viaDevice) return viaDevice;
+    }
     if (isRutubeDirect()) {
         var controller = new AbortController();
         var timer = setTimeout(function () { controller.abort(); }, 10000);
@@ -992,9 +1076,42 @@ function wrapRutubeHls(url) {
     if (!url) return url;
     // Уже обёрнут — не оборачиваем повторно
     if (url.indexOf('/api/rutube/hls/proxy') === 0) return url;
-    if (isRutubeDirect()) return url;
+    if (isRutubeDirect() || rutubeVideoDirect()) return url;
     return '/api/rutube/hls/proxy?u=' + encodeURIComponent(url);
 }
+
+/**
+ * src трейлера для <video> без hls.js. В прямом режиме приложений на ТВ
+ * (rutubeVideoDirect) ошибка до первого кадра выключает его до перезапуска,
+ * а этот же ролик сразу идёт через прокси сервера тем же плеером телевизора —
+ * так играли трейлеры старые webOS и Tizen. На время перехода у элемента
+ * _trailerRetrying = true: обработчики ошибки рядом (home.js) его пропускают.
+ */
+function setTrailerVideoSrc(video, url) {
+    var direct = rutubeVideoDirect();
+    var src = wrapRutubeHls(url);
+    video.src = src;
+    if (!direct) return;
+    var onPlaying = function () { cleanup(); };
+    var onError = function () {
+        cleanup();
+        // Трейлер уже сняли (src убран, элемент вынут из разметки) — не сбой
+        if (!video.parentNode || video.getAttribute('src') !== src) return;
+        rutubeVideoDirectBroken = true;
+        console.warn('Трейлер с RuTube напрямую не пошёл (код ' + (video.error ? video.error.code : '?') + ') — дальше через сервер');
+        video._trailerRetrying = true;
+        video.src = wrapRutubeHls(url);
+        var p = video.play();
+        if (p && p['catch']) p['catch'](function () { });
+    };
+    var cleanup = function () {
+        video.removeEventListener('playing', onPlaying);
+        video.removeEventListener('error', onError);
+    };
+    video.addEventListener('playing', onPlaying);
+    video.addEventListener('error', onError);
+}
+window.setTrailerVideoSrc = setTrailerVideoSrc;
 
 /**
  * Трейлер через hls.js (MSE) или встроенным HLS браузера. webOS 4 (Chrome 53,
@@ -1004,8 +1121,11 @@ function wrapRutubeHls(url) {
  * самое: из MSE звук есть, картинки нет, поэтому старым Tizen (до 7, движок
  * до Chrome 94) m3u8 тоже отдаём плееру телевизора. Tizen 7+ про такое пока
  * не сообщали — у них hls.js, как у прочих. Новые webOS и прочие — как раньше.
+ * Приложения на ТВ берут ролик с RuTube напрямую (rutubeVideoDirect) — тоже
+ * плеером телевизора: hls.js без заголовка CORS ответа RuTube не получит.
  */
 function trailerUsesHlsJs() {
+    if (rutubeVideoDirect()) return false;
     if (!(window.Hls && Hls.isSupported())) return false;
     if (window.LEGACY_JS && (window.PalmSystem || window.webOSSystem)) return false;
     if (AppState.tizenLegacy) return false;
@@ -5214,7 +5334,7 @@ function startTrailerBackground(url) {
         });
         video._hls = hls;
     } else {
-        video.src = wrapRutubeHls(url);
+        setTrailerVideoSrc(video, url);
         video.play().catch(function () { });
     }
 
@@ -5377,8 +5497,8 @@ async function openRutubeTrailerInPlayer(m3u8Url, title) {
                         alert('Ошибка воспроизведения трейлера');
                     }
                 });
-            } else if (vp.canPlayType('application/vnd.apple.mpegurl')) {
-                vp.src = wrapRutubeHls(m3u8Url);
+            } else if (rutubeVideoDirect() || vp.canPlayType('application/vnd.apple.mpegurl')) {
+                setTrailerVideoSrc(vp, m3u8Url);
                 vp.addEventListener('loadedmetadata', function () {
                     if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title);
                     if (po) po.classList.remove('active');

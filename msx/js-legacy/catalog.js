@@ -703,11 +703,82 @@ function isRutubeDirect() {
   return rutubeDirectMode;
 }
 window.isRutubeDirect = isRutubeDirect;
+function rutubeTvApp() {
+  return !!(window.AppState && (AppState.tizenApp || AppState.platform === 'webos'));
+}
+var rutubeVideoDirectBroken = false;
+function rutubeVideoDirect() {
+  return !rutubeVideoDirectBroken && !isRutubeDirect() && rutubeTvApp();
+}
+window.rutubeVideoDirect = rutubeVideoDirect;
+var rutubeDeviceOffUntil = 0;
+var RUTUBE_DEVICE_RETRY_MS = 5 * 60 * 1000;
+var RUTUBE_DEVICE_TIMEOUT_MS = 12000;
+function rutubeDeviceAvailable() {
+  if (isRutubeDirect() || !rutubeTvApp() || Date.now() < rutubeDeviceOffUntil) return false;
+  if (AppState.tizenApp) return typeof tizenServiceGet === 'function';
+  return typeof lunaRequest === 'function' && typeof lunaAvailable === 'function' && lunaAvailable();
+}
+window.rutubeDeviceAvailable = rutubeDeviceAvailable;
+function rutubeDeviceJson(apiUrl) {
+  return new Promise(function (resolve) {
+    var done = false;
+    var finish = function (data, serviceDown) {
+      if (done) return;
+      done = true;
+      if (serviceDown) rutubeDeviceOffUntil = Date.now() + RUTUBE_DEVICE_RETRY_MS;
+      resolve(data || null);
+    };
+    setTimeout(function () {
+      finish(null, true);
+    }, RUTUBE_DEVICE_TIMEOUT_MS + 1000);
+    try {
+      if (AppState.tizenApp) {
+        var port = window.TIZEN_TRACKS_PORT || 8096;
+        tizenServiceGet(port, '/rutube?url=' + encodeURIComponent(apiUrl), RUTUBE_DEVICE_TIMEOUT_MS, function (err, xhr) {
+          if (err || !xhr) {
+            finish(null, true);
+            return;
+          }
+          var text = xhr.responseText || '';
+          if (xhr.status === 200) {
+            try {
+              finish(JSON.parse(text), false);
+            } catch (e) {
+              finish(null, false);
+            }
+            return;
+          }
+          finish(null, text.indexOf('RuTube') === -1);
+        });
+        return;
+      }
+      lunaRequest('luna://com.torrstream.app.service', 'rutube', {
+        url: apiUrl
+      }, function (r) {
+        try {
+          finish(JSON.parse(r.data), false);
+        } catch (e) {
+          finish(null, false);
+        }
+      }, function (r) {
+        var text = String(r && r.errorText || '');
+        finish(null, text.indexOf('RuTube') !== 0);
+      }, true);
+    } catch (e) {
+      finish(null, true);
+    }
+  });
+}
 function rutubeApiJson(_x) {
   return _rutubeApiJson.apply(this, arguments);
 }
 function _rutubeApiJson() {
   _rutubeApiJson = _asyncToGenerator(function* (apiUrl) {
+    if (rutubeDeviceAvailable()) {
+      var viaDevice = yield rutubeDeviceJson(apiUrl);
+      if (viaDevice) return viaDevice;
+    }
     if (isRutubeDirect()) {
       var controller = new AbortController();
       var timer = setTimeout(function () {
@@ -855,10 +926,37 @@ window.fetchRutubeTrailerCached = fetchRutubeTrailerCached;
 function wrapRutubeHls(url) {
   if (!url) return url;
   if (url.indexOf('/api/rutube/hls/proxy') === 0) return url;
-  if (isRutubeDirect()) return url;
+  if (isRutubeDirect() || rutubeVideoDirect()) return url;
   return '/api/rutube/hls/proxy?u=' + encodeURIComponent(url);
 }
+function setTrailerVideoSrc(video, url) {
+  var direct = rutubeVideoDirect();
+  var src = wrapRutubeHls(url);
+  video.src = src;
+  if (!direct) return;
+  var onPlaying = function () {
+    cleanup();
+  };
+  var onError = function () {
+    cleanup();
+    if (!video.parentNode || video.getAttribute('src') !== src) return;
+    rutubeVideoDirectBroken = true;
+    console.warn('Трейлер с RuTube напрямую не пошёл (код ' + (video.error ? video.error.code : '?') + ') — дальше через сервер');
+    video._trailerRetrying = true;
+    video.src = wrapRutubeHls(url);
+    var p = video.play();
+    if (p && p['catch']) p['catch'](function () {});
+  };
+  var cleanup = function () {
+    video.removeEventListener('playing', onPlaying);
+    video.removeEventListener('error', onError);
+  };
+  video.addEventListener('playing', onPlaying);
+  video.addEventListener('error', onError);
+}
+window.setTrailerVideoSrc = setTrailerVideoSrc;
 function trailerUsesHlsJs() {
+  if (rutubeVideoDirect()) return false;
   if (!(window.Hls && Hls.isSupported())) return false;
   if (window.LEGACY_JS && (window.PalmSystem || window.webOSSystem)) return false;
   if (AppState.tizenLegacy) return false;
@@ -4026,7 +4124,7 @@ function startTrailerBackground(url) {
     });
     video._hls = hls;
   } else {
-    video.src = wrapRutubeHls(url);
+    setTrailerVideoSrc(video, url);
     video.play().catch(function () {});
   }
   function revealVideo() {
@@ -4183,8 +4281,8 @@ function _openRutubeTrailerInPlayer() {
               alert('Ошибка воспроизведения трейлера');
             }
           });
-        } else if (vp.canPlayType('application/vnd.apple.mpegurl')) {
-          vp.src = wrapRutubeHls(m3u8Url);
+        } else if (rutubeVideoDirect() || vp.canPlayType('application/vnd.apple.mpegurl')) {
+          setTrailerVideoSrc(vp, m3u8Url);
           vp.addEventListener('loadedmetadata', function () {
             if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle('Трейлер: ' + title);
             if (po) po.classList.remove('active');
