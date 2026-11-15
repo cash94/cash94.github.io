@@ -1445,6 +1445,12 @@
     video.setAttribute('disableremoteplayback', '');
     media.appendChild(video);
     homeState.hero.video = video;
+    if (heroTvPlayer()) {
+      fitTrailerBox(video);
+      video.style.left = 'auto';
+      video.style.right = '0';
+      video.style.width = 'var(--trailer-w, 100%)';
+    }
     var volumeStarted = false;
     function startVolumeFade() {
       if (volumeStarted || homeState.hero.video !== video) return;
@@ -1540,13 +1546,23 @@
     startHeroWatchdog();
   }
   var TRAILER_WIDEN = 1.08;
+  function heroTvPlayer() {
+    return !!(window.AppState && (AppState.platform === 'webos' || AppState.tizenApp) && typeof window.trailerUsesHlsJs === 'function' && !window.trailerUsesHlsJs());
+  }
   function fitTrailerBox(video) {
     var hero = el('home-hero');
     if (!hero || !video) return;
-    var ar = video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 16 / 9;
+    var vw = video.videoWidth,
+      vh = video.videoHeight;
+    var ar = vw && vh ? vw / vh : 16 / 9;
+    if (!(ar >= 1.2 && ar <= 2.5)) ar = 16 / 9;
+    var tvPlayer = heroTvPlayer();
     var h = hero.clientHeight - 2;
-    var w = Math.min(hero.clientWidth, Math.round(h * ar * TRAILER_WIDEN));
+    var w = Math.min(hero.clientWidth, Math.round(h * ar * (tvPlayer ? 1 : TRAILER_WIDEN)));
     if (w > 0) hero.style.setProperty('--trailer-w', w + 'px');
+    if (typeof window.noteRutubeFrame === 'function') {
+      window.noteRutubeFrame('кадр ' + (vw && vh ? vw + '×' + vh : '?') + ', блок ' + w + '×' + h + (tvPlayer ? ' (плеер ТВ)' : ''));
+    }
   }
   function startHeroWatchdog() {
     stopHeroWatchdog();

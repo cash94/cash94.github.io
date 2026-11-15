@@ -870,18 +870,25 @@ window.rutubeVideoDirect = rutubeVideoDirect;
  * видео напрямую с RuTube или через сервер, каким плеером и играло ли; поиск —
  * через службу на телевизоре, напрямую (Android) или через сервер и почему
  */
-var rutubeTrailerDiag = { video: '', played: false, api: '', brokenCode: null, at: '' };
+var rutubeTrailerDiag = { video: '', played: false, api: '', brokenCode: null, at: '', frame: '' };
 
 function noteRutubeApi(text) {
     rutubeTrailerDiag.api = text;
 }
 window.noteRutubeApi = noteRutubeApi;
 
+// Размер кадра и блока трейлера на главной (home.js: fitTrailerBox)
+function noteRutubeFrame(text) {
+    rutubeTrailerDiag.frame = text;
+}
+window.noteRutubeFrame = noteRutubeFrame;
+
 function rutubeTrailerDiagText() {
     var d = rutubeTrailerDiag, parts = [];
     if (!d.video && !d.api) return 'ещё не запускали';
     if (d.video) parts.push('видео: ' + d.video + (d.played ? ', играло' : ''));
     if (d.api) parts.push('поиск: ' + d.api);
+    if (d.frame) parts.push(d.frame);
     if (d.brokenCode !== null) parts.push('прямое видео выключено до перезапуска (ошибка плеера, код ' + d.brokenCode + ')');
     if (d.at) parts.push('в ' + d.at);
     return parts.join(' · ');
@@ -1123,6 +1130,7 @@ function wrapRutubeHls(url) {
     rutubeTrailerDiag.video = (direct ? (isRutubeDirect() ? 'напрямую (перехват Android)' : 'напрямую') : 'через сервер') +
         ' · ' + (trailerUsesHlsJs() ? 'hls.js' : 'плеер ТВ');
     rutubeTrailerDiag.played = false;
+    rutubeTrailerDiag.frame = '';
     rutubeTrailerDiag.at = rutubeDiagTime();
     return direct ? url : '/api/rutube/hls/proxy?u=' + encodeURIComponent(url);
 }

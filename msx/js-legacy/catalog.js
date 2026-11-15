@@ -716,18 +716,24 @@ var rutubeTrailerDiag = {
   played: false,
   api: '',
   brokenCode: null,
-  at: ''
+  at: '',
+  frame: ''
 };
 function noteRutubeApi(text) {
   rutubeTrailerDiag.api = text;
 }
 window.noteRutubeApi = noteRutubeApi;
+function noteRutubeFrame(text) {
+  rutubeTrailerDiag.frame = text;
+}
+window.noteRutubeFrame = noteRutubeFrame;
 function rutubeTrailerDiagText() {
   var d = rutubeTrailerDiag,
     parts = [];
   if (!d.video && !d.api) return 'ещё не запускали';
   if (d.video) parts.push('видео: ' + d.video + (d.played ? ', играло' : ''));
   if (d.api) parts.push('поиск: ' + d.api);
+  if (d.frame) parts.push(d.frame);
   if (d.brokenCode !== null) parts.push('прямое видео выключено до перезапуска (ошибка плеера, код ' + d.brokenCode + ')');
   if (d.at) parts.push('в ' + d.at);
   return parts.join(' · ');
@@ -971,6 +977,7 @@ function wrapRutubeHls(url) {
   var direct = isRutubeDirect() || rutubeVideoDirect();
   rutubeTrailerDiag.video = (direct ? isRutubeDirect() ? 'напрямую (перехват Android)' : 'напрямую' : 'через сервер') + ' · ' + (trailerUsesHlsJs() ? 'hls.js' : 'плеер ТВ');
   rutubeTrailerDiag.played = false;
+  rutubeTrailerDiag.frame = '';
   rutubeTrailerDiag.at = rutubeDiagTime();
   return direct ? url : '/api/rutube/hls/proxy?u=' + encodeURIComponent(url);
 }

@@ -1893,6 +1893,16 @@
         video.setAttribute('disableremoteplayback', '');
         media.appendChild(video);
         homeState.hero.video = video;
+        // Плеер телевизора ставит окно кадра по блоку <video> на старте и
+        // потом может его не двигать: на webOS 4 кадр так и оставался на весь
+        // баннер, хотя с первым кадром блок сужается вправо (home-hero-playing).
+        // Здесь блок сразу такой, каким будет во время показа
+        if (heroTvPlayer()) {
+            fitTrailerBox(video);
+            video.style.left = 'auto';
+            video.style.right = '0';
+            video.style.width = 'var(--trailer-w, 100%)';
+        }
 
         // Звук поднимаем с нуля: автозапуск со звуком браузер не разрешит
         var volumeStarted = false;
@@ -2010,13 +2020,33 @@
     // сверху и снизу, на глаз незаметно.
     var TRAILER_WIDEN = 1.08;
 
+    /** Трейлер играет плеер телевизора (webOS, Tizen без hls.js) — аппаратный слой */
+    function heroTvPlayer() {
+        return !!(window.AppState && (AppState.platform === 'webos' || AppState.tizenApp) &&
+            typeof window.trailerUsesHlsJs === 'function' && !window.trailerUsesHlsJs());
+    }
+
     function fitTrailerBox(video) {
         var hero = el('home-hero');
         if (!hero || !video) return;
-        var ar = (video.videoWidth && video.videoHeight) ? video.videoWidth / video.videoHeight : 16 / 9;
+        var vw = video.videoWidth, vh = video.videoHeight;
+        var ar = (vw && vh) ? vw / vh : 16 / 9;
+        // Плеер телевизора (webOS, Tizen — трейлер без hls.js) размер кадра
+        // сообщает не всегда верно: на webOS 4 блок раздувался на весь баннер,
+        // и кадр ложился под подписи. Невозможную для трейлера пропорцию не берём
+        if (!(ar >= 1.2 && ar <= 2.5)) ar = 16 / 9;
+        // Тот же плеер выводит кадр аппаратным слоем и object-fit не знает —
+        // растягивает кадр на блок. Поэтому блок ровно по пропорции кадра, без
+        // запаса TRAILER_WIDEN: растягивать нечего
+        var tvPlayer = heroTvPlayer();
         var h = hero.clientHeight - 2;                  // видео на 2px короче баннера
-        var w = Math.min(hero.clientWidth, Math.round(h * ar * TRAILER_WIDEN));
+        var w = Math.min(hero.clientWidth, Math.round(h * ar * (tvPlayer ? 1 : TRAILER_WIDEN)));
         if (w > 0) hero.style.setProperty('--trailer-w', w + 'px');
+        // Для «Об устройстве»: что сообщил плеер и какой вышел блок
+        if (typeof window.noteRutubeFrame === 'function') {
+            window.noteRutubeFrame('кадр ' + (vw && vh ? vw + '×' + vh : '?') + ', блок ' + w + '×' + h +
+                (tvPlayer ? ' (плеер ТВ)' : ''));
+        }
     }
 
     /**
