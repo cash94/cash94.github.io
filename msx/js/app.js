@@ -3086,6 +3086,9 @@ function renderDeviceInfo() {
     if (!tizenServiceStatus[tracksPort]) checkTizenService(tracksPort, 'не запущена (нужен TorrStream-Tizen 1.1.4+)');
     if (!tizenServiceStatus[ffprobePort]) checkTizenService(ffprobePort, 'не установлена (TorrStream-ffprobe.wgt, Tizen 6+)');
   }
+  // Последний трейлер RuTube (catalog.js: rutubeTrailerDiagText): видео напрямую
+  // с RuTube или через сервер, поиск — службой на ТВ или через сервер и почему
+  rows.push(['Трейлеры RuTube', typeof window.rutubeTrailerDiagText === 'function' ? rutubeTrailerDiagText() : '—']);
   // Tizen: дорожки, как их видит AVPlay (js/tizen-avplay.js), — сырые extra_info
   if (window.tizenAvplayDiag) rows.push(['Дорожки AVPlay', window.tizenAvplayDiag]);
   // Выбранная / игравшая дорожка на последней сверке (tizen-avplay.js: enforceTracks)

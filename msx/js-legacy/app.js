@@ -2422,6 +2422,7 @@ function renderDeviceInfo() {
     if (!tizenServiceStatus[tracksPort]) checkTizenService(tracksPort, 'не запущена (нужен TorrStream-Tizen 1.1.4+)');
     if (!tizenServiceStatus[ffprobePort]) checkTizenService(ffprobePort, 'не установлена (TorrStream-ffprobe.wgt, Tizen 6+)');
   }
+  rows.push(['Трейлеры RuTube', typeof window.rutubeTrailerDiagText === 'function' ? rutubeTrailerDiagText() : '—']);
   if (window.tizenAvplayDiag) rows.push(['Дорожки AVPlay', window.tizenAvplayDiag]);
   if (window.tizenAvplayTrackDiag) rows.push(['Выбор дорожек AVPlay', window.tizenAvplayTrackDiag]);
   if (window.tizenAvplayRoi) rows.push(['Обрезка кадра AVPlay', window.tizenAvplayRoi]);

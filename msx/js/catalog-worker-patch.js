@@ -194,6 +194,8 @@
             (typeof rutubeDeviceAvailable === 'function' && rutubeDeviceAvailable())) {
             return _origFetchRutubeTrailer(title, originalTitle, releaseDate);
         }
+        // Воркер ищет через прокси сервера (catalog-worker.js) — для «Об устройстве»
+        if (typeof noteRutubeApi === 'function') noteRutubeApi('сервер');
         return CatalogWorker.fetchRutubeTrailer(title, originalTitle, releaseDate)
             .then(function (data) {
                 if (data && data.url) return data;

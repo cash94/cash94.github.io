@@ -160,6 +160,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     if (typeof isRutubeDirect === 'function' && isRutubeDirect() || typeof rutubeDeviceAvailable === 'function' && rutubeDeviceAvailable()) {
       return _origFetchRutubeTrailer(title, originalTitle, releaseDate);
     }
+    if (typeof noteRutubeApi === 'function') noteRutubeApi('сервер');
     return CatalogWorker.fetchRutubeTrailer(title, originalTitle, releaseDate).then(function (data) {
       if (data && data.url) return data;
       return _origFetchRutubeTrailer(title, originalTitle, releaseDate);

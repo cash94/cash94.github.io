@@ -711,7 +711,34 @@ function rutubeVideoDirect() {
   return !rutubeVideoDirectBroken && !isRutubeDirect() && rutubeTvApp();
 }
 window.rutubeVideoDirect = rutubeVideoDirect;
+var rutubeTrailerDiag = {
+  video: '',
+  played: false,
+  api: '',
+  brokenCode: null,
+  at: ''
+};
+function noteRutubeApi(text) {
+  rutubeTrailerDiag.api = text;
+}
+window.noteRutubeApi = noteRutubeApi;
+function rutubeTrailerDiagText() {
+  var d = rutubeTrailerDiag,
+    parts = [];
+  if (!d.video && !d.api) return 'ещё не запускали';
+  if (d.video) parts.push('видео: ' + d.video + (d.played ? ', играло' : ''));
+  if (d.api) parts.push('поиск: ' + d.api);
+  if (d.brokenCode !== null) parts.push('прямое видео выключено до перезапуска (ошибка плеера, код ' + d.brokenCode + ')');
+  if (d.at) parts.push('в ' + d.at);
+  return parts.join(' · ');
+}
+window.rutubeTrailerDiagText = rutubeTrailerDiagText;
+function rutubeDiagTime() {
+  var t = new Date();
+  return (t.getHours() < 10 ? '0' : '') + t.getHours() + ':' + (t.getMinutes() < 10 ? '0' : '') + t.getMinutes();
+}
 var rutubeDeviceOffUntil = 0;
+var rutubeDeviceOffWhy = '';
 var RUTUBE_DEVICE_RETRY_MS = 5 * 60 * 1000;
 var RUTUBE_DEVICE_TIMEOUT_MS = 12000;
 function rutubeDeviceAvailable() {
@@ -723,21 +750,25 @@ window.rutubeDeviceAvailable = rutubeDeviceAvailable;
 function rutubeDeviceJson(apiUrl) {
   return new Promise(function (resolve) {
     var done = false;
-    var finish = function (data, serviceDown) {
+    var finish = function (data, serviceDown, why) {
       if (done) return;
       done = true;
-      if (serviceDown) rutubeDeviceOffUntil = Date.now() + RUTUBE_DEVICE_RETRY_MS;
+      if (serviceDown) {
+        rutubeDeviceOffUntil = Date.now() + RUTUBE_DEVICE_RETRY_MS;
+        rutubeDeviceOffWhy = why || 'ошибка';
+      }
+      noteRutubeApi(data ? 'служба на ТВ' : 'сервер (служба: ' + (why || 'ошибка') + ')');
       resolve(data || null);
     };
     setTimeout(function () {
-      finish(null, true);
+      finish(null, true, 'нет ответа');
     }, RUTUBE_DEVICE_TIMEOUT_MS + 1000);
     try {
       if (AppState.tizenApp) {
         var port = window.TIZEN_TRACKS_PORT || 8096;
         tizenServiceGet(port, '/rutube?url=' + encodeURIComponent(apiUrl), RUTUBE_DEVICE_TIMEOUT_MS, function (err, xhr) {
           if (err || !xhr) {
-            finish(null, true);
+            finish(null, true, err || 'нет ответа');
             return;
           }
           var text = xhr.responseText || '';
@@ -745,11 +776,12 @@ function rutubeDeviceJson(apiUrl) {
             try {
               finish(JSON.parse(text), false);
             } catch (e) {
-              finish(null, false);
+              finish(null, false, 'ответ не разобран');
             }
             return;
           }
-          finish(null, text.indexOf('RuTube') === -1);
+          var rutubeErr = text.indexOf('RuTube') !== -1;
+          finish(null, !rutubeErr, rutubeErr ? 'RuTube HTTP ' + xhr.status : 'нет /rutube — обновите TorrStream-Tizen до 1.1.5');
         });
         return;
       }
@@ -759,14 +791,15 @@ function rutubeDeviceJson(apiUrl) {
         try {
           finish(JSON.parse(r.data), false);
         } catch (e) {
-          finish(null, false);
+          finish(null, false, 'ответ не разобран');
         }
       }, function (r) {
         var text = String(r && r.errorText || '');
-        finish(null, text.indexOf('RuTube') !== 0);
+        var rutubeErr = text.indexOf('RuTube') === 0;
+        finish(null, !rutubeErr, rutubeErr ? text : 'нет метода rutube — обновите TorrStream-webOS до 1.0.6 (' + (text || 'ошибка Luna') + ')');
       }, true);
     } catch (e) {
-      finish(null, true);
+      finish(null, true, e.message);
     }
   });
 }
@@ -778,6 +811,10 @@ function _rutubeApiJson() {
     if (rutubeDeviceAvailable()) {
       var viaDevice = yield rutubeDeviceJson(apiUrl);
       if (viaDevice) return viaDevice;
+    } else if (rutubeTvApp() && !isRutubeDirect()) {
+      noteRutubeApi(Date.now() < rutubeDeviceOffUntil ? 'сервер (служба: ' + rutubeDeviceOffWhy + '; снова спросим через ' + Math.ceil((rutubeDeviceOffUntil - Date.now()) / 60000) + ' мин)' : 'сервер (службы на ТВ нет)');
+    } else if (!isRutubeDirect()) {
+      noteRutubeApi('сервер');
     }
     if (isRutubeDirect()) {
       var controller = new AbortController();
@@ -788,9 +825,14 @@ function _rutubeApiJson() {
         var resp = yield fetch(apiUrl, {
           signal: controller.signal
         });
-        if (resp.ok) return yield resp.json();
+        if (resp.ok) {
+          noteRutubeApi('напрямую (Android)');
+          return yield resp.json();
+        }
+        noteRutubeApi('сервер (напрямую: HTTP ' + resp.status + ')');
       } catch (e) {
         console.warn('RuTube напрямую не ответил:', e.message);
+        noteRutubeApi('сервер (напрямую: ' + (e.message || 'ошибка') + ')');
       } finally {
         clearTimeout(timer);
       }
@@ -926,13 +968,21 @@ window.fetchRutubeTrailerCached = fetchRutubeTrailerCached;
 function wrapRutubeHls(url) {
   if (!url) return url;
   if (url.indexOf('/api/rutube/hls/proxy') === 0) return url;
-  if (isRutubeDirect() || rutubeVideoDirect()) return url;
-  return '/api/rutube/hls/proxy?u=' + encodeURIComponent(url);
+  var direct = isRutubeDirect() || rutubeVideoDirect();
+  rutubeTrailerDiag.video = (direct ? isRutubeDirect() ? 'напрямую (перехват Android)' : 'напрямую' : 'через сервер') + ' · ' + (trailerUsesHlsJs() ? 'hls.js' : 'плеер ТВ');
+  rutubeTrailerDiag.played = false;
+  rutubeTrailerDiag.at = rutubeDiagTime();
+  return direct ? url : '/api/rutube/hls/proxy?u=' + encodeURIComponent(url);
 }
 function setTrailerVideoSrc(video, url) {
   var direct = rutubeVideoDirect();
   var src = wrapRutubeHls(url);
   video.src = src;
+  var markPlayed = function () {
+    video.removeEventListener('playing', markPlayed);
+    if (video.getAttribute('src') && video.parentNode) rutubeTrailerDiag.played = true;
+  };
+  video.addEventListener('playing', markPlayed);
   if (!direct) return;
   var onPlaying = function () {
     cleanup();
@@ -941,9 +991,12 @@ function setTrailerVideoSrc(video, url) {
     cleanup();
     if (!video.parentNode || video.getAttribute('src') !== src) return;
     rutubeVideoDirectBroken = true;
-    console.warn('Трейлер с RuTube напрямую не пошёл (код ' + (video.error ? video.error.code : '?') + ') — дальше через сервер');
+    var code = video.error ? video.error.code : '?';
+    console.warn('Трейлер с RuTube напрямую не пошёл (код ' + code + ') — дальше через сервер');
     video._trailerRetrying = true;
     video.src = wrapRutubeHls(url);
+    rutubeTrailerDiag.video = 'напрямую не пошло (код ' + code + ') → через сервер · плеер ТВ';
+    rutubeTrailerDiag.brokenCode = code;
     var p = video.play();
     if (p && p['catch']) p['catch'](function () {});
   };
