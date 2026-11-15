@@ -1547,7 +1547,7 @@
   }
   var TRAILER_WIDEN = 1.08;
   function heroTvPlayer() {
-    return !!(window.AppState && (AppState.platform === 'webos' || AppState.tizenApp) && typeof window.trailerUsesHlsJs === 'function' && !window.trailerUsesHlsJs());
+    return !!(window.AppState && (AppState.platform === 'webos' || AppState.platform === 'vidaa' || AppState.tizenApp) && typeof window.trailerUsesHlsJs === 'function' && !window.trailerUsesHlsJs());
   }
   function fitTrailerBox(video) {
     var hero = el('home-hero');

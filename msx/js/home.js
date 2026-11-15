@@ -2020,9 +2020,13 @@
     // сверху и снизу, на глаз незаметно.
     var TRAILER_WIDEN = 1.08;
 
-    /** Трейлер играет плеер телевизора (webOS, Tizen без hls.js) — аппаратный слой */
+    /**
+     * Трейлер играет плеер телевизора (webOS, Tizen, Hisense VIDAA — без
+     * hls.js): кадр рисует аппаратный слой. На VIDAA так бывает, если браузер
+     * сам берёт m3u8 (catalog.js: browserNativeHls) — прямо с RuTube
+     */
     function heroTvPlayer() {
-        return !!(window.AppState && (AppState.platform === 'webos' || AppState.tizenApp) &&
+        return !!(window.AppState && (AppState.platform === 'webos' || AppState.platform === 'vidaa' || AppState.tizenApp) &&
             typeof window.trailerUsesHlsJs === 'function' && !window.trailerUsesHlsJs());
     }
 
@@ -2031,7 +2035,7 @@
         if (!hero || !video) return;
         var vw = video.videoWidth, vh = video.videoHeight;
         var ar = (vw && vh) ? vw / vh : 16 / 9;
-        // Плеер телевизора (webOS, Tizen — трейлер без hls.js) размер кадра
+        // Плеер телевизора (webOS, Tizen, VIDAA — трейлер без hls.js) размер кадра
         // сообщает не всегда верно: на webOS 4 блок раздувался на весь баннер,
         // и кадр ложился под подписи. Невозможную для трейлера пропорцию не берём
         if (!(ar >= 1.2 && ar <= 2.5)) ar = 16 / 9;
