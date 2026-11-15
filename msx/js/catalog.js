@@ -853,15 +853,38 @@ window.isRutubeDirect = isRutubeDirect;
  *    (метод rutube). В приложении без такой службы API, как раньше, — через сервер.
  * Прямое видео не пошло — ролик сразу же через прокси сервера (setTrailerVideoSrc),
  * и дальше до перезапуска приложения — тоже.
+ *
+ * Обычный браузер, который сам играет m3u8 в <video> (Safari, Chrome и Edge с
+ * встроенным HLS, Chrome на Android), — так же: видео прямо с RuTube, мимо
+ * сервера. Web Worker тут не помог бы — его запросы проверяет тот же CORS.
+ * API в браузере — по-прежнему через сервер: прочитать ответ RuTube страница
+ * не может, а службы, как на ТВ, у браузера нет. Firefox и старые Chrome m3u8
+ * в <video> не играют — у них, как раньше, hls.js через прокси сервера.
  */
 function rutubeTvApp() {
     return !!(window.AppState && (AppState.tizenApp || AppState.platform === 'webos'));
 }
 
 var rutubeVideoDirectBroken = false;
+var rutubeNativeHls = null;
+
+/** Браузер сам играет HLS в <video> (без hls.js) */
+function browserNativeHls() {
+    if (rutubeNativeHls === null) {
+        try {
+            rutubeNativeHls = !!document.createElement('video').canPlayType('application/vnd.apple.mpegurl');
+        } catch (e) { rutubeNativeHls = false; }
+    }
+    return rutubeNativeHls;
+}
 
 function rutubeVideoDirect() {
-    return !rutubeVideoDirectBroken && !isRutubeDirect() && rutubeTvApp();
+    return !rutubeVideoDirectBroken && !isRutubeDirect() && (rutubeTvApp() || browserNativeHls());
+}
+
+/** Чем играет прямой ролик — для «Об устройстве» */
+function rutubeNativePlayerName() {
+    return rutubeTvApp() ? 'плеер ТВ' : 'встроенный HLS браузера';
 }
 window.rutubeVideoDirect = rutubeVideoDirect;
 
@@ -1128,7 +1151,7 @@ function wrapRutubeHls(url) {
     if (url.indexOf('/api/rutube/hls/proxy') === 0) return url;
     var direct = isRutubeDirect() || rutubeVideoDirect();
     rutubeTrailerDiag.video = (direct ? (isRutubeDirect() ? 'напрямую (перехват Android)' : 'напрямую') : 'через сервер') +
-        ' · ' + (trailerUsesHlsJs() ? 'hls.js' : 'плеер ТВ');
+        ' · ' + (trailerUsesHlsJs() ? 'hls.js' : rutubeNativePlayerName());
     rutubeTrailerDiag.played = false;
     rutubeTrailerDiag.frame = '';
     rutubeTrailerDiag.at = rutubeDiagTime();
@@ -1162,7 +1185,7 @@ function setTrailerVideoSrc(video, url) {
         console.warn('Трейлер с RuTube напрямую не пошёл (код ' + code + ') — дальше через сервер');
         video._trailerRetrying = true;
         video.src = wrapRutubeHls(url);
-        rutubeTrailerDiag.video = 'напрямую не пошло (код ' + code + ') → через сервер · плеер ТВ';
+        rutubeTrailerDiag.video = 'напрямую не пошло (код ' + code + ') → через сервер · ' + rutubeNativePlayerName();
         rutubeTrailerDiag.brokenCode = code;
         var p = video.play();
         if (p && p['catch']) p['catch'](function () { });
@@ -1184,8 +1207,9 @@ window.setTrailerVideoSrc = setTrailerVideoSrc;
  * самое: из MSE звук есть, картинки нет, поэтому старым Tizen (до 7, движок
  * до Chrome 94) m3u8 тоже отдаём плееру телевизора. Tizen 7+ про такое пока
  * не сообщали — у них hls.js, как у прочих. Новые webOS и прочие — как раньше.
- * Приложения на ТВ берут ролик с RuTube напрямую (rutubeVideoDirect) — тоже
- * плеером телевизора: hls.js без заголовка CORS ответа RuTube не получит.
+ * Приложения на ТВ и браузеры со встроенным HLS берут ролик с RuTube напрямую
+ * (rutubeVideoDirect) — тоже без hls.js: без заголовка CORS он ответа RuTube
+ * не получит, а <video> его не проверяет.
  */
 function trailerUsesHlsJs() {
     if (rutubeVideoDirect()) return false;

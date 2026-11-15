@@ -707,8 +707,22 @@ function rutubeTvApp() {
   return !!(window.AppState && (AppState.tizenApp || AppState.platform === 'webos'));
 }
 var rutubeVideoDirectBroken = false;
+var rutubeNativeHls = null;
+function browserNativeHls() {
+  if (rutubeNativeHls === null) {
+    try {
+      rutubeNativeHls = !!document.createElement('video').canPlayType('application/vnd.apple.mpegurl');
+    } catch (e) {
+      rutubeNativeHls = false;
+    }
+  }
+  return rutubeNativeHls;
+}
 function rutubeVideoDirect() {
-  return !rutubeVideoDirectBroken && !isRutubeDirect() && rutubeTvApp();
+  return !rutubeVideoDirectBroken && !isRutubeDirect() && (rutubeTvApp() || browserNativeHls());
+}
+function rutubeNativePlayerName() {
+  return rutubeTvApp() ? 'плеер ТВ' : 'встроенный HLS браузера';
 }
 window.rutubeVideoDirect = rutubeVideoDirect;
 var rutubeTrailerDiag = {
@@ -975,7 +989,7 @@ function wrapRutubeHls(url) {
   if (!url) return url;
   if (url.indexOf('/api/rutube/hls/proxy') === 0) return url;
   var direct = isRutubeDirect() || rutubeVideoDirect();
-  rutubeTrailerDiag.video = (direct ? isRutubeDirect() ? 'напрямую (перехват Android)' : 'напрямую' : 'через сервер') + ' · ' + (trailerUsesHlsJs() ? 'hls.js' : 'плеер ТВ');
+  rutubeTrailerDiag.video = (direct ? isRutubeDirect() ? 'напрямую (перехват Android)' : 'напрямую' : 'через сервер') + ' · ' + (trailerUsesHlsJs() ? 'hls.js' : rutubeNativePlayerName());
   rutubeTrailerDiag.played = false;
   rutubeTrailerDiag.frame = '';
   rutubeTrailerDiag.at = rutubeDiagTime();
@@ -1002,7 +1016,7 @@ function setTrailerVideoSrc(video, url) {
     console.warn('Трейлер с RuTube напрямую не пошёл (код ' + code + ') — дальше через сервер');
     video._trailerRetrying = true;
     video.src = wrapRutubeHls(url);
-    rutubeTrailerDiag.video = 'напрямую не пошло (код ' + code + ') → через сервер · плеер ТВ';
+    rutubeTrailerDiag.video = 'напрямую не пошло (код ' + code + ') → через сервер · ' + rutubeNativePlayerName();
     rutubeTrailerDiag.brokenCode = code;
     var p = video.play();
     if (p && p['catch']) p['catch'](function () {});
