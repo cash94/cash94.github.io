@@ -3366,9 +3366,16 @@ function scrollRestTop(el) {
  *   • «Мои торренты» — #main-container, сдвигается #content-torrents;
  *   • выдача поиска — #search-results, сдвигается её обёртка
  *     .search-results-body (renderSearchResults / displayGlobalSearchResults
- *     в torrents.js кладут всю выдачу в неё).
- * Состояние на контейнере прокрутки: _flipEl — сдвигаемый элемент,
- * _flipUntil — срок перехода по стенным часам.
+ *     в torrents.js кладут всю выдачу в неё);
+ *   • сцена карточки (cinema) — #detail-view, сдвигаются панель и нижние
+ *     ленты. Не их общий родитель #catalog-detail-extra: в нём же неподвижный
+ *     кадр (position: fixed), а transform у предка увёз бы кадр вместе со
+ *     сценой. Раньше сцену крутил твин scrollTop на requestAnimationFrame —
+ *     на слабом ТВ первый шаг вниз шёл ~15 кадрами в секунду: каждый кадр
+ *     твина ждал основной поток, занятый первой растеризацией лент.
+ * Состояние на контейнере прокрутки: _flipEl — ведущий сдвигаемый элемент
+ * (по нему читается текущий сдвиг), _flipEls — все сдвигаемые, _flipUntil —
+ * срок перехода по стенным часам.
  */
 function flipContentFor(el) {
     if (!el || !window.AppState || !AppState.gridScrollTransform) return null;
@@ -3391,7 +3398,43 @@ function flipContentFor(el) {
         var body = el.firstElementChild;
         return (body && body.classList.contains('search-results-body') && !body.nextElementSibling) ? body : null;
     }
+    if (el.id === 'detail-view') {
+        if (!el.classList.contains('detail-cinema') || !el.classList.contains('catalog-detail-mode')) return null;
+        var extra = getEl('catalog-detail-extra');
+        var panel = extra && extra.querySelector('.catalog-detail-panel');
+        var below = getEl('detail-cinema-below');
+        return (panel && below && panel.parentNode === extra && below.parentNode === extra) ? [panel, below] : null;
+    }
     return null;
+}
+
+/** Сдвигаемые элементы: flipContentFor отдаёт один элемент или список */
+function flipList(content) {
+    if (!content) return [];
+    return content.nodeType === 1 ? [content] : content;
+}
+
+/* Кривая перехода сцены карточки — кубическая Эрмита, как у твина
+ * (easeScroll в animations.js): y(p) = (p³ − 2p² + p)·m0 + 3p² − 2p³.
+ * m0 = 0 — плавная ступенька (почти sine.inOut), m0 > 0 — старт с той
+ * скоростью, с которой ехал прерванный переход. В CSS это ровно
+ * cubic-bezier(1/3, m0/3, 2/3, 1). */
+function flipHermiteY(m0, p) {
+    return (p * p * p - 2 * p * p + p) * m0 + 3 * p * p - 2 * p * p * p;
+}
+
+function flipHermiteSlope(m0, p) {
+    return (3 * p * p - 4 * p + 1) * m0 + 6 * p - 6 * p * p;
+}
+
+/** Доля времени, на которой кривая прошла долю пути y (кривая монотонна при m0 ≤ 3) */
+function flipHermiteTimeAt(m0, y) {
+    var lo = 0, hi = 1;
+    for (var i = 0; i < 24; i++) {
+        var mid = (lo + hi) / 2;
+        if (flipHermiteY(m0, mid) < y) lo = mid; else hi = mid;
+    }
+    return (lo + hi) / 2;
 }
 
 function isFlipScroller(el) {
@@ -3420,13 +3463,24 @@ function isFlipInFlight(el) {
     return Math.abs(flipCurrentY(el)) >= 0.5;
 }
 
+/* Сдвиг читается из getComputedStyle — это пересчёт стилей, а за одно нажатие
+ * его спрашивают несколько раз (isFlipInFlight, pendingScrollDelta, расчёты
+ * прижатия), и между вопросами фокус уже переставил классы: каждый раз
+ * пересчёт заново. Профиль на приставке: ~5 мс на нажатие в сетке. Значение
+ * зависит только от часов анимаций, а они до следующего кадра стоят, — помним
+ * его, пока часы те же. flipApply и снятие сдвига память сбрасывают. */
+var flipYMemo = { el: null, at: -1, y: 0 };
+
 /** Текущий сдвиг содержимого посреди перехода (px) */
 function flipCurrentY(el) {
+    var at = (document.timeline && typeof document.timeline.currentTime === 'number') ? document.timeline.currentTime : -1;
+    if (at >= 0 && flipYMemo.el === el && flipYMemo.at === at) return flipYMemo.y;
     var t = window.getComputedStyle(el._flipEl).transform || '';
     var m = /^matrix(3d)?\(([^)]+)\)/.exec(t);
-    if (!m) return 0;
-    var v = parseFloat(m[2].split(',')[m[1] ? 13 : 5]);
-    return isNaN(v) ? 0 : v;
+    var v = m ? parseFloat(m[2].split(',')[m[1] ? 13 : 5]) : 0;
+    if (isNaN(v)) v = 0;
+    flipYMemo.el = el; flipYMemo.at = at; flipYMemo.y = v;
+    return v;
 }
 
 /* ============ ПЕРЕХВАТ ПЕРЕХОДА НА ХОДУ — БЕЗ ОТКАТА НАЗАД ============
@@ -3488,59 +3542,104 @@ function noteTxLag(el, prog) {
  * без задержки: лента стояла, и забег вперёд на старте читался бы прыжком.
  * Заодно запоминает, когда и как переход заказан.
  */
-function txTransition(el, duration, moving) {
+function txTransition(el, duration, moving, timing) {
     var dur = duration * 1000;
     var lead = moving ? Math.min(el._txLag || 0, dur / 2) : 0;
     el._txRun = { at: animClockNow(), dur: dur, delay: -lead };
-    return 'transform ' + duration + 's linear' + (lead >= 1 ? ' ' + (-Math.round(lead)) + 'ms' : '');
+    return 'transform ' + duration + 's ' + (timing || 'linear') + (lead >= 1 ? ' ' + (-Math.round(lead)) + 'ms' : '');
 }
 
 /**
  * Прокрутить el до top. duration в секундах; 0 — сразу. Новый шаг посреди
  * перехода продолжает с того места, которое сейчас ВИДНО, а не с начала.
+ * ease 'sine.inOut' (сцена карточки) — мягкий разгон и торможение, перехват
+ * на ходу — с текущей скоростью (кривая Эрмита, см. flipHermiteY); иначе
+ * переход линейный, как у всей навигации.
  */
-function flipApply(el, top, duration) {
+function flipApply(el, top, duration, ease) {
     var content = flipContentFor(el);
     if (!content) { el.scrollTop = top; return; }
+    var list = flipList(content);
+    var lead = list[0];
     // Твин с прежнего экрана здесь не нужен — ехать будет переход
     if (typeof Animations !== 'undefined' && Animations.stopScrollTween) Animations.stopScrollTween(el);
     clearPendingScroll(el, '_navPendTop');
 
     var curY = isFlipInFlight(el) ? flipCurrentY(el) : 0;
     var visual = el.scrollTop - curY;
+    // Доля времени прежнего перехода: у линейного она равна доле пути, у
+    // кривой — по обратной функции
+    var prev = el._flipCurve;
+    var pathDone = (curY && el._flipOffset) ? 1 - curY / el._flipOffset : 0;
+    var timeDone = prev ? flipHermiteTimeAt(prev.m0, pathDone) : pathDone;
     // Перехват на ходу — заодно меряем, насколько старт прежнего перехода
     // отстал от его заказа (см. noteTxLag)
-    if (curY && el._flipOffset) noteTxLag(el, 1 - curY / el._flipOffset);
+    if (curY && el._flipOffset) noteTxLag(el, timeDone);
     // Контейнер тот же, а сдвигаемое содержимое другое (сменился экран в
     // #main-container) — прежнее отпускаем, иначе его сдвиг так и остался бы
-    if (el._flipEl && el._flipEl !== content) {
-        el._flipEl.style.transition = 'none';
-        el._flipEl.style.transform = '';
+    if (el._flipEl && el._flipEl !== lead) releaseFlipEls(el);
+    flipYMemo.el = null;                        // сдвиг сейчас поменяется
+    el._flipEl = lead;
+    el._flipEls = list;
+    var i;
+    for (i = 0; i < list.length; i++) {
+        // Слой у содержимого постоянный, а не на время движения: появление и
+        // снятие слоя на каждом шаге — растеризация всей сетки заново
+        if (!list[i].classList.contains('grid-tx')) list[i].classList.add('grid-tx');
+        list[i].style.transition = 'none';
     }
-    el._flipEl = content;
-    // Слой у содержимого постоянный, а не на время движения: появление и
-    // снятие слоя на каждом шаге — растеризация всей сетки заново
-    if (!content.classList.contains('grid-tx')) content.classList.add('grid-tx');
 
-    content.style.transition = 'none';
+    var prevOffset = el._flipOffset || 0;
     el.scrollTop = top;
     var rest = el.scrollTop;                     // у краёв браузер обрежет сам
     var offset = Math.round(rest - visual);
     if (!(duration > 0) || Math.abs(offset) < 1) {
-        content.style.transform = '';
+        for (i = 0; i < list.length; i++) list[i].style.transform = '';
         el._flipUntil = 0;
         el._flipOffset = 0;
+        el._flipCurve = null;
         return;
     }
-    content.style.transform = 'translate3d(0,' + offset + 'px,0)';
+
+    var timing = null, curve = null;
+    if (ease === 'sine.inOut') {
+        var m0 = 0;
+        // Прежний ехал в ту же сторону — подхватываем его скорость; навстречу —
+        // разворот, честнее с нуля (как у твина в animations.js)
+        if (curY && prevOffset * offset > 0 && el._txRun) {
+            var slope = prev ? flipHermiteSlope(prev.m0, timeDone) : 1;
+            var v0 = Math.abs(prevOffset) * slope / el._txRun.dur;     // px/мс
+            m0 = v0 * duration * 1000 / Math.abs(offset);
+            // Путь короткий для такой скорости: доезжаем быстрее, а не тормозим
+            if (m0 > 3) { duration = duration * 3 / m0; m0 = 3; }
+        }
+        curve = { m0: m0 };
+        timing = 'cubic-bezier(0.3333,' + (m0 / 3).toFixed(4) + ',0.6667,1)';
+    }
+
+    for (i = 0; i < list.length; i++) list[i].style.transform = 'translate3d(0,' + offset + 'px,0)';
     // Начальный сдвиг должен примениться до перехода, иначе браузер склеит
     // обе записи стиля и поедет из нуля в ноль. Читаем стиль, не геометрию —
     // это пересчёт стилей одного элемента, без раскладки
-    window.getComputedStyle(content).transform;
+    for (i = 0; i < list.length; i++) window.getComputedStyle(list[i]).transform;
     el._flipOffset = offset;
-    content.style.transition = txTransition(el, duration, curY !== 0);
-    content.style.transform = 'translate3d(0,0,0)';
+    el._flipCurve = curve;
+    var tr = txTransition(el, duration, curY !== 0, timing);
+    for (i = 0; i < list.length; i++) {
+        list[i].style.transition = tr;
+        list[i].style.transform = 'translate3d(0,0,0)';
+    }
     el._flipUntil = Date.now() + Math.round(duration * 1000) + 50;
+}
+
+/** Снять сдвиг со всех сдвигаемых элементов контейнера */
+function releaseFlipEls(sc) {
+    flipYMemo.el = null;
+    var list = sc._flipEls || (sc._flipEl ? [sc._flipEl] : []);
+    for (var i = 0; i < list.length; i++) {
+        list[i].style.transition = 'none';
+        list[i].style.transform = '';
+    }
 }
 
 /**
@@ -3550,9 +3649,9 @@ function flipApply(el, top, duration) {
 function resetGridScrollTransform(el) {
     var sc = (el && el.nodeType === 1) ? el : getEl('main-container');
     if (!sc || !sc._flipEl) return;
-    sc._flipEl.style.transition = 'none';
-    sc._flipEl.style.transform = '';
+    releaseFlipEls(sc);
     sc._flipUntil = 0;
+    sc._flipCurve = null;
 }
 window.resetGridScrollTransform = resetGridScrollTransform;
 
@@ -4015,7 +4114,7 @@ function applyScroll(container, vars, smooth, duration, ease) {
 
     // Сетка категории — переходом на композиторе (FLIP, см. flipApply)
     if (typeof vars.scrollTop === 'number' && vars.scrollLeft === undefined && isFlipScroller(container)) {
-        flipApply(container, vars.scrollTop, animated ? duration : 0);
+        flipApply(container, vars.scrollTop, animated ? duration : 0, ease);
         return;
     }
     // Прокрутка мимо FLIP, а содержимое ещё сдвинуто — иначе сдвиг остался бы

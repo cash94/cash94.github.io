@@ -3198,7 +3198,33 @@ function flipContentFor(el) {
     var body = el.firstElementChild;
     return body && body.classList.contains('search-results-body') && !body.nextElementSibling ? body : null;
   }
+  if (el.id === 'detail-view') {
+    if (!el.classList.contains('detail-cinema') || !el.classList.contains('catalog-detail-mode')) return null;
+    var extra = getEl('catalog-detail-extra');
+    var panel = extra && extra.querySelector('.catalog-detail-panel');
+    var below = getEl('detail-cinema-below');
+    return panel && below && panel.parentNode === extra && below.parentNode === extra ? [panel, below] : null;
+  }
   return null;
+}
+function flipList(content) {
+  if (!content) return [];
+  return content.nodeType === 1 ? [content] : content;
+}
+function flipHermiteY(m0, p) {
+  return (p * p * p - 2 * p * p + p) * m0 + 3 * p * p - 2 * p * p * p;
+}
+function flipHermiteSlope(m0, p) {
+  return (3 * p * p - 4 * p + 1) * m0 + 6 * p - 6 * p * p;
+}
+function flipHermiteTimeAt(m0, y) {
+  var lo = 0,
+    hi = 1;
+  for (var i = 0; i < 24; i++) {
+    var mid = (lo + hi) / 2;
+    if (flipHermiteY(m0, mid) < y) lo = mid;else hi = mid;
+  }
+  return (lo + hi) / 2;
 }
 function isFlipScroller(el) {
   return !!flipContentFor(el);
@@ -3213,12 +3239,22 @@ function isFlipInFlight(el) {
   if (now > until + FLIP_SETTLE_GRACE_MS) return false;
   return Math.abs(flipCurrentY(el)) >= 0.5;
 }
+var flipYMemo = {
+  el: null,
+  at: -1,
+  y: 0
+};
 function flipCurrentY(el) {
+  var at = document.timeline && typeof document.timeline.currentTime === 'number' ? document.timeline.currentTime : -1;
+  if (at >= 0 && flipYMemo.el === el && flipYMemo.at === at) return flipYMemo.y;
   var t = window.getComputedStyle(el._flipEl).transform || '';
   var m = /^matrix(3d)?\(([^)]+)\)/.exec(t);
-  if (!m) return 0;
-  var v = parseFloat(m[2].split(',')[m[1] ? 13 : 5]);
-  return isNaN(v) ? 0 : v;
+  var v = m ? parseFloat(m[2].split(',')[m[1] ? 13 : 5]) : 0;
+  if (isNaN(v)) v = 0;
+  flipYMemo.el = el;
+  flipYMemo.at = at;
+  flipYMemo.y = v;
+  return v;
 }
 var TX_LAG_MAX_MS = 150;
 var NAV_SCROLL_LAG_MIN_MS = 17;
@@ -3238,7 +3274,7 @@ function noteTxLag(el, prog) {
   el._txLag = typeof el._txLag === 'number' ? (el._txLag + lag) / 2 : lag;
   navScrollLagMs = Math.max(NAV_SCROLL_LAG_MIN_MS, (navScrollLagMs + lag) / 2);
 }
-function txTransition(el, duration, moving) {
+function txTransition(el, duration, moving, timing) {
   var dur = duration * 1000;
   var lead = moving ? Math.min(el._txLag || 0, dur / 2) : 0;
   el._txRun = {
@@ -3246,48 +3282,87 @@ function txTransition(el, duration, moving) {
     dur: dur,
     delay: -lead
   };
-  return 'transform ' + duration + 's linear' + (lead >= 1 ? ' ' + -Math.round(lead) + 'ms' : '');
+  return 'transform ' + duration + 's ' + (timing || 'linear') + (lead >= 1 ? ' ' + -Math.round(lead) + 'ms' : '');
 }
-function flipApply(el, top, duration) {
+function flipApply(el, top, duration, ease) {
   var content = flipContentFor(el);
   if (!content) {
     el.scrollTop = top;
     return;
   }
+  var list = flipList(content);
+  var lead = list[0];
   if (typeof Animations !== 'undefined' && Animations.stopScrollTween) Animations.stopScrollTween(el);
   clearPendingScroll(el, '_navPendTop');
   var curY = isFlipInFlight(el) ? flipCurrentY(el) : 0;
   var visual = el.scrollTop - curY;
-  if (curY && el._flipOffset) noteTxLag(el, 1 - curY / el._flipOffset);
-  if (el._flipEl && el._flipEl !== content) {
-    el._flipEl.style.transition = 'none';
-    el._flipEl.style.transform = '';
+  var prev = el._flipCurve;
+  var pathDone = curY && el._flipOffset ? 1 - curY / el._flipOffset : 0;
+  var timeDone = prev ? flipHermiteTimeAt(prev.m0, pathDone) : pathDone;
+  if (curY && el._flipOffset) noteTxLag(el, timeDone);
+  if (el._flipEl && el._flipEl !== lead) releaseFlipEls(el);
+  flipYMemo.el = null;
+  el._flipEl = lead;
+  el._flipEls = list;
+  var i;
+  for (i = 0; i < list.length; i++) {
+    if (!list[i].classList.contains('grid-tx')) list[i].classList.add('grid-tx');
+    list[i].style.transition = 'none';
   }
-  el._flipEl = content;
-  if (!content.classList.contains('grid-tx')) content.classList.add('grid-tx');
-  content.style.transition = 'none';
+  var prevOffset = el._flipOffset || 0;
   el.scrollTop = top;
   var rest = el.scrollTop;
   var offset = Math.round(rest - visual);
   if (!(duration > 0) || Math.abs(offset) < 1) {
-    content.style.transform = '';
+    for (i = 0; i < list.length; i++) list[i].style.transform = '';
     el._flipUntil = 0;
     el._flipOffset = 0;
+    el._flipCurve = null;
     return;
   }
-  content.style.transform = 'translate3d(0,' + offset + 'px,0)';
-  window.getComputedStyle(content).transform;
+  var timing = null,
+    curve = null;
+  if (ease === 'sine.inOut') {
+    var m0 = 0;
+    if (curY && prevOffset * offset > 0 && el._txRun) {
+      var slope = prev ? flipHermiteSlope(prev.m0, timeDone) : 1;
+      var v0 = Math.abs(prevOffset) * slope / el._txRun.dur;
+      m0 = v0 * duration * 1000 / Math.abs(offset);
+      if (m0 > 3) {
+        duration = duration * 3 / m0;
+        m0 = 3;
+      }
+    }
+    curve = {
+      m0: m0
+    };
+    timing = 'cubic-bezier(0.3333,' + (m0 / 3).toFixed(4) + ',0.6667,1)';
+  }
+  for (i = 0; i < list.length; i++) list[i].style.transform = 'translate3d(0,' + offset + 'px,0)';
+  for (i = 0; i < list.length; i++) window.getComputedStyle(list[i]).transform;
   el._flipOffset = offset;
-  content.style.transition = txTransition(el, duration, curY !== 0);
-  content.style.transform = 'translate3d(0,0,0)';
+  el._flipCurve = curve;
+  var tr = txTransition(el, duration, curY !== 0, timing);
+  for (i = 0; i < list.length; i++) {
+    list[i].style.transition = tr;
+    list[i].style.transform = 'translate3d(0,0,0)';
+  }
   el._flipUntil = Date.now() + Math.round(duration * 1000) + 50;
+}
+function releaseFlipEls(sc) {
+  flipYMemo.el = null;
+  var list = sc._flipEls || (sc._flipEl ? [sc._flipEl] : []);
+  for (var i = 0; i < list.length; i++) {
+    list[i].style.transition = 'none';
+    list[i].style.transform = '';
+  }
 }
 function resetGridScrollTransform(el) {
   var sc = el && el.nodeType === 1 ? el : getEl('main-container');
   if (!sc || !sc._flipEl) return;
-  sc._flipEl.style.transition = 'none';
-  sc._flipEl.style.transform = '';
+  releaseFlipEls(sc);
   sc._flipUntil = 0;
+  sc._flipCurve = null;
 }
 window.resetGridScrollTransform = resetGridScrollTransform;
 function pendingScrollDeltaX(container) {
@@ -3491,7 +3566,7 @@ function applyScroll(container, vars, smooth, duration, ease) {
     }
   }
   if (typeof vars.scrollTop === 'number' && vars.scrollLeft === undefined && isFlipScroller(container)) {
-    flipApply(container, vars.scrollTop, animated ? duration : 0);
+    flipApply(container, vars.scrollTop, animated ? duration : 0, ease);
     return;
   }
   if (container._flipEl && typeof vars.scrollTop === 'number') resetGridScrollTransform(container);

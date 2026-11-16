@@ -1984,6 +1984,10 @@
                 maxBufferSize: 30 * 1024 * 1024,
                 maxBufferLength: 10,
                 startLevel: 2,
+                // Кадр трейлера в баннере — около 870×450 (×1.5 на ТВ = 1300×675):
+                // 720p хватает, а 1080p слабая приставка декодирует и гоняет по
+                // GPU вдвое больше пикселей ради той же картинки
+                capLevelToPlayerSize: true,
                 enableWorker: true
             });
             hls.loadSource(hlsUrl(url));

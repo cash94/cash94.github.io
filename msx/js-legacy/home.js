@@ -1525,6 +1525,7 @@
         maxBufferSize: 30 * 1024 * 1024,
         maxBufferLength: 10,
         startLevel: 2,
+        capLevelToPlayerSize: true,
         enableWorker: true
       });
       hls.loadSource(hlsUrl(url));
