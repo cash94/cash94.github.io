@@ -194,10 +194,34 @@
     var d = new Date(t);
     return d.getDate() + '.' + ('0' + (d.getMonth() + 1)).slice(-2) + ' ' + d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2);
   }
+  function packagePreview() {
+    try {
+      var md = tizen.application.getAppMetaData() || [];
+      for (var i = 0; i < md.length; i++) {
+        if (md[i] && md[i].key === 'http://samsung.com/tv/metadata/use.preview') return String(md[i].value || '');
+      }
+      return '';
+    } catch (e) {
+      return null;
+    }
+  }
+  function packageText() {
+    var ver = '';
+    try {
+      ver = tizen.application.getAppInfo().version || '';
+    } catch (e) {}
+    var p = packagePreview();
+    var head = 'пакет ' + (ver || '?') + ': ';
+    if (p === null) return head + 'use.preview не прочитать';
+    if (!p) return head + 'Preview в пакете не включён';
+    if (/^endpoint_URL=/i.test(p)) return head + 'endpoint_URL';
+    return head + p + ' — нужен TorrStream-Tizen 1.2.0';
+  }
   function statusText() {
+    if (registerOn && Date.now() - lastRegister > 60000) setTimeout(register, 0);
     var s = readStatus();
-    if (!s) return 'ещё не отмечались';
-    return s.text + ' (' + hhmm(s.at) + ')';
+    var text = s ? s.text + ' (' + hhmm(s.at) + ')' : 'ещё не отмечались';
+    return packageText() + '; ' + text;
   }
   var pending = null;
   (function listenService() {
@@ -319,7 +343,10 @@
     var m = String(serverUrl()).match(/^https?:\/\/([^\/:?#]+)/i);
     return m ? m[1].toLowerCase() : '';
   }
+  var registerOn = false;
+  var lastRegister = 0;
   function register() {
+    lastRegister = Date.now();
     var host = serverHost();
     if (host !== PREVIEW_HOST && host !== 'www.' + PREVIEW_HOST) {
       setStatus('карточки Smart Hub — только с сервером ' + PREVIEW_HOST + ' (здесь ' + (host || '?') + ')');
@@ -336,7 +363,8 @@
     }).then(function (r) {
       return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status));
     }).then(function (d) {
-      setStatus('сервер запомнил этот ТВ' + (d && d.ip ? ' (' + d.ip + ')' : '') + ', карточки Smart Hub берёт сам раз в 10 минут');
+      var fetched = d && d.fetchedAt ? 'Smart Hub забирал карточки ' + hhmm(d.fetchedAt) + ' (' + (d.fetchedTiles || 0) + ' шт.)' : 'Smart Hub с этого IP карточки ещё не забирал';
+      setStatus('сервер запомнил ТВ' + (d && d.ip ? ' (' + d.ip + ')' : '') + ', ' + fetched);
     }, function (e) {
       setStatus('сервер не запомнил ТВ: ' + (e && e.message || 'ошибка'));
     });
@@ -463,6 +491,7 @@
       startWhenReady();
       return;
     }
+    registerOn = true;
     setTimeout(register, REGISTER_DELAY_MS);
     setInterval(register, REGISTER_MS);
     window.addEventListener('storage', function (e) {
