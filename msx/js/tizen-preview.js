@@ -3,16 +3,21 @@
 // =====================================================
 //
 // Аналог каналов Android TV (TorrStream-Android: channels/Channels.kt): над
-// ярлыком TorrStream в Smart Hub — ряды карточек. Работает только в
-// приложении TorrStream-Tizen (страница из пакета, есть window.tizen).
+// ярлыком TorrStream в Smart Hub — две колонки карточек: слева «Продолжить
+// просмотр», справа «В тренде на этой неделе». Работает только в приложении
+// TorrStream-Tizen (страница из пакета, есть window.tizen).
 //
-// Ряды (SECTIONS) собираем из того, что фронтенд уже загрузил: история —
-// «Продолжить просмотр» (на Android это системный ряд Watch Next), раздачи
-// TorrServer — «Мои торренты», подборки главной. Samsung разрешает до 40
-// карточек на всё приложение, поэтому в каждом ряду не больше PER_SECTION.
+// С TorrStream-Tizen 1.2.0 — как у VoKino: в config.xml use.preview =
+// endpoint_URL, и Smart Hub сам раз в 10 минут берёт JSON с сервера
+// (GET /api/smarthub/preview на torrstream.online). Кто смотрит, Smart Hub не
+// сообщает, поэтому здесь мы только отмечаемся на сервере
+// (POST /api/smarthub/register): «с этого IP TorrStream открыт под этой
+// учёткой» — по IP сервер и отдаёт историю. Так работает и на Tizen 5.5, где
+// нет ни веб-служб, ни webapis.preview.
 //
-// Готовый JSON отдаём службе пакета TorrStrm01.preview (preview/service.js в
-// TorrStream-Tizen) в данных запуска, а она — системе:
+// Ниже — путь старых пакетов (до 1.2.0, use.preview = bg_service): если в
+// пакете есть служба TorrStrm01.preview, ряды собираем сами (SECTIONS) и
+// готовый JSON отдаём ей в данных запуска, а она — системе:
 // webapis.preview.setPreviewData — и отвечает через messageport, принял ли
 // его Smart Hub. Служба не запустилась или не ответила — тот же вызов из
 // самой страницы. Что вышло — «Smart Hub» в «Об устройстве». Чаще раза в 10 минут Samsung его звать не
@@ -29,7 +34,7 @@
     if (!window.tizen || !tizen.application) return;
 
     var SERVICE_ID = 'TorrStrm01.preview';
-    var PER_SECTION = 8;            // 5 рядов × 8 = 40 — предел Samsung
+    var PER_SECTION = 20;           // 2 ряда × 20 = 40 — предел Samsung
     var IMG_SIZE = 'w185';          // 2:3 — от 167×250 до 240×360
     var MIN_INTERVAL_MS = 10 * 60 * 1000;
     // Те же карточки повторяем раз в полдня: вдруг система их забыла
@@ -44,14 +49,17 @@
     var COLD_KEY = 'tsPreviewColdDone';
     var TORRENT_HASH = /^[0-9a-f]{40}$/;
 
-    // Порядок и названия — как на главной (HOME_ROWS в home.js)
+    // Две колонки, как у сервера (routes/smarthub.js): слева история, справа тренды
     var SECTIONS = [
         { key: 'history', title: 'Продолжить просмотр', source: 'history' },
-        { key: 'my_torrents', title: 'Мои торренты', source: 'torrents' },
-        { key: 'trending_week', title: 'В тренде на этой неделе', source: 'tmdb' },
-        { key: 'popular_movies', title: 'Популярные фильмы', source: 'tmdb' },
-        { key: 'popular_tv', title: 'Популярные сериалы', source: 'tmdb' }
+        { key: 'trending_week', title: 'В тренде на этой неделе', source: 'tmdb' }
     ];
+    // Отметка на сервере для endpoint_URL: Smart Hub ходит раз в 10 минут, а
+    // сервер забывает телевизор через 2 месяца — раз в 3 часа с запасом
+    var REGISTER_MS = 3 * 60 * 60 * 1000;
+    var REGISTER_DELAY_MS = 8000;
+    // Адрес, который зашит в config.xml пакета (endpoint_URL)
+    var PREVIEW_HOST = 'torrstream.online';
 
     function log(msg) { try { console.log('📺 Smart Hub: ' + msg); } catch (e) { } }
 
@@ -115,33 +123,6 @@
         return out;
     }
 
-    function torrentPoster(t) {
-        if (t.poster) return t.poster;
-        try {
-            var data = t.data ? JSON.parse(t.data) : null;
-            var movie = data && data.movie;
-            if (movie) return movie.img || movie.poster_path || '';
-        } catch (e) { }
-        return '';
-    }
-
-    function torrentTiles(key) {
-        var list = (window.AppState && AppState.torrents) || [];
-        list = list.slice().sort(function (a, b) { return (b.timestamp || 0) - (a.timestamp || 0); });
-        var out = [];
-        for (var i = 0; i < list.length && out.length < PER_SECTION; i++) {
-            var t = list[i];
-            var hash = String((t && t.hash) || '').toLowerCase();
-            if (!TORRENT_HASH.test(hash) || !t.title) continue;
-            var mediaType = typeof window.getTorrentMediaTypeFromCard === 'function'
-                ? window.getTorrentMediaTypeFromCard(t) : 'movie';
-            var x = tile(key, { id: t.tmdbId || '', media_type: mediaType, title: t.title, hash: hash },
-                torrentPoster(t), typeLabel(mediaType));
-            if (x) out.push(x);
-        }
-        return out;
-    }
-
     function collectionItems(key) {
         var hs = window.HomeScreen && HomeScreen.state;
         var items = hs && hs.data && hs.data[key];
@@ -172,12 +153,11 @@
     function buildPreview() {
         return Promise.all(SECTIONS.map(function (s) {
             if (s.source === 'history') return Promise.resolve(historyTiles(s.key));
-            if (s.source === 'torrents') return Promise.resolve(torrentTiles(s.key));
             return collectionTiles(s.key);
         })).then(function (lists) {
             var sections = [];
             for (var i = 0; i < SECTIONS.length; i++) {
-                if (lists[i] && lists[i].length) sections.push({ title: SECTIONS[i].title, tiles: lists[i] });
+                if (lists[i] && lists[i].length) sections.push({ title: SECTIONS[i].title, position: i, tiles: lists[i] });
             }
             return sections.length ? { sections: sections } : null;
         });
@@ -233,9 +213,8 @@
 
     function statusText() {
         var s = readStatus();
-        var head = serviceSupported() ? '' : 'веб-служб на ТВ нет (web.service); ';
-        if (!s) return head + 'ещё не отправляли';
-        return head + s.text + ' (' + hhmm(s.at) + ')';
+        if (!s) return 'ещё не отмечались';
+        return s.text + ' (' + hhmm(s.at) + ')';
     }
 
     // Ответ службы: что сказал Smart Hub (preview/service.js шлёт его на этот
@@ -350,17 +329,51 @@
         });
     }
 
-    /** Ждём ряды главной и список раздач (не дольше ~60 с), потом — update */
+    /** Ждём ряды главной (не дольше ~60 с), потом — update */
     function startWhenReady() {
         var tries = 0;
         (function wait() {
             var hs = window.HomeScreen && HomeScreen.state;
             var homeReady = hs && hs.built;
-            var torrentsReady = window.AppState && (AppState.torrentsLoaded || !AppState.torrentsLoading);
-            if ((!homeReady || !torrentsReady) && ++tries < 60) { setTimeout(wait, 1000); return; }
+            if (!homeReady && ++tries < 60) { setTimeout(wait, 1000); return; }
             setTimeout(update, FIRST_DELAY_MS);
             setInterval(update, CHECK_MS);
         })();
+    }
+
+    // ==================== ОТМЕТКА ДЛЯ endpoint_URL ====================
+
+    function serverHost() {
+        var m = String(serverUrl()).match(/^https?:\/\/([^\/:?#]+)/i);
+        return m ? m[1].toLowerCase() : '';
+    }
+
+    function register() {
+        var host = serverHost();
+        // Smart Hub берёт карточки с torrstream.online: на своём сервере
+        // отмечаться без толку — у torrstream.online нет его истории
+        if (host !== PREVIEW_HOST && host !== 'www.' + PREVIEW_HOST) {
+            setStatus('карточки Smart Hub — только с сервером ' + PREVIEW_HOST + ' (здесь ' + (host || '?') + ')');
+            return;
+        }
+        var url = serverUrl() + '/api/smarthub/register';
+        if (typeof window.withClientId === 'function') url = window.withClientId(url);
+        fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+            .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+            .then(function (d) {
+                setStatus('сервер запомнил этот ТВ' + (d && d.ip ? ' (' + d.ip + ')' : '') +
+                    ', карточки Smart Hub берёт сам раз в 10 минут');
+            }, function (e) {
+                setStatus('сервер не запомнил ТВ: ' + ((e && e.message) || 'ошибка'));
+            });
+    }
+
+    /** Есть ли в пакете старая служба карточек (TorrStream-Tizen до 1.2.0) */
+    function hasLegacyService(cb) {
+        // getAppInfo чужого/несуществующего id бросает NotFoundError
+        var found = false;
+        try { found = !!tizen.application.getAppInfo(SERVICE_ID); } catch (e) { }
+        cb(found);
     }
 
     // ==================== НАЖАТИЕ НА КАРТОЧКУ ====================
@@ -462,10 +475,20 @@
     try { cold = !sessionStorage.getItem(COLD_KEY); sessionStorage.setItem(COLD_KEY, '1'); } catch (e) { }
     if (cold) openCard(payloadCard());
 
-    startWhenReady();
+    hasLegacyService(function (legacy) {
+        if (legacy) {
+            startWhenReady();
+            return;
+        }
+        setTimeout(register, REGISTER_DELAY_MS);
+        setInterval(register, REGISTER_MS);
+        // Вошли в учётку или вышли — Smart Hub должен показывать новую историю
+        window.addEventListener('storage', function (e) { if (e && e.key === 'clientId') register(); });
+    });
 
     window.TizenPreview = {
         update: update,
+        register: register,
         build: buildPreview,
         open: openCard,
         statusText: statusText,

@@ -4,7 +4,7 @@
 
   if (!window.tizen || !tizen.application) return;
   var SERVICE_ID = 'TorrStrm01.preview';
-  var PER_SECTION = 8;
+  var PER_SECTION = 20;
   var IMG_SIZE = 'w185';
   var MIN_INTERVAL_MS = 10 * 60 * 1000;
   var REPEAT_MS = 12 * 60 * 60 * 1000;
@@ -21,22 +21,13 @@
     title: 'Продолжить просмотр',
     source: 'history'
   }, {
-    key: 'my_torrents',
-    title: 'Мои торренты',
-    source: 'torrents'
-  }, {
     key: 'trending_week',
     title: 'В тренде на этой неделе',
     source: 'tmdb'
-  }, {
-    key: 'popular_movies',
-    title: 'Популярные фильмы',
-    source: 'tmdb'
-  }, {
-    key: 'popular_tv',
-    title: 'Популярные сериалы',
-    source: 'tmdb'
   }];
+  var REGISTER_MS = 3 * 60 * 60 * 1000;
+  var REGISTER_DELAY_MS = 8000;
+  var PREVIEW_HOST = 'torrstream.online';
   function log(msg) {
     try {
       console.log('📺 Smart Hub: ' + msg);
@@ -103,36 +94,6 @@
     }
     return out;
   }
-  function torrentPoster(t) {
-    if (t.poster) return t.poster;
-    try {
-      var data = t.data ? JSON.parse(t.data) : null;
-      var movie = data && data.movie;
-      if (movie) return movie.img || movie.poster_path || '';
-    } catch (e) {}
-    return '';
-  }
-  function torrentTiles(key) {
-    var list = window.AppState && AppState.torrents || [];
-    list = list.slice().sort(function (a, b) {
-      return (b.timestamp || 0) - (a.timestamp || 0);
-    });
-    var out = [];
-    for (var i = 0; i < list.length && out.length < PER_SECTION; i++) {
-      var t = list[i];
-      var hash = String(t && t.hash || '').toLowerCase();
-      if (!TORRENT_HASH.test(hash) || !t.title) continue;
-      var mediaType = typeof window.getTorrentMediaTypeFromCard === 'function' ? window.getTorrentMediaTypeFromCard(t) : 'movie';
-      var x = tile(key, {
-        id: t.tmdbId || '',
-        media_type: mediaType,
-        title: t.title,
-        hash: hash
-      }, torrentPoster(t), typeLabel(mediaType));
-      if (x) out.push(x);
-    }
-    return out;
-  }
   function collectionItems(key) {
     var hs = window.HomeScreen && HomeScreen.state;
     var items = hs && hs.data && hs.data[key];
@@ -166,13 +127,13 @@
   function buildPreview() {
     return Promise.all(SECTIONS.map(function (s) {
       if (s.source === 'history') return Promise.resolve(historyTiles(s.key));
-      if (s.source === 'torrents') return Promise.resolve(torrentTiles(s.key));
       return collectionTiles(s.key);
     })).then(function (lists) {
       var sections = [];
       for (var i = 0; i < SECTIONS.length; i++) {
         if (lists[i] && lists[i].length) sections.push({
           title: SECTIONS[i].title,
+          position: i,
           tiles: lists[i]
         });
       }
@@ -235,9 +196,8 @@
   }
   function statusText() {
     var s = readStatus();
-    var head = serviceSupported() ? '' : 'веб-служб на ТВ нет (web.service); ';
-    if (!s) return head + 'ещё не отправляли';
-    return head + s.text + ' (' + hhmm(s.at) + ')';
+    if (!s) return 'ещё не отмечались';
+    return s.text + ' (' + hhmm(s.at) + ')';
   }
   var pending = null;
   (function listenService() {
@@ -347,14 +307,46 @@
     (function wait() {
       var hs = window.HomeScreen && HomeScreen.state;
       var homeReady = hs && hs.built;
-      var torrentsReady = window.AppState && (AppState.torrentsLoaded || !AppState.torrentsLoading);
-      if ((!homeReady || !torrentsReady) && ++tries < 60) {
+      if (!homeReady && ++tries < 60) {
         setTimeout(wait, 1000);
         return;
       }
       setTimeout(update, FIRST_DELAY_MS);
       setInterval(update, CHECK_MS);
     })();
+  }
+  function serverHost() {
+    var m = String(serverUrl()).match(/^https?:\/\/([^\/:?#]+)/i);
+    return m ? m[1].toLowerCase() : '';
+  }
+  function register() {
+    var host = serverHost();
+    if (host !== PREVIEW_HOST && host !== 'www.' + PREVIEW_HOST) {
+      setStatus('карточки Smart Hub — только с сервером ' + PREVIEW_HOST + ' (здесь ' + (host || '?') + ')');
+      return;
+    }
+    var url = serverUrl() + '/api/smarthub/register';
+    if (typeof window.withClientId === 'function') url = window.withClientId(url);
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: '{}'
+    }).then(function (r) {
+      return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status));
+    }).then(function (d) {
+      setStatus('сервер запомнил этот ТВ' + (d && d.ip ? ' (' + d.ip + ')' : '') + ', карточки Smart Hub берёт сам раз в 10 минут');
+    }, function (e) {
+      setStatus('сервер не запомнил ТВ: ' + (e && e.message || 'ошибка'));
+    });
+  }
+  function hasLegacyService(cb) {
+    var found = false;
+    try {
+      found = !!tizen.application.getAppInfo(SERVICE_ID);
+    } catch (e) {}
+    cb(found);
   }
   function payloadCard() {
     try {
@@ -466,9 +458,20 @@
     sessionStorage.setItem(COLD_KEY, '1');
   } catch (e) {}
   if (cold) openCard(payloadCard());
-  startWhenReady();
+  hasLegacyService(function (legacy) {
+    if (legacy) {
+      startWhenReady();
+      return;
+    }
+    setTimeout(register, REGISTER_DELAY_MS);
+    setInterval(register, REGISTER_MS);
+    window.addEventListener('storage', function (e) {
+      if (e && e.key === 'clientId') register();
+    });
+  });
   window.TizenPreview = {
     update: update,
+    register: register,
     build: buildPreview,
     open: openCard,
     statusText: statusText,
