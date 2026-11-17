@@ -143,6 +143,23 @@ var okHoldFocused = null;
 var okKeyHeld = false;
 var okKeyLastDown = 0;
 var OK_HELD_STALE_MS = 1500;
+// Пульт Apple TV: TorrStream открыт в клиенте-обёртке, сделанном под Lampa.
+// Lampa меряет удержание Enter так же — таймер от keydown, — но отпусканием
+// считает ЛЮБОЙ keyup на window, не глядя ни на код клавиши, ни на то, куда
+// событие отправлено (yumata/lampa-source, src/core/keypad.js). Короткий Enter
+// у неё срабатывает только на этом keyup, значит, клиент его шлёт — но не
+// обязательно в виде, который ждали мы (keyup с кодом OK, всплывающий через
+// document). Не узнав отпускания, мы дожидались таймера, и короткое нажатие
+// на карточке добавляло её в избранное. Поэтому на Apple, пока ждём
+// отпускания OK, им считается любой keyup (как в Lampa), а пока ни одного
+// такого keyup не было — ещё и «родной» клик/тап клиента: его браузеры
+// Apple TV присылают на нажатие ОК вдобавок к Enter. Увидели keyup — клики
+// больше не трогаем: от них удержание не должно зависеть.
+var appleOkKeyupSeen = false;
+var appleOkAwaitingKeyup = false;   // был keydown OK, keyup после него ещё не видели
+function isAppleRemote() {
+    return !!window.AppState && (AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple');
+}
 // Кнопку навигации ДЕРЖАТ. На скорость прокрутки не влияет — она единая; флаг
 // нужен каталогу (window.navHold), чтобы не вставлять постеры и не трогать DOM,
 // пока идёт перемещение по строкам.
@@ -3073,34 +3090,25 @@ function setupKeyboardHandlers() {
     // Один keyup на оба дела: отпускание перемотки и отпускание OK на карточке
     // торрента (долгое нажатие = удаление). Раньше это были два отдельных
     // слушателя на document в разных функциях и фазах.
-    document.addEventListener('keyup', function (e) {
-        var k = e.keyCode;
-        if (isOkKey(k)) okKeyHeld = false;
-
-        // Долгое OK на карточке торрента: отпустили — либо обычный клик,
-        // либо ничего, если удаление уже отработало по таймеру
-        if (isOkKey(k) && !isCustomFilterMenuOpen() && currentScreen() === 'torrents') {
-            var focused = document.querySelector('.focused');
-            var sameCard = focused && okHoldFocused && focused === okHoldFocused;
-            clearOkHold();
-            if (!okHoldHandled && sameCard && focused.classList.contains('torrent-card')) focused.click();
-            okHoldHandled = false;
-            okHoldFocused = null;
-            return;
-        }
-
-        // То же для карточки истории (главная, каталог) и раздачи в выдаче
-        // поиска: отпустили до срока — обычное OK, после удаления или
-        // открытия окна серий по таймеру — ничего
-        if (isOkKey(k) && okHoldFocused && !isCustomFilterMenuOpen() &&
-            (currentScreen() === 'home' || currentScreen() === 'catalog' || currentScreen() === 'search')) {
-            var hSame = document.querySelector('.focused') === okHoldFocused;
-            var hDone = okHoldHandled;
-            clearOkHold();
-            okHoldHandled = false;
-            okHoldFocused = null;
-            if (!hDone && hSame) onOk();
-            return;
+    //
+    // Слушаем и document, и window: keyup, отправленный самой страницей прямо
+    // на window (так может слать клиент-обёртка — Lampa слушает именно window),
+    // через document не проходит, а невсплывающий keyup на document не доходит
+    // до window. Пришедший обоими путями разбираем один раз (__tsKeyupDone).
+    function onKeyUp(e) {
+        if (e.__tsKeyupDone) return;
+        e.__tsKeyupDone = true;
+        var k = e.keyCode || e.which;
+        // Apple: пока ждём отпускания OK, отпускание — любой keyup (см.
+        // appleOkKeyupSeen). На остальных платформах — только keyup с кодом OK
+        var okUp = isOkKey(k);
+        if (!okUp && isAppleRemote() && okHoldPending()) okUp = true;
+        // Keyup после OK пришёл — клиент их шлёт, клики больше не в счёт (даже
+        // если это нажатие клик уже закрыл, а код у keyup не OK)
+        if (appleOkAwaitingKeyup) { appleOkAwaitingKeyup = false; appleOkKeyupSeen = true; }
+        if (okUp) {
+            okKeyHeld = false;
+            if (finishOkHold()) return;
         }
 
         if (isKeyPressed('LEFT', k) || isKeyPressed('RIGHT', k)) {
@@ -3129,6 +3137,21 @@ function setupKeyboardHandlers() {
             }
             stopSeeking();
         }
+    }
+    document.addEventListener('keyup', onKeyUp);
+    window.addEventListener('keyup', onKeyUp);
+
+    // Apple: «родной» клик/тап клиента на нажатие ОК — запасной признак
+    // отпускания, пока ни одного keyup за OK не пришло (appleOkKeyupSeen).
+    // Свои click() из control.js — isTrusted: false, они не в счёт. Событие
+    // не гасим: что с ним делать дальше — не наша забота здесь.
+    function onAppleTapRelease(e) {
+        if (!e.isTrusted || appleOkKeyupSeen || !isAppleRemote() || !okHoldPending()) return;
+        okKeyHeld = false;
+        finishOkHold();
+    }
+    ['mouseup', 'pointerup', 'touchend', 'click'].forEach(function (type) {
+        window.addEventListener(type, onAppleTapRelease, true);
     });
 
     document.addEventListener('keydown', function (e) {
@@ -3293,6 +3316,44 @@ function setupKeyboardHandlers() {
 
 // ==================== LONG PRESS & FOCUS RESCUE ====================
 function clearOkHold() { if (okHoldTimer) { clearTimeout(okHoldTimer); okHoldTimer = null; } }
+
+// OK держат на карточке, и срок удержания ещё не вышел
+function okHoldPending() { return !!(okHoldTimer && okHoldFocused && !okHoldHandled); }
+
+/**
+ * Отпустили OK. Возвращает true, если нажатие было на карточке с удержанием
+ * (тогда остальной разбор keyup не нужен).
+ */
+function finishOkHold() {
+    if (isCustomFilterMenuOpen()) return false;
+    var s = currentScreen();
+
+    // Долгое OK на карточке торрента: отпустили — либо обычный клик,
+    // либо ничего, если удаление уже отработало по таймеру
+    if (s === 'torrents') {
+        var focused = document.querySelector('.focused');
+        var sameCard = focused && okHoldFocused && focused === okHoldFocused;
+        clearOkHold();
+        if (!okHoldHandled && sameCard && focused.classList.contains('torrent-card')) focused.click();
+        okHoldHandled = false;
+        okHoldFocused = null;
+        return true;
+    }
+
+    // То же для карточки истории (главная, каталог) и раздачи в выдаче
+    // поиска: отпустили до срока — обычное OK, после удаления или
+    // открытия окна серий по таймеру — ничего
+    if (okHoldFocused && (s === 'home' || s === 'catalog' || s === 'search')) {
+        var hSame = document.querySelector('.focused') === okHoldFocused;
+        var hDone = okHoldHandled;
+        clearOkHold();
+        okHoldHandled = false;
+        okHoldFocused = null;
+        if (!hDone && hSame) onOk();
+        return true;
+    }
+    return false;
+}
 
 function isElementFullyVisible(el, container) {
     if (!el || !container) return true;
@@ -5384,6 +5445,7 @@ function setupFocusRescue() {
             var okRepeat = e.repeat || (okKeyHeld && okNow - okKeyLastDown < OK_HELD_STALE_MS);
             okKeyHeld = true;
             okKeyLastDown = okNow;
+            if (isAppleRemote()) appleOkAwaitingKeyup = true;
             if (isCustomFilterMenuOpen()) { applyCustomFilterMenuSelection(); return; }
             if (isBestTorrentsOpen()) { if (!okRepeat) BestTorrents.handleOk(); return; }
             if (isEpisodePickerOpen()) { if (!okRepeat) EpisodePicker.handleOk(); return; }

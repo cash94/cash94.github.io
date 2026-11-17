@@ -98,6 +98,11 @@ var okHoldFocused = null;
 var okKeyHeld = false;
 var okKeyLastDown = 0;
 var OK_HELD_STALE_MS = 1500;
+var appleOkKeyupSeen = false;
+var appleOkAwaitingKeyup = false;
+function isAppleRemote() {
+  return !!window.AppState && (AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple');
+}
 var navHold = false;
 var navHoldTimer = null;
 var navKeyRepeat = false;
@@ -2840,26 +2845,19 @@ function focusActivePanelItem(panelType) {
   }, 100);
 }
 function setupKeyboardHandlers() {
-  document.addEventListener('keyup', function (e) {
-    var k = e.keyCode;
-    if (isOkKey(k)) okKeyHeld = false;
-    if (isOkKey(k) && !isCustomFilterMenuOpen() && currentScreen() === 'torrents') {
-      var focused = document.querySelector('.focused');
-      var sameCard = focused && okHoldFocused && focused === okHoldFocused;
-      clearOkHold();
-      if (!okHoldHandled && sameCard && focused.classList.contains('torrent-card')) focused.click();
-      okHoldHandled = false;
-      okHoldFocused = null;
-      return;
+  function onKeyUp(e) {
+    if (e.__tsKeyupDone) return;
+    e.__tsKeyupDone = true;
+    var k = e.keyCode || e.which;
+    var okUp = isOkKey(k);
+    if (!okUp && isAppleRemote() && okHoldPending()) okUp = true;
+    if (appleOkAwaitingKeyup) {
+      appleOkAwaitingKeyup = false;
+      appleOkKeyupSeen = true;
     }
-    if (isOkKey(k) && okHoldFocused && !isCustomFilterMenuOpen() && (currentScreen() === 'home' || currentScreen() === 'catalog' || currentScreen() === 'search')) {
-      var hSame = document.querySelector('.focused') === okHoldFocused;
-      var hDone = okHoldHandled;
-      clearOkHold();
-      okHoldHandled = false;
-      okHoldFocused = null;
-      if (!hDone && hSame) onOk();
-      return;
+    if (okUp) {
+      okKeyHeld = false;
+      if (finishOkHold()) return;
     }
     if (isKeyPressed('LEFT', k) || isKeyPressed('RIGHT', k)) {
       if (seekHoldInterval) {
@@ -2882,6 +2880,16 @@ function setupKeyboardHandlers() {
       }
       stopSeeking();
     }
+  }
+  document.addEventListener('keyup', onKeyUp);
+  window.addEventListener('keyup', onKeyUp);
+  function onAppleTapRelease(e) {
+    if (!e.isTrusted || appleOkKeyupSeen || !isAppleRemote() || !okHoldPending()) return;
+    okKeyHeld = false;
+    finishOkHold();
+  }
+  ['mouseup', 'pointerup', 'touchend', 'click'].forEach(function (type) {
+    window.addEventListener(type, onAppleTapRelease, true);
   });
   document.addEventListener('keydown', function (e) {
     var k = e.keyCode;
@@ -3163,6 +3171,32 @@ function clearOkHold() {
     clearTimeout(okHoldTimer);
     okHoldTimer = null;
   }
+}
+function okHoldPending() {
+  return !!(okHoldTimer && okHoldFocused && !okHoldHandled);
+}
+function finishOkHold() {
+  if (isCustomFilterMenuOpen()) return false;
+  var s = currentScreen();
+  if (s === 'torrents') {
+    var focused = document.querySelector('.focused');
+    var sameCard = focused && okHoldFocused && focused === okHoldFocused;
+    clearOkHold();
+    if (!okHoldHandled && sameCard && focused.classList.contains('torrent-card')) focused.click();
+    okHoldHandled = false;
+    okHoldFocused = null;
+    return true;
+  }
+  if (okHoldFocused && (s === 'home' || s === 'catalog' || s === 'search')) {
+    var hSame = document.querySelector('.focused') === okHoldFocused;
+    var hDone = okHoldHandled;
+    clearOkHold();
+    okHoldHandled = false;
+    okHoldFocused = null;
+    if (!hDone && hSame) onOk();
+    return true;
+  }
+  return false;
 }
 function isElementFullyVisible(el, container) {
   if (!el || !container) return true;
@@ -4614,6 +4648,7 @@ function setupFocusRescue() {
       var okRepeat = e.repeat || okKeyHeld && okNow - okKeyLastDown < OK_HELD_STALE_MS;
       okKeyHeld = true;
       okKeyLastDown = okNow;
+      if (isAppleRemote()) appleOkAwaitingKeyup = true;
       if (isCustomFilterMenuOpen()) {
         applyCustomFilterMenuSelection();
         return;
