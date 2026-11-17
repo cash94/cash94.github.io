@@ -1,6 +1,12 @@
 {
  "images": [
   {
+   "url": "https://www.bing.com/th?id=OHR.TrailCedars_ROW6107816047_1920x1080.jpg",
+   "title": "Trail of the Cedars, Glacier National Park, Montana, USA",
+   "copyright": "© DBushue Photography/Getty Images",
+   "date": "20261117"
+  },
+  {
    "url": "https://www.bing.com/th?id=OHR.GilaCliff_ROW5960011422_1920x1080.jpg",
    "title": "Gila Cliff Dwellings National Monument, New Mexico, USA",
    "copyright": "© Chiara Salvadori/Getty Images",
@@ -83,12 +89,6 @@
    "title": "Taquaras Beach, Balneário Camboriú, Brazil",
    "copyright": "© MaRabelo/Getty Images",
    "date": "20261103"
-  },
-  {
-   "url": "https://www.bing.com/th?id=OHR.HudsonBear_ROW5956466149_1920x1080.jpg",
-   "title": "Polar bear and cubs by Hudson Bay, Manitoba, Canada",
-   "copyright": "© Danita Delimont/Adobe Stock",
-   "date": "20261102"
   }
  ]
 }
