@@ -399,9 +399,16 @@ function restoreSoundOnGesture() {
   document.addEventListener('click', unmute, true);
 }
 function updatePlayerTitle(title) {
+  playerHeadingGen++;
+  setPlayerTitleText(title);
+}
+function setPlayerTitleText(title) {
   var titleElement = getEl('player-title');
   var controlsContainer = getEl('controls-container');
   if (!titleElement) return;
+  titleElement.classList.remove('player-title-tmdb');
+  titleElement._headingKey = '';
+  titleElement.style.visibility = '';
   if (title) {
     titleElement.textContent = title;
     titleElement.dataset.hasTitle = '1';
@@ -437,6 +444,221 @@ function syncPlayerTitleVisibility(forceVisible) {
   }
 }
 window.syncPlayerTitleVisibility = syncPlayerTitleVisibility;
+var PLAYER_HEADING_WAIT_MS = 2500;
+var playerHeadingGen = 0;
+var playerHeadingCache = {};
+var playerHeadingFallback = null;
+function resolvePlayerTmdbRef(hash) {
+  if (!hash) return null;
+  var h = String(hash).toLowerCase();
+  var torrent = findLoadedTorrent(h);
+  var detail = AppState.currentDetailItem;
+  if (!torrent && detail && detail.hash && String(detail.hash).toLowerCase() === h) torrent = detail;
+  if (!torrent) torrent = {
+    hash: h
+  };
+  var id = getTorrentTmdbId(torrent);
+  if (!id || !(parseInt(id, 10) > 0)) return null;
+  var known = typeof knownTorrentMeta !== 'undefined' && knownTorrentMeta ? knownTorrentMeta.get(h) : null;
+  var type = torrent.media_type || known && known.mediaType || null;
+  if (type !== 'tv' && type !== 'movie') {
+    var seasons = typeof window.getTorrentSeasons === 'function' ? window.getTorrentSeasons(torrent) : [];
+    if (seasons.length) type = 'tv';else if (typeof getTorrentMediaTypeFromCard === 'function' && (torrent.file_stats || torrent.data)) type = getTorrentMediaTypeFromCard(torrent);else type = currentEpisodeFiles && currentEpisodeFiles.length > 1 ? 'tv' : 'movie';
+  }
+  return {
+    id: String(id),
+    type: type
+  };
+}
+function buildPlayerEpisodeLine(hash, fileId, fileName) {
+  var meta = typeof window.getTorrentEpisodeMeta === 'function' ? window.getTorrentEpisodeMeta(hash, fileId) : null;
+  var season = null,
+    episode = null,
+    name = '';
+  if (meta) {
+    season = meta.season;
+    episode = meta.episode;
+    name = meta.name || '';
+  }
+  var idx = -1;
+  for (var i = 0; currentEpisodeFiles && i < currentEpisodeFiles.length; i++) {
+    if (String(currentEpisodeFiles[i].id) === String(fileId)) {
+      idx = i;
+      break;
+    }
+  }
+  if (!episode) {
+    var path = idx !== -1 ? currentEpisodeFiles[idx].path || currentEpisodeFiles[idx].name : fileName;
+    var ref = path && typeof parseEpisodeRef === 'function' ? parseEpisodeRef(path) : null;
+    if (ref) {
+      episode = ref.episode;
+      if (season === null || season === undefined) season = ref.season;
+    } else if (idx !== -1 && currentEpisodeFiles.length > 1) {
+      episode = idx + 1;
+    }
+  }
+  if ((season === null || season === undefined) && episode) {
+    var t = findLoadedTorrent(hash);
+    season = t ? getTorrentSingleSeason(t) : null;
+  }
+  var parts = [];
+  if (season !== null && season !== undefined && season !== '') parts.push('Сезон ' + season);
+  if (episode) parts.push('Серия ' + episode);
+  if (!parts.length) return '';
+  if (name) parts.push(name);
+  return parts.join(' · ');
+}
+function renderPlayerHeading(key, entry, episodeLine, img) {
+  var titleElement = getEl('player-title');
+  if (!titleElement) return;
+  titleElement.textContent = '';
+  titleElement._headingKey = key;
+  if (img) {
+    img.className = 'player-title-logo';
+    img.alt = entry.name || '';
+    titleElement.appendChild(img);
+  } else {
+    var nameEl = document.createElement('div');
+    nameEl.className = 'player-title-name';
+    nameEl.textContent = entry.name;
+    titleElement.appendChild(nameEl);
+  }
+  if (episodeLine) {
+    var ep = document.createElement('div');
+    ep.className = 'player-title-episode';
+    ep.textContent = episodeLine;
+    titleElement.appendChild(ep);
+  }
+  titleElement.classList.add('player-title-tmdb');
+  titleElement.style.visibility = '';
+  titleElement.dataset.hasTitle = '1';
+  syncPlayerTitleVisibility();
+}
+function loadPlayerHeadingEntry(ref) {
+  var key = ref.type + ':' + ref.id;
+  var cached = playerHeadingCache[key];
+  if (cached && cached.pending) return cached.pending;
+  if (cached) return Promise.resolve(cached);
+  var detailsP = typeof getTmdbDetailsWithCache === 'function' ? getTmdbDetailsWithCache(ref.id, ref.type).catch(function () {
+    return null;
+  }) : Promise.resolve(null);
+  var logoP = typeof torrentLogoUrl === 'function' ? torrentLogoUrl(ref.id, ref.type).catch(function () {
+    return null;
+  }) : Promise.resolve(null);
+  var pending = Promise.all([detailsP, logoP]).then(function (r) {
+    var d = r[0],
+      logo = r[1];
+    if (!logo && d && d.logo && d.logo.file_path && window.getTmdbImageUrl) logo = window.getTmdbImageUrl(d.logo.file_path, 'w500');
+    var name = d ? d.title || d.name || '' : '';
+    if (!name && !logo) {
+      delete playerHeadingCache[key];
+      return null;
+    }
+    var entry = {
+      name: name,
+      logo: logo || null,
+      logoOk: false
+    };
+    playerHeadingCache[key] = entry;
+    return entry;
+  });
+  playerHeadingCache[key] = {
+    pending: pending
+  };
+  return pending;
+}
+function loadPlayerLogoImage(url) {
+  return new Promise(function (resolve) {
+    var queue = typeof window._detailBackdropQueue === 'function' ? window._detailBackdropQueue(url) : [url];
+    var at = 0;
+    var img = document.createElement('img');
+    img.decoding = 'async';
+    var next = function () {
+      if (at >= queue.length) {
+        resolve(null);
+        return;
+      }
+      img.src = queue[at++];
+    };
+    img.onload = function () {
+      if (!img.naturalWidth) {
+        next();
+        return;
+      }
+      img.onload = img.onerror = null;
+      resolve(img);
+    };
+    img.onerror = next;
+    next();
+  });
+}
+function showPlayerHeading(hash, fileId, fallbackText, fileName) {
+  var mine = ++playerHeadingGen;
+  if (fallbackText !== undefined) playerHeadingFallback = fallbackText;
+  var fallback = playerHeadingFallback;
+  var ref = resolvePlayerTmdbRef(hash);
+  if (!ref) {
+    setPlayerTitleText(fallback);
+    return;
+  }
+  var episodeLine = ref.type === 'tv' ? buildPlayerEpisodeLine(hash, fileId, fileName) : '';
+  var key = ref.type + ':' + ref.id;
+  var cached = playerHeadingCache[key];
+  var shown = getEl('player-title');
+  if (shown && shown._headingKey === key && shown.classList.contains('player-title-tmdb')) {
+    var epEl = shown.querySelector('.player-title-episode');
+    if (episodeLine) {
+      if (!epEl) {
+        epEl = document.createElement('div');
+        epEl.className = 'player-title-episode';
+        shown.appendChild(epEl);
+      }
+      epEl.textContent = episodeLine;
+    } else if (epEl) {
+      epEl.parentNode.removeChild(epEl);
+    }
+    return;
+  }
+  if (cached && !cached.pending && (!cached.logo || cached.logoOk === null)) {
+    if (cached.name) renderPlayerHeading(key, cached, episodeLine, null);else setPlayerTitleText(fallback);
+    return;
+  }
+  setPlayerTitleText(fallback);
+  var titleElement = getEl('player-title');
+  if (titleElement) titleElement.style.visibility = 'hidden';
+  var timer = setTimeout(function () {
+    if (mine === playerHeadingGen && titleElement) titleElement.style.visibility = '';
+  }, PLAYER_HEADING_WAIT_MS);
+  loadPlayerHeadingEntry(ref).then(function (entry) {
+    if (mine !== playerHeadingGen) return null;
+    if (!entry) return {
+      entry: null
+    };
+    if (!entry.logo) return {
+      entry: entry,
+      img: null
+    };
+    return loadPlayerLogoImage(entry.logo).then(function (img) {
+      if (!img) entry.logoOk = null;else entry.logoOk = true;
+      return {
+        entry: entry,
+        img: img
+      };
+    });
+  }).then(function (res) {
+    if (!res || mine !== playerHeadingGen) return;
+    clearTimeout(timer);
+    if (ref.type === 'tv') episodeLine = buildPlayerEpisodeLine(hash, fileId, fileName);
+    if (!res.entry || !res.img && !res.entry.name) {
+      if (titleElement) titleElement.style.visibility = '';
+      return;
+    }
+    renderPlayerHeading(key, res.entry, episodeLine, res.img);
+  }).catch(function () {
+    clearTimeout(timer);
+    if (mine === playerHeadingGen && titleElement) titleElement.style.visibility = '';
+  });
+}
 function getFileNameByHash(_x, _x2) {
   return _getFileNameByHash.apply(this, arguments);
 }
@@ -1426,7 +1648,7 @@ function refreshEpisodePlayerTitle() {
   var file = currentEpisodeFiles[currentEpisodeIndex];
   if (!file) return;
   var title = getEpisodePlayerTitle(currentTorrentHash, file.id);
-  if (title) updatePlayerTitle(title);
+  showPlayerHeading(currentTorrentHash, file.id, title || undefined, file.path);
 }
 function loadEpisodesInfo(_x10, _x11) {
   return _loadEpisodesInfo.apply(this, arguments);
@@ -1976,10 +2198,9 @@ function _switchToEpisode() {
       if (currentTorrentHash && fileId) yield saveAudioPreference(currentTorrentHash, fileId, savedAudioTrack);
       yield startHLSPlayback(playUrl, 0, lastPlaybackFromSearch, index, savedAudioTrack);
       var episodeTitle = getEpisodePlayerTitle(currentTorrentHash, fileId);
-      if (episodeTitle) updatePlayerTitle(episodeTitle);else {
-        var fileName = yield getFileNameByHash(currentTorrentHash, fileId);
-        if (fileName && AppState.currentDetailItem) updatePlayerTitle(AppState.currentDetailItem.title + ' - ' + fileName);
-      }
+      var fileName = yield getFileNameByHash(currentTorrentHash, fileId);
+      if (!episodeTitle && fileName && AppState.currentDetailItem) episodeTitle = AppState.currentDetailItem.title + ' - ' + fileName;
+      if (episodeTitle) showPlayerHeading(currentTorrentHash, fileId, episodeTitle, fileName);
       renderEpisodesList();
       updateEpisodeButtons();
     } catch (error) {
@@ -4058,7 +4279,8 @@ function _startHLSPlayback() {
     var startRef = parseStreamRef(originalUrl);
     if (startRef) OnlineSubs.onFileStart(startRef.hash, startRef.fileId);
     var startEpisodeTitle = startRef ? getEpisodePlayerTitle(startRef.hash, startRef.fileId) : null;
-    if (startEpisodeTitle) updatePlayerTitle(startEpisodeTitle);else if (fileName) updatePlayerTitle(fileName);else if (AppState.currentDetailItem && AppState.currentDetailItem.title) updatePlayerTitle(AppState.currentDetailItem.title);
+    var startFallbackTitle = startEpisodeTitle || fileName || AppState.currentDetailItem && AppState.currentDetailItem.title || null;
+    if (startRef) showPlayerHeading(startRef.hash, startRef.fileId, startFallbackTitle, fileName);else updatePlayerTitle(startFallbackTitle);
     if (AppState.currentDetailItem && AppState.currentDetailItem.hash) {
       var currentFileId = episodeIndex !== null && currentEpisodeFiles[episodeIndex] ? currentEpisodeFiles[episodeIndex].id : metadata.match ? metadata.match[2] : null;
       setTimeout(function () {

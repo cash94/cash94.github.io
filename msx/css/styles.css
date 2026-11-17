@@ -10922,6 +10922,36 @@ html.apple-device {
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
 }
 
+/* Заголовок по TMDB (player.js, showPlayerHeading): логотип или название и
+   под ним строка «Сезон · Серия · Название серии». Затемнение сверху чуть
+   глубже, чтобы строка серии тоже лежала на тёмном */
+.player-title.player-title-tmdb::before { height: 15vw; }
+
+.player-title-logo {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 28vw;
+  max-height: 5.2vw;
+}
+
+.player-title-name,
+.player-title-episode {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-title-episode {
+  margin-top: 0.6vw;
+  font-size: 1.35vw;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0;
+  color: rgba(255, 255, 255, 0.88);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+}
+
 #clock-display {
   top: 1.7vw;
   right: 2vw;
@@ -11262,6 +11292,9 @@ html.apple-device {
   .player-title-container { top: 12px; left: 14px; right: 80px; }
   .player-title { font-size: 16px; }
   .player-title::before { height: 110px; }
+  .player-title.player-title-tmdb::before { height: 130px; }
+  .player-title-logo { max-width: 55vw; max-height: 44px; }
+  .player-title-episode { margin-top: 5px; font-size: 13px; }
   .player-subtitle { margin-top: 4px; font-size: 12px; }
   #clock-display { top: 14px; right: 14px; font-size: 16px; }
   #controls-container { padding: 0 14px 16px; }
@@ -13604,6 +13637,25 @@ html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail
   #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-recommendations {
     padding-left: 24px !important;
   }
+
+  /* Две ленты на страницу (control.js, cinemaLaneGeometry): «Актёры +
+     похожие» и «Актёры + коллекция» должны влезать целиком. Здесь --cu от
+     высоты в 1,6 раза крупнее телевизионной, и постеры в 14cu занимали
+     ~86 % экрана — пара не влезала, страниц выходило больше. Бюджет
+     страницы (CINEMA_LANE_MIN_TOP) — 0,97 высоты = 33,4cu: актёры ~10,1cu,
+     у ленты постеров заголовок и отступы ~4,7cu, подпись ~3,9cu, постер
+     9,5×14,25cu. «Коллекция + похожие» — две ленты постеров — не влезают и
+     так (нужен постер ~5cu): последняя страница встаёт по нижнему краю,
+     «Похожие» целиком, коллекция частично. Всё в --cu, а она от высоты, —
+     доли одинаковы на любом телефоне боком */
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-recommendation-card {
+    width: calc(var(--cu) * 9.5) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-recommendation-poster {
+    width: calc(var(--cu) * 9.5) !important;
+    height: calc(var(--cu) * 14.25) !important;
+  }
 }
 
 /* --- ТЕЛЕФОН: «Продолжить» — круглый значок, как все кнопки здесь -------- */
@@ -13844,11 +13896,23 @@ html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail
   }
 }
 
-/* Лент под сценой не больше двух (cinema-roomy — updateCinemaLaneDensity в
-   catalog.js): у фильма это «Режиссёр и актёры» и «Похожие», и под ними
-   оставалась пустая треть экрана. Плитки людей и постеры крупнее — заполняют
-   страницу. С сериями или коллекцией класса нет, и ленты остаются плотными */
+/* Две ленты на страницу (cinemaLaneGeometry в control.js). Нет коллекции
+   (cinema-roomy — updateCinemaLaneDensity в catalog.js) — под парой лент
+   оставалась пустая треть экрана: плитки людей и постеры крупнее, заполняют
+   страницу; «Серии + актёры» и «Актёры + похожие» влезают и так.
+   С коллекцией подряд две ленты постеров: в 14cu пара «Коллекция + похожие»
+   выходила 55cu при бюджете страницы 52,4cu (0,97 высоты) — постеры обеих
+   лент 12cu, пара ~50cu */
 @media screen and (orientation: landscape) and (min-height: 501px) and (min-aspect-ratio: 155/100) {
+  #detail-view.catalog-detail-mode.detail-cinema:not(.cinema-roomy) .catalog-recommendation-card {
+    width: calc(var(--cu) * 12) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema:not(.cinema-roomy) .catalog-recommendation-poster {
+    width: calc(var(--cu) * 12) !important;
+    height: calc(var(--cu) * 18) !important;
+  }
+
   #detail-view.catalog-detail-mode.detail-cinema.cinema-roomy .catalog-actor-card {
     width: calc(var(--cu) * 21) !important;
     height: calc(var(--cu) * 8);

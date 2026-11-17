@@ -1066,21 +1066,35 @@ function getCinemaLanes() {
  * Раньше каждая лента вставала к верхнему краю (CINEMA_LANE_TOP), и на экране,
  * где все ленты уже видны целиком, переход к следующей всё равно сдвигал
  * сцену на пару десятков пикселей — до упора вниз. Теперь ленты делятся на
- * страницы: страница начинается лентой у верхнего края, в неё входят все
- * следующие, что помещаются целиком. Переходы внутри страницы экран не
- * двигают; у сериала с создателем, актёрами и похожими на большом экране это
- * одна страница, у фильма с коллекцией — две-три, сколько уложится.
+ * страницы: страница начинается лентой у верхнего края (состав — ниже, у
+ * cinemaLaneGeometry). Переходы внутри страницы экран не двигают.
  *
- * Если до целой следующей ленты не хватает чуть-чуть, страница опускается
+ * Если до целой второй ленты не хватает чуть-чуть, страница опускается
  * ниже, лишь бы верх её первой ленты оставался не выше CINEMA_LANE_MIN_TOP:
  * лишний десяток пикселей отступа лучше ещё одного переезда.
  *
- * Координаты — в системе содержимого (rect + scrollTop): посреди твина rect
- * и scrollTop смещены одинаково, так что результат от полёта не зависит.
+ * Координаты — в системе содержимого (rect + scrollTop минус текущий сдвиг
+ * перехода композитора), так что результат от полёта не зависит.
  */
 var CINEMA_LANE_MIN_TOP = 0.03;
 
-function cinemaLaneScrollTarget(wrap, dv) {
+/*
+ * С 2026-11-17 страница — ПАРА соседних лент, и пары перекрываются (просьба
+ * пользователя, на всех экранах): сериал — «Серии + актёры», «Актёры +
+ * похожие»; фильм с коллекцией — «Актёры + коллекция», «Коллекция +
+ * похожие»; лент две — одна страница. Прежде в страницу входили все ленты,
+ * что влезут, и на ТВ сериал целиком помещался на одну страницу, а на
+ * телефоне те же ленты рвались иначе — счёт страниц зависел от экрана.
+ *
+ * Средняя лента входит в две страницы: шаг к ней экран не двигает, если она
+ * уже видна целиком на той, где стоим; иначе вниз — страница, где она нижняя,
+ * вверх — где верхняя.
+ *
+ * Пара не влезает (размеры лент подобраны так, чтобы влезала, — styles.css,
+ * «две ленты на страницу») — страница по верхней ленте; последняя — по
+ * нижнему краю, иначе «Похожие» не было бы видно целиком нигде.
+ */
+function cinemaLaneGeometry(dv) {
     var vh = window.innerHeight;
     var viewH = dv.clientHeight;
     var max = Math.max(0, dv.scrollHeight - viewH);
@@ -1098,21 +1112,48 @@ function cinemaLaneScrollTarget(wrap, dv) {
         lanes.push({ el: w, top: r.top - base, bottom: r.bottom - base });
     }
 
-    var i = 0;
-    while (i < lanes.length) {
+    // Посреди перехода композитора ленты сдвинуты transform'ом, а scrollTop
+    // уже конечный: rect + scrollTop дал бы координаты со сдвигом. Его и вычитаем
+    var shift = (dv._flipEl && typeof flipCurrentY === 'function' && isFlipInFlight(dv)) ? flipCurrentY(dv) : 0;
+    if (shift) for (var q = 0; q < lanes.length; q++) { lanes[q].top -= shift; lanes[q].bottom -= shift; }
+
+    var pages = [];
+    var last = lanes.length - 1;
+    for (var i = 0; i <= Math.max(0, last - 1) && lanes.length; i++) {
+        var j = Math.min(i + 1, last);
         var s = clamp(lanes[i].top - off);
-        var j = i;
-        while (j + 1 < lanes.length && lanes[j + 1].bottom <= s + viewH) j++;
-        // Опустить страницу, если так влезут ещё ленты
-        var sLow = clamp(lanes[i].top - minTop);
-        var k = j;
-        while (k + 1 < lanes.length && lanes[k + 1].bottom <= sLow + viewH) k++;
-        if (k > j) { j = k; s = clamp(Math.max(s, lanes[k].bottom - viewH)); }
-        for (var m = i; m <= j; m++) if (lanes[m].el === wrap) return s;
-        i = j + 1;
+        if (lanes[j].bottom > s + viewH) {
+            // Не хватает чуть-чуть — опускаем страницу, пока верх пары не выше minTop
+            if (lanes[j].bottom <= clamp(lanes[i].top - minTop) + viewH) s = clamp(lanes[j].bottom - viewH);
+            else if (j === last) s = clamp(lanes[j].bottom - viewH);
+        }
+        pages.push({ from: i, to: j, top: s });
     }
-    var wr = wrap.getBoundingClientRect();
-    return clamp(wr.top - base - off);
+    return { lanes: lanes, pages: pages, viewH: viewH };
+}
+
+/**
+ * Куда прокрутить сцену, чтобы показать ленту wrap.
+ * @param {string} [dir] 'down' | 'up' — откуда пришли (для средней ленты)
+ */
+function cinemaLaneScrollTarget(wrap, dv, dir) {
+    var g = cinemaLaneGeometry(dv);
+    var L = -1;
+    for (var n = 0; n < g.lanes.length; n++) if (g.lanes[n].el === wrap) { L = n; break; }
+    if (L === -1 || !g.pages.length) return scrollRestTop(dv);
+    var cands = [];
+    for (var p = 0; p < g.pages.length; p++) {
+        if (g.pages[p].from <= L && L <= g.pages[p].to) cands.push(g.pages[p]);
+    }
+    if (!cands.length) return g.pages[g.pages.length - 1].top;
+    if (cands.length === 1) return cands[0].top;
+    // Стоим на одной из двух страниц ленты, и она там видна целиком — не двигаем
+    var rest = scrollRestTop(dv), lane = g.lanes[L];
+    for (var c = 0; c < cands.length; c++) {
+        if (Math.abs(cands[c].top - rest) <= 4 && lane.top >= rest - 1 && lane.bottom <= rest + g.viewH + 1) return cands[c].top;
+    }
+    // cands[0] — страница, где лента нижняя, cands[1] — где верхняя
+    return dir === 'up' ? cands[1].top : cands[0].top;
 }
 
 function cinemaVerticalStep(f, dir) {
@@ -1180,13 +1221,9 @@ var cinemaWheelLockUntil = 0;
 /** Остановки прокрутки сцены по возрастанию: верх и начало каждой страницы лент */
 function cinemaPageStops(dv) {
     var stops = [0];
-    for (var n = 0; n < CINEMA_LANE_IDS.length; n++) {
-        var grid = getEl(CINEMA_LANE_IDS[n]);
-        var w = grid && grid.parentNode;
-        if (!w || w.classList.contains('hidden') || w.style.display === 'none') continue;
-        if (!w.getBoundingClientRect().height) continue;
-        var s = cinemaLaneScrollTarget(w, dv);
-        if (stops.indexOf(s) === -1) stops.push(s);
+    var pages = cinemaLaneGeometry(dv).pages;
+    for (var n = 0; n < pages.length; n++) {
+        if (stops.indexOf(pages[n].top) === -1) stops.push(pages[n].top);
     }
     stops.sort(function (a, b) { return a - b; });
     return stops;
@@ -4541,7 +4578,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         // Сцена: лента всегда встаёт у верхнего края, на обоих направлениях
         // одинаково, — ленты разной высоты не гуляют по экрану от шага к шагу
         if (vertEl && !isRowViewport && isCinemaLaneWrap(container) && isCinemaDetail()) {
-            var cvTarget = cinemaLaneScrollTarget(container, vertEl);
+            var cvTarget = cinemaLaneScrollTarget(container, vertEl, direction);
             if (Math.abs(scrollRestTop(vertEl) - cvTarget) > 4) applyScroll(vertEl, { scrollTop: cvTarget }, smooth, CINEMA_SCROLL_S, CINEMA_SCROLL_EASE);
             return;
         }

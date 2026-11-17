@@ -6283,27 +6283,26 @@ function fillRecommendationCard(card, r, mt) {
 var detailCollectionCache = {};
 
 /*
- * Сколько лент под сценой. Когда их не больше двух (фильм: «Режиссёр и актёры»
- * и «Похожие»), на ТВ под ними оставалась пустая треть экрана — класс
- * cinema-roomy на #detail-view делает плитки людей и постеры крупнее (блок
- * «Сцена: редизайн — только ТВ» в styles.css). С сериями или коллекцией лент
- * больше, и плитки остаются плотными, чтобы ленты уместились на страницу.
- * Зовётся после каждой отрисовки ленты: серии и коллекция приходят позже.
+ * Плотность лент под сценой. С 2026-11-17 страница прокрутки — пара соседних
+ * лент (cinemaLaneGeometry в control.js), поэтому важен не их счёт, а есть ли
+ * подряд две ленты постеров — «Коллекция» и «Похожие». Нет коллекции —
+ * класс cinema-roomy: плитки людей и постеры крупнее (иначе под парой лент на
+ * ТВ пустая треть экрана). Есть — постеры обеих лент мельче, чтобы пара
+ * «Коллекция + похожие» уместилась на страницу (styles.css, «две ленты на
+ * страницу»). Зовётся после каждой отрисовки ленты: коллекция приходит позже.
  */
 var CINEMA_LANE_WRAP_IDS = ['catalog-detail-episodes-wrap', 'catalog-detail-crew-wrap', 'catalog-detail-actors-wrap',
     'catalog-detail-collection-wrap', 'catalog-detail-recommendations-wrap'];
 
-function updateCinemaLaneDensity(pending) {
+function updateCinemaLaneDensity(collectionPending) {
     var dv = getEl('detail-view');
     if (!dv) return;
-    // pending — ленты, которые ещё в пути (коллекция, серии): без них карточка
-    // показалась бы крупной и через мгновение сжалась бы
-    var n = pending || 0;
-    for (var i = 0; i < CINEMA_LANE_WRAP_IDS.length; i++) {
-        var w = getEl(CINEMA_LANE_WRAP_IDS[i]);
-        if (w && !w.classList.contains('hidden') && w.style.display !== 'none') n++;
-    }
-    dv.classList.toggle('cinema-roomy', n > 0 && n <= 2);
+    // collectionPending — коллекция ещё в пути: без неё карточка показалась бы
+    // крупной и через мгновение сжалась бы
+    var cw = getEl('catalog-detail-collection-wrap');
+    var collection = !!collectionPending ||
+        !!(cw && !cw.classList.contains('hidden') && cw.style.display !== 'none');
+    dv.classList.toggle('cinema-roomy', !collection);
 }
 
 /** Коллекция уже загружалась и в ней только этот фильм — ленты не будет */
@@ -6328,7 +6327,11 @@ function renderDetailCollection(item, src) {
     var p = cached ? Promise.resolve(cached)
         : safeFetch(SERVER_URL + '/api/tmdb/collection/parts?id=' + encodeURIComponent(key), { timeout: 15000 });
     p.then(function (d) {
-        if (!d || !d.success || !Array.isArray(d.items)) return;
+        // Коллекции не будет (старый сервер, сбой) — плиткам вернуть крупный размер
+        if (!d || !d.success || !Array.isArray(d.items)) {
+            if (isDetailStillCurrent(item)) updateCinemaLaneDensity();
+            return;
+        }
         detailCollectionCache[key] = d;
         if (!isDetailStillCurrent(item)) return;
         var parts = [];
@@ -6764,8 +6767,7 @@ async function showCatalogDetail(item, index, posterUrl) {
     renderDetailCollection(item, src);
     renderDetailRecommendations(src, rw, mt);
     var bc = src.belongs_to_collection;
-    updateCinemaLaneDensity((mt === 'movie' && bc && bc.id && !collectionKnownEmpty(item, bc) ? 1 : 0) +
-        (episodesPromise ? 1 : 0));
+    updateCinemaLaneDensity(mt === 'movie' && bc && bc.id && !collectionKnownEmpty(item, bc));
     if (episodesPromise) episodesPromise.then(function (data) {
         if (isDetailStillCurrent(item)) renderDetailEpisodes(data, false);
     });

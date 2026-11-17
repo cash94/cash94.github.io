@@ -4855,15 +4855,12 @@ function fillRecommendationCard(card, r, mt) {
 }
 var detailCollectionCache = {};
 var CINEMA_LANE_WRAP_IDS = ['catalog-detail-episodes-wrap', 'catalog-detail-crew-wrap', 'catalog-detail-actors-wrap', 'catalog-detail-collection-wrap', 'catalog-detail-recommendations-wrap'];
-function updateCinemaLaneDensity(pending) {
+function updateCinemaLaneDensity(collectionPending) {
   var dv = getEl('detail-view');
   if (!dv) return;
-  var n = pending || 0;
-  for (var i = 0; i < CINEMA_LANE_WRAP_IDS.length; i++) {
-    var w = getEl(CINEMA_LANE_WRAP_IDS[i]);
-    if (w && !w.classList.contains('hidden') && w.style.display !== 'none') n++;
-  }
-  dv.classList.toggle('cinema-roomy', n > 0 && n <= 2);
+  var cw = getEl('catalog-detail-collection-wrap');
+  var collection = !!collectionPending || !!(cw && !cw.classList.contains('hidden') && cw.style.display !== 'none');
+  dv.classList.toggle('cinema-roomy', !collection);
 }
 function collectionKnownEmpty(item, bc) {
   var d = detailCollectionCache[String(bc.id)];
@@ -4886,7 +4883,10 @@ function renderDetailCollection(item, src) {
     timeout: 15000
   });
   p.then(function (d) {
-    if (!d || !d.success || !Array.isArray(d.items)) return;
+    if (!d || !d.success || !Array.isArray(d.items)) {
+      if (isDetailStillCurrent(item)) updateCinemaLaneDensity();
+      return;
+    }
     detailCollectionCache[key] = d;
     if (!isDetailStillCurrent(item)) return;
     var parts = [];
@@ -5233,7 +5233,7 @@ function _showCatalogDetail() {
     renderDetailCollection(item, src);
     renderDetailRecommendations(src, rw, mt);
     var bc = src.belongs_to_collection;
-    updateCinemaLaneDensity((mt === 'movie' && bc && bc.id && !collectionKnownEmpty(item, bc) ? 1 : 0) + (episodesPromise ? 1 : 0));
+    updateCinemaLaneDensity(mt === 'movie' && bc && bc.id && !collectionKnownEmpty(item, bc));
     if (episodesPromise) episodesPromise.then(function (data) {
       if (isDetailStillCurrent(item)) renderDetailEpisodes(data, false);
     });

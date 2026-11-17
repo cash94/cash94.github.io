@@ -628,7 +628,7 @@ function getCinemaLanes() {
   return out;
 }
 var CINEMA_LANE_MIN_TOP = 0.03;
-function cinemaLaneScrollTarget(wrap, dv) {
+function cinemaLaneGeometry(dv) {
   var vh = window.innerHeight;
   var viewH = dv.clientHeight;
   var max = Math.max(0, dv.scrollHeight - viewH);
@@ -651,23 +651,51 @@ function cinemaLaneScrollTarget(wrap, dv) {
       bottom: r.bottom - base
     });
   }
-  var i = 0;
-  while (i < lanes.length) {
-    var s = clamp(lanes[i].top - off);
-    var j = i;
-    while (j + 1 < lanes.length && lanes[j + 1].bottom <= s + viewH) j++;
-    var sLow = clamp(lanes[i].top - minTop);
-    var k = j;
-    while (k + 1 < lanes.length && lanes[k + 1].bottom <= sLow + viewH) k++;
-    if (k > j) {
-      j = k;
-      s = clamp(Math.max(s, lanes[k].bottom - viewH));
-    }
-    for (var m = i; m <= j; m++) if (lanes[m].el === wrap) return s;
-    i = j + 1;
+  var shift = dv._flipEl && typeof flipCurrentY === 'function' && isFlipInFlight(dv) ? flipCurrentY(dv) : 0;
+  if (shift) for (var q = 0; q < lanes.length; q++) {
+    lanes[q].top -= shift;
+    lanes[q].bottom -= shift;
   }
-  var wr = wrap.getBoundingClientRect();
-  return clamp(wr.top - base - off);
+  var pages = [];
+  var last = lanes.length - 1;
+  for (var i = 0; i <= Math.max(0, last - 1) && lanes.length; i++) {
+    var j = Math.min(i + 1, last);
+    var s = clamp(lanes[i].top - off);
+    if (lanes[j].bottom > s + viewH) {
+      if (lanes[j].bottom <= clamp(lanes[i].top - minTop) + viewH) s = clamp(lanes[j].bottom - viewH);else if (j === last) s = clamp(lanes[j].bottom - viewH);
+    }
+    pages.push({
+      from: i,
+      to: j,
+      top: s
+    });
+  }
+  return {
+    lanes: lanes,
+    pages: pages,
+    viewH: viewH
+  };
+}
+function cinemaLaneScrollTarget(wrap, dv, dir) {
+  var g = cinemaLaneGeometry(dv);
+  var L = -1;
+  for (var n = 0; n < g.lanes.length; n++) if (g.lanes[n].el === wrap) {
+    L = n;
+    break;
+  }
+  if (L === -1 || !g.pages.length) return scrollRestTop(dv);
+  var cands = [];
+  for (var p = 0; p < g.pages.length; p++) {
+    if (g.pages[p].from <= L && L <= g.pages[p].to) cands.push(g.pages[p]);
+  }
+  if (!cands.length) return g.pages[g.pages.length - 1].top;
+  if (cands.length === 1) return cands[0].top;
+  var rest = scrollRestTop(dv),
+    lane = g.lanes[L];
+  for (var c = 0; c < cands.length; c++) {
+    if (Math.abs(cands[c].top - rest) <= 4 && lane.top >= rest - 1 && lane.bottom <= rest + g.viewH + 1) return cands[c].top;
+  }
+  return dir === 'up' ? cands[1].top : cands[0].top;
 }
 function cinemaVerticalStep(f, dir) {
   var lanes = getCinemaLanes();
@@ -732,13 +760,9 @@ var cinemaWheelAt = 0;
 var cinemaWheelLockUntil = 0;
 function cinemaPageStops(dv) {
   var stops = [0];
-  for (var n = 0; n < CINEMA_LANE_IDS.length; n++) {
-    var grid = getEl(CINEMA_LANE_IDS[n]);
-    var w = grid && grid.parentNode;
-    if (!w || w.classList.contains('hidden') || w.style.display === 'none') continue;
-    if (!w.getBoundingClientRect().height) continue;
-    var s = cinemaLaneScrollTarget(w, dv);
-    if (stops.indexOf(s) === -1) stops.push(s);
+  var pages = cinemaLaneGeometry(dv).pages;
+  for (var n = 0; n < pages.length; n++) {
+    if (stops.indexOf(pages[n].top) === -1) stops.push(pages[n].top);
   }
   stops.sort(function (a, b) {
     return a - b;
@@ -3776,7 +3800,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
       return;
     }
     if (vertEl && !isRowViewport && isCinemaLaneWrap(container) && isCinemaDetail()) {
-      var cvTarget = cinemaLaneScrollTarget(container, vertEl);
+      var cvTarget = cinemaLaneScrollTarget(container, vertEl, direction);
       if (Math.abs(scrollRestTop(vertEl) - cvTarget) > 4) applyScroll(vertEl, {
         scrollTop: cvTarget
       }, smooth, CINEMA_SCROLL_S, CINEMA_SCROLL_EASE);
