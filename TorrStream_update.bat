@@ -7,11 +7,15 @@ echo ========================================
 echo.
 
 :: Обновление TorrServer (опционально)
-set /p "updateTorrServer=Хотите обновить TorrServer до последней версии? (Y/N): "
+:: Версия закреплена: TorrStream работает только с API MatriX. Последний релиз
+:: YouROK (releases/latest) теперь Silo с другим API, поэтому его не берём;
+:: если Silo уже скачан прежней версией скрипта, обновление вернёт MatriX.
+set "TS_TAG=MatriX.150"
+set /p "updateTorrServer=Хотите обновить TorrServer до %TS_TAG%? (Y/N): "
 if /i "!updateTorrServer!"=="Y" (
     echo.
-    echo Скачивание последней версии TorrServer...
-    powershell -Command "Invoke-WebRequest -Uri 'https://github.com/YouROK/TorrServer/releases/latest/download/TorrServer-windows-amd64.exe' -OutFile 'C:\Vidaa\TorrServer-windows-amd64.exe'"
+    echo Скачивание TorrServer %TS_TAG%...
+    powershell -Command "Invoke-WebRequest -Uri 'https://github.com/YouROK/TorrServer/releases/download/%TS_TAG%/TorrServer-windows-amd64.exe' -OutFile 'C:\Vidaa\TorrServer-windows-amd64.exe'"
     if errorlevel 1 (
         echo [ОШИБКА] Не удалось скачать TorrServer
     ) else (
@@ -57,7 +61,7 @@ echo     Обновление завершено!
 echo ========================================
 echo.
 if /i "!updateTorrServer!"=="Y" (
-    echo [OK] TorrServer обновлен до последней версии
+    echo [OK] TorrServer обновлен до %TS_TAG%
 )
 echo [OK] Кэш HLS теперь в памяти TorrStream: RAM-диск R: больше не нужен,
 echo      ImDisk Toolkit можно удалить. Размер кэша - в админке, вкладка "Система".
