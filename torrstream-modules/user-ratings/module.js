@@ -12,14 +12,17 @@
 //
 // Маршруты:
 //   GET  /api/user-ratings?type=movie&id=550 → { success, counts, total,
-//        score, mine, signedIn }
+//        score, rating, mine, signedIn }
 //   POST /api/user-ratings  { type, id, rating } → то же после голоса;
 //        401 login_required — не вошёл; 409 already_voted — уже голосовал
 //   Сервер без ctx.db (до 1.0.66) → 501 server_update_required: фронт прячет
 //   блок, как и при 404 (модуля нет).
 //
-// score — задел на «Оценку от пользователей»: огонь +2, лайк +1, дизлайк −1,
-// какашка −2. Фронт пока его не показывает.
+// Оценка зрителей: score — сумма баллов (огонь +2, лайк +1, дизлайк −1,
+// какашка −2), rating — она же по 10-балльной шкале с десятыми. Средний балл
+// голоса (−2…+2) переводится линейно в 0…10: (score / total + 2) × 2,5 —
+// одни «огни» 10.0, одни лайки 7.5, одни дизлайки 2.5, одни «какашки» 0.0.
+// Голосов нет — rating: null. Фронт показывает её плашкой рядом с IMDb.
 //
 // Задел на отзывы: короткий текст лежит в том же голосе (поле txt), отдельной
 // таблицы нет — один пользователь, один фильм, одна запись. Длина режется до
@@ -90,12 +93,14 @@ function summary(t, user) {
         total += counts[RATINGS[i]];
         score += counts[RATINGS[i]] * SCORE[RATINGS[i]];
     }
+    // Округление через целые: (score / total + 2) × 2,5 с десятыми
+    var rating = total ? Math.round((score / total + 2) * 25) / 10 : null;
     var mine = null;
     if (user) {
         var vote = db.get(voteKey(t, user.id));
         if (vote && SCORE.hasOwnProperty(vote.r)) mine = vote.r;
     }
-    return { success: true, counts: counts, total: total, score: score, mine: mine, signedIn: Boolean(user) };
+    return { success: true, counts: counts, total: total, score: score, rating: rating, mine: mine, signedIn: Boolean(user) };
 }
 
 /** Записать голос. true — записан, false — пользователь уже голосовал */
@@ -115,7 +120,7 @@ function castVote(t, user, rating, review) {
 
 module.exports = {
     name: 'user-ratings',
-    version: '1.0.0',
+    version: '1.0.1',
 
     init: function (app, ctx) {
         var log = ctx.log;

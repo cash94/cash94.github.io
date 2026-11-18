@@ -4943,10 +4943,11 @@ var cinemaKpRatings = {};
 var cinemaKpUnavailable = false;
 
 function cinemaRatingsHtml(r) {
-    if (!r) return '';
     var html = '';
-    if (r.kp) html += '<span class="detail-cinema-rating is-kp"><b>КП</b>' + r.kp.toFixed(1) + '</span>';
-    if (r.imdb) html += '<span class="detail-cinema-rating is-imdb"><b>IMDb</b>' + r.imdb.toFixed(1) + '</span>';
+    if (r && r.kp) html += '<span class="detail-cinema-rating is-kp"><b>КП</b>' + r.kp.toFixed(1) + '</span>';
+    if (r && r.imdb) html += '<span class="detail-cinema-rating is-imdb"><b>IMDb</b>' + r.imdb.toFixed(1) + '</span>';
+    // Оценка зрителей этого сервера — сразу за IMDb (userRatingBadgeHtml)
+    html += userRatingBadgeHtml();
     return html;
 }
 
@@ -5058,6 +5059,38 @@ function setUserRatingsVisible(row, visible) {
     if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
 }
 
+/**
+ * Оценка зрителей по 10-балльной шкале с десятыми, null — голосов нет.
+ * Средний балл голоса (огонь +2, лайк +1, дизлайк −1, какашка −2, то есть
+ * −2…+2) линейно в 0…10: (score / total + 2) × 2,5. Модуль с 1.0.1 отдаёт её
+ * готовой (rating), для 1.0.0 считаем здесь по той же формуле.
+ */
+function userRatingScore(data) {
+    if (!data || !data.total) return null;
+    if (typeof data.rating === 'number') return data.rating;
+    return Math.round((Number(data.score) / data.total + 2) * 25) / 10;
+}
+
+/** Плашка «Зрители 7.5» для открытой карточки — '' без голосов */
+function userRatingBadgeHtml() {
+    var data = userRatingsKey ? userRatingsCache[userRatingsKey] : null;
+    var value = userRatingScore(data);
+    if (value === null) return '';
+    return '<span class="detail-cinema-rating is-users" title="Оценка зрителей: ' + data.total + ' ' +
+        pluralRu(data.total, 'голос', 'голоса', 'голосов') + '"><b>Зрители</b>' + value.toFixed(1) + '</span>';
+}
+
+/**
+ * Перерисовать плашки КП / IMDb / «Зрители» открытой карточки: оценки
+ * зрителей приходят отдельно от Кинопоиска и меняются после голоса
+ */
+function refreshCinemaRatings() {
+    var box = getEl('detail-cinema-score'), el = getEl('detail-cinema-ratings');
+    if (!box || !el || !userRatingsKey || box.getAttribute('data-key') !== userRatingsKey) return;
+    el.innerHTML = cinemaRatingsHtml(cinemaKpRatings.hasOwnProperty(userRatingsKey) ? cinemaKpRatings[userRatingsKey] : null);
+    updateCinemaScoreVisibility();
+}
+
 function paintUserRatings(row, data) {
     var btns = row.querySelectorAll('.catalog-user-rating-btn');
     for (var i = 0; i < btns.length; i++) {
@@ -5068,6 +5101,7 @@ function paintUserRatings(row, data) {
     }
     row.classList.toggle('is-voted', !!data.mine);
     setUserRatingsVisible(row, true);
+    refreshCinemaRatings();
 }
 
 function loadUserRatings(key, type, id) {

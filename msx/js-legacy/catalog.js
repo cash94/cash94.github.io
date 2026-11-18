@@ -3806,10 +3806,10 @@ function formatCinemaVotes(n) {
 var cinemaKpRatings = {};
 var cinemaKpUnavailable = false;
 function cinemaRatingsHtml(r) {
-  if (!r) return '';
   var html = '';
-  if (r.kp) html += '<span class="detail-cinema-rating is-kp"><b>КП</b>' + r.kp.toFixed(1) + '</span>';
-  if (r.imdb) html += '<span class="detail-cinema-rating is-imdb"><b>IMDb</b>' + r.imdb.toFixed(1) + '</span>';
+  if (r && r.kp) html += '<span class="detail-cinema-rating is-kp"><b>КП</b>' + r.kp.toFixed(1) + '</span>';
+  if (r && r.imdb) html += '<span class="detail-cinema-rating is-imdb"><b>IMDb</b>' + r.imdb.toFixed(1) + '</span>';
+  html += userRatingBadgeHtml();
   return html;
 }
 function updateCinemaScoreVisibility() {
@@ -3903,6 +3903,24 @@ function setUserRatingsVisible(row, visible) {
   row.classList.toggle('hidden', !visible);
   if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
 }
+function userRatingScore(data) {
+  if (!data || !data.total) return null;
+  if (typeof data.rating === 'number') return data.rating;
+  return Math.round((Number(data.score) / data.total + 2) * 25) / 10;
+}
+function userRatingBadgeHtml() {
+  var data = userRatingsKey ? userRatingsCache[userRatingsKey] : null;
+  var value = userRatingScore(data);
+  if (value === null) return '';
+  return '<span class="detail-cinema-rating is-users" title="Оценка зрителей: ' + data.total + ' ' + pluralRu(data.total, 'голос', 'голоса', 'голосов') + '"><b>Зрители</b>' + value.toFixed(1) + '</span>';
+}
+function refreshCinemaRatings() {
+  var box = getEl('detail-cinema-score'),
+    el = getEl('detail-cinema-ratings');
+  if (!box || !el || !userRatingsKey || box.getAttribute('data-key') !== userRatingsKey) return;
+  el.innerHTML = cinemaRatingsHtml(cinemaKpRatings.hasOwnProperty(userRatingsKey) ? cinemaKpRatings[userRatingsKey] : null);
+  updateCinemaScoreVisibility();
+}
 function paintUserRatings(row, data) {
   var btns = row.querySelectorAll('.catalog-user-rating-btn');
   for (var i = 0; i < btns.length; i++) {
@@ -3913,6 +3931,7 @@ function paintUserRatings(row, data) {
   }
   row.classList.toggle('is-voted', !!data.mine);
   setUserRatingsVisible(row, true);
+  refreshCinemaRatings();
 }
 function loadUserRatings(key, type, id) {
   var url = '/api/user-ratings?type=' + encodeURIComponent(type) + '&id=' + encodeURIComponent(id);

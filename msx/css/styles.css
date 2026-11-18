@@ -15666,3 +15666,10 @@ html.apple-tv-ui #loading-player-overlay {
     height: calc(var(--cs) * 1);
   }
 }
+
+/* Оценка зрителей (модуль user-ratings) — плашкой рядом с IMDb, тем же
+   оформлением, что КП и IMDb */
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-rating.is-users b {
+  background: #7c5cff;
+  color: #fff;
+}
