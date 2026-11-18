@@ -5156,6 +5156,7 @@ function _showCatalogDetail() {
       mt = item.media_type || 'movie';
     dv.classList.add('catalog-detail-mode');
     dv.classList.remove('torrent-detail-mode');
+    if (typeof window.resetCinemaPage === 'function') window.resetCinemaPage(dv);
     resetDetailBackdrop();
     AppState.currentDetailItem = item;
     AppState.currentScreen = 'detail';

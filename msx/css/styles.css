@@ -13948,6 +13948,173 @@ html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail
   }
 }
 
+/* Страница = пара лент во весь экран (2026-11-18, просьба пользователя):
+   фильм с коллекцией — «Актёры + коллекция», «Коллекция + похожие»; сериал
+   с сериями — «Серии + актёры», «Актёры + похожие»; лент две — «Актёры +
+   похожие». Ленты не своей страницы спрятаны (cinema-lane-off, markCinemaPage
+   в control.js), страницу по нижнему краю ставит cinemaLaneGeometry.
+   «Похожие» крупнее актёров (просьба пользователя), а страницы перекрываются
+   по средней ленте — ровно в экран выходят только пары с «Похожими»; у
+   «Актёры + коллекция» и «Серии + актёры» снизу остаётся ~3cu фона.
+   Высота ленты = плитка + ~4,7cu (отступ, заголовок, место под рамку
+   фокуса); у постеров ещё подпись ~4,3cu. Замер на 720p: человек 10,8×16,2 с
+   подписью — 24cu; постер 14cu — 30,1 (пара с актёрами 54), при коллекции
+   12cu — 26,8 (пара постеров 53,6); серия 33,5×22 — 26,7. */
+@media screen and (orientation: landscape) and (min-height: 501px) and (min-aspect-ratio: 155/100) {
+  #detail-view.catalog-detail-mode.detail-cinema .cinema-lane-off {
+    visibility: hidden;
+  }
+
+  /* Плитка человека — портретная, как постер, но мельче «Похожих»: фото
+     сверху, имя и роль под ним */
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-actor-card,
+  #detail-view.catalog-detail-mode.detail-cinema.cinema-roomy .catalog-actor-card {
+    -webkit-box-orient: vertical;
+    -webkit-flex-direction: column;
+    flex-direction: column;
+    -webkit-align-items: stretch;
+    align-items: stretch;
+    width: calc(var(--cu) * 10.8) !important;
+    height: calc(var(--cu) * 19.3);
+    margin-right: calc(var(--cu) * 1.2) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-actor-photo,
+  #detail-view.catalog-detail-mode.detail-cinema.cinema-roomy .catalog-actor-photo {
+    width: 100% !important;
+    height: calc(var(--cu) * 16.2) !important;
+  }
+
+  /* Над заголовком ленты 1,5cu вместо 0,8 — пара почти ровно в экран. Пара
+     по нижнему краю оставляет сверху 54cu − пара; больше 0,55cu (нижний
+     отступ ленты) — и над заголовком виден низ плиток предыдущей ленты
+     (полоска прогресса серии, подписи актёров) */
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-episodes-wrap,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-crew-wrap,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-collection-wrap,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actors-wrap,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-recommendations-wrap {
+    padding-top: calc(var(--cu) * 1.5) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-actor-no-photo {
+    font-size: calc(var(--cu) * 1.1) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-actor-info {
+    -webkit-flex: 1;
+    flex: 1;
+    padding: calc(var(--cu) * 0.55) calc(var(--cu) * 0.7) 0 !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-actor-name,
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-actor-character {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-actor-name,
+  #detail-view.catalog-detail-mode.detail-cinema.cinema-roomy .catalog-actor-name {
+    font-size: calc(var(--cu) * 1) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-actor-character,
+  #detail-view.catalog-detail-mode.detail-cinema.cinema-roomy .catalog-actor-character {
+    font-size: calc(var(--cu) * 0.82) !important;
+    margin-top: calc(var(--cu) * 0.15);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema.cinema-roomy .catalog-recommendation-card {
+    width: calc(var(--cu) * 14) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema.cinema-roomy .catalog-recommendation-poster {
+    width: calc(var(--cu) * 14) !important;
+    height: calc(var(--cu) * 21) !important;
+  }
+
+  /* Серии — крупно, почти ростом с ленту постеров, чтобы «Серии + актёры»
+     заполняли страницу. Пропорции плитки прежние (16 : 10,5) */
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-episode-card {
+    width: calc(var(--cu) * 33.5);
+    height: calc(var(--cu) * 22);
+    margin-right: calc(var(--cu) * 1.4);
+    border-radius: calc(var(--cu) * 0.7);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-episode-info {
+    padding: calc(var(--cu) * 2.6) calc(var(--cu) * 1.2) calc(var(--cu) * 1);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-episode-name {
+    font-size: calc(var(--cu) * 1.35);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-episode-size {
+    font-size: calc(var(--cu) * 1);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-episode-play {
+    width: calc(var(--cu) * 5);
+    height: calc(var(--cu) * 5);
+    margin: calc(var(--cu) * -3.5) 0 0 calc(var(--cu) * -2.5);
+    font-size: calc(var(--cu) * 1.9);
+    line-height: calc(var(--cu) * 5);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-episode-progress {
+    height: calc(var(--cu) * 0.35);
+  }
+}
+
+/* То же на телефоне боком (листает свайп, cinemaPageStep). Экран — ~34,5cu
+   (--cu 2,9vh), плитки людей остаются широкими плашками (~10cu ленты),
+   «Похожие» без коллекции — 9,5cu (~23cu ленты): «Актёры + похожие»
+   влезают и так. Две ленты постеров «Коллекция + похожие» в 9,5cu давали 46cu
+   — коллекция срезалась сверху на треть. Здесь у постеров только название
+   (без строки «год · оценка»), отступ над заголовком меньше, постер 6,6cu —
+   лента ~16,5cu, пара ~33cu (на 667×375 часть подписи в px, и при 6,8cu пара
+   была на 5px выше экрана). Серии — 27,6×18,1cu (лента ~23cu), чтобы «Серии
+   + актёры» заполняли страницу, как «Актёры + похожие». Замер на 844×390 и
+   667×375. */
+@media screen and (orientation: landscape) and (max-height: 500px) {
+  #detail-view.catalog-detail-mode.detail-cinema .cinema-lane-off {
+    visibility: hidden;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema:not(.cinema-roomy) #catalog-detail-collection-wrap,
+  #detail-view.catalog-detail-mode.detail-cinema:not(.cinema-roomy) #catalog-detail-recommendations-wrap {
+    padding-top: calc(var(--cu) * 0.7) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema:not(.cinema-roomy) .catalog-recommendation-card {
+    width: calc(var(--cu) * 6.6) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema:not(.cinema-roomy) .catalog-recommendation-poster {
+    width: calc(var(--cu) * 6.6) !important;
+    height: calc(var(--cu) * 9.9) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema:not(.cinema-roomy) .catalog-rec-sub {
+    display: none;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-episode-card {
+    width: calc(var(--cu) * 27.6);
+    height: calc(var(--cu) * 18.1);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-episode-name {
+    font-size: calc(var(--cu) * 1.15);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-episode-size {
+    font-size: calc(var(--cu) * 0.9);
+  }
+}
+
 /* ── «Сцена»: редизайн, все экраны (макет в Figma «Карточка фильма») ──────
    ТВ, ПК, планшет и телефон в обеих ориентациях. Стоит после правил телефона,
    чтобы их перебивать. Размеры под пульт — в блоке «только ТВ и ПК 16:9»

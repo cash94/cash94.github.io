@@ -633,6 +633,7 @@ function getCinemaLanes() {
   return out;
 }
 var CINEMA_LANE_MIN_TOP = 0.03;
+var CINEMA_LANE_SLACK = 0.02;
 function cinemaLaneGeometry(dv) {
   var vh = window.innerHeight;
   var viewH = dv.clientHeight;
@@ -666,7 +667,9 @@ function cinemaLaneGeometry(dv) {
   for (var i = 0; i <= Math.max(0, last - 1) && lanes.length; i++) {
     var j = Math.min(i + 1, last);
     var s = clamp(lanes[i].top - off);
-    if (lanes[j].bottom > s + viewH) {
+    if (lanes[j].bottom - lanes[i].top <= viewH + vh * CINEMA_LANE_SLACK) {
+      s = clamp(Math.max(lanes[i].top - off, lanes[j].bottom - viewH));
+    } else if (lanes[j].bottom > s + viewH) {
       if (lanes[j].bottom <= clamp(lanes[i].top - minTop) + viewH) s = clamp(lanes[j].bottom - viewH);else if (j === last) s = clamp(lanes[j].bottom - viewH);
     }
     pages.push({
@@ -749,9 +752,7 @@ function cinemaVerticalStep(f, dir) {
   }
   if (lane.key === 'actions') {
     var dv = getEl('detail-view');
-    if (dv && scrollRestTop(dv) > 1) applyScroll(dv, {
-      scrollTop: 0
-    }, true, CINEMA_SCROLL_S, CINEMA_SCROLL_EASE);
+    if (dv && scrollRestTop(dv) > 1) scrollCinemaTo(dv, 0, true);
   }
   focusEl(target, {
     direction: dir
@@ -820,10 +821,38 @@ function cinemaPageStep(dv, down) {
   }
   if (to === null) return false;
   cinemaWheelLockUntil = Date.now() + CINEMA_SCROLL_S * 1000 * 0.9;
-  applyScroll(dv, {
-    scrollTop: to
-  }, true, CINEMA_SCROLL_S, CINEMA_SCROLL_EASE);
+  scrollCinemaTo(dv, to, true);
   return true;
+}
+var cinemaLaneHideTimer = null;
+function markCinemaPage(dv, top) {
+  if (!dv) return;
+  var g = cinemaLaneGeometry(dv);
+  var tol = window.innerHeight * CINEMA_LANE_SLACK + 2;
+  var hide = [];
+  for (var i = 0; i < g.lanes.length; i++) {
+    var l = g.lanes[i];
+    var onPage = top <= 1 || l.top >= top - tol && l.bottom <= top + g.viewH + 2;
+    if (onPage) l.el.classList.remove('cinema-lane-off');else hide.push(l.el);
+  }
+  clearTimeout(cinemaLaneHideTimer);
+  cinemaLaneHideTimer = hide.length ? setTimeout(function () {
+    cinemaLaneHideTimer = null;
+    for (var k = 0; k < hide.length; k++) hide[k].classList.add('cinema-lane-off');
+  }, CINEMA_SCROLL_S * 1000) : null;
+}
+function resetCinemaPage(dv) {
+  clearTimeout(cinemaLaneHideTimer);
+  cinemaLaneHideTimer = null;
+  var off = dv ? dv.querySelectorAll('.cinema-lane-off') : [];
+  for (var i = 0; i < off.length; i++) off[i].classList.remove('cinema-lane-off');
+}
+window.resetCinemaPage = resetCinemaPage;
+function scrollCinemaTo(dv, top, smooth) {
+  if (Math.abs(scrollRestTop(dv) - top) > 4) applyScroll(dv, {
+    scrollTop: top
+  }, smooth, CINEMA_SCROLL_S, CINEMA_SCROLL_EASE);
+  markCinemaPage(dv, top);
 }
 var CINEMA_SWIPE_MQ = '(orientation: landscape) and (max-height: 500px)';
 var CINEMA_SWIPE_MIN_PX = 30;
@@ -3834,10 +3863,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
       return;
     }
     if (vertEl && !isRowViewport && isCinemaLaneWrap(container) && isCinemaDetail()) {
-      var cvTarget = cinemaLaneScrollTarget(container, vertEl, direction);
-      if (Math.abs(scrollRestTop(vertEl) - cvTarget) > 4) applyScroll(vertEl, {
-        scrollTop: cvTarget
-      }, smooth, CINEMA_SCROLL_S, CINEMA_SCROLL_EASE);
+      scrollCinemaTo(vertEl, cinemaLaneScrollTarget(container, vertEl, direction), smooth);
       return;
     }
     if (vertEl) {

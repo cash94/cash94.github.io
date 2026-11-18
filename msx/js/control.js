@@ -1094,6 +1094,9 @@ function getCinemaLanes() {
  * перехода композитора), так что результат от полёта не зависит.
  */
 var CINEMA_LANE_MIN_TOP = 0.03;
+// Пара лент выше экрана не больше чем на эту долю высоты (~1cu, меньше отступа
+// над заголовком ленты) — всё равно по нижнему краю: срезается только отступ
+var CINEMA_LANE_SLACK = 0.02;
 
 /*
  * С 2026-11-17 страница — ПАРА соседних лент, и пары перекрываются (просьба
@@ -1139,7 +1142,14 @@ function cinemaLaneGeometry(dv) {
     for (var i = 0; i <= Math.max(0, last - 1) && lanes.length; i++) {
         var j = Math.min(i + 1, last);
         var s = clamp(lanes[i].top - off);
-        if (lanes[j].bottom > s + viewH) {
+        if (lanes[j].bottom - lanes[i].top <= viewH + vh * CINEMA_LANE_SLACK) {
+            // Пара влезает — по нижнему краю, если сверху от этого остаётся
+            // меньше off: на ТВ пары подобраны почти в экран (styles.css, «пара
+            // заполняет экран»), и с отступом off снизу торчала бы следующая
+            // лента, а сверху над парой — хвост предыдущей. Лишние до
+            // CINEMA_LANE_SLACK уходят за верхний край из отступа над заголовком
+            s = clamp(Math.max(lanes[i].top - off, lanes[j].bottom - viewH));
+        } else if (lanes[j].bottom > s + viewH) {
             // Не хватает чуть-чуть — опускаем страницу, пока верх пары не выше minTop
             if (lanes[j].bottom <= clamp(lanes[i].top - minTop) + viewH) s = clamp(lanes[j].bottom - viewH);
             else if (j === last) s = clamp(lanes[j].bottom - viewH);
@@ -1212,7 +1222,7 @@ function cinemaVerticalStep(f, dir) {
     // к нулю, а этот, увидев ту же цель, уже не запускался
     if (lane.key === 'actions') {
         var dv = getEl('detail-view');
-        if (dv && scrollRestTop(dv) > 1) applyScroll(dv, { scrollTop: 0 }, true, CINEMA_SCROLL_S, CINEMA_SCROLL_EASE);
+        if (dv && scrollRestTop(dv) > 1) scrollCinemaTo(dv, 0, true);
     }
     focusEl(target, { direction: dir });
     return true;
@@ -1294,8 +1304,52 @@ function cinemaPageStep(dv, down) {
     }
     if (to === null) return false;
     cinemaWheelLockUntil = Date.now() + CINEMA_SCROLL_S * 1000 * 0.9;
-    applyScroll(dv, { scrollTop: to }, true, CINEMA_SCROLL_S, CINEMA_SCROLL_EASE);
+    scrollCinemaTo(dv, to, true);
     return true;
+}
+
+/*
+ * На странице — только её ленты (2026-11-18, просьба пользователя). Пары лент
+ * заполняют экран не всегда ровно: «Похожие» крупнее актёров, а страницы
+ * перекрываются по средней ленте, поэтому у «Актёры + коллекция» и «Серии +
+ * актёры» снизу остаётся несколько --cu, и туда заглядывала следующая лента.
+ * Ленты, что на странице видны не целиком, прячем (visibility, без анимации —
+ * слабые ТВ): входящие — сразу, уходящие — по окончании переезда, когда
+ * они уже за краем. На сцене (верх) видно всё.
+ */
+var cinemaLaneHideTimer = null;
+
+function markCinemaPage(dv, top) {
+    if (!dv) return;
+    var g = cinemaLaneGeometry(dv);
+    var tol = window.innerHeight * CINEMA_LANE_SLACK + 2;
+    var hide = [];
+    for (var i = 0; i < g.lanes.length; i++) {
+        var l = g.lanes[i];
+        var onPage = top <= 1 || (l.top >= top - tol && l.bottom <= top + g.viewH + 2);
+        if (onPage) l.el.classList.remove('cinema-lane-off');
+        else hide.push(l.el);
+    }
+    clearTimeout(cinemaLaneHideTimer);
+    cinemaLaneHideTimer = hide.length ? setTimeout(function () {
+        cinemaLaneHideTimer = null;
+        for (var k = 0; k < hide.length; k++) hide[k].classList.add('cinema-lane-off');
+    }, CINEMA_SCROLL_S * 1000) : null;
+}
+
+/** Новая карточка — все ленты снова видны (catalog.js, showCatalogDetail) */
+function resetCinemaPage(dv) {
+    clearTimeout(cinemaLaneHideTimer);
+    cinemaLaneHideTimer = null;
+    var off = dv ? dv.querySelectorAll('.cinema-lane-off') : [];
+    for (var i = 0; i < off.length; i++) off[i].classList.remove('cinema-lane-off');
+}
+window.resetCinemaPage = resetCinemaPage;
+
+/** Прокрутка сцены на страницу top: переезд и состав видимых лент вместе */
+function scrollCinemaTo(dv, top, smooth) {
+    if (Math.abs(scrollRestTop(dv) - top) > 4) applyScroll(dv, { scrollTop: top }, smooth, CINEMA_SCROLL_S, CINEMA_SCROLL_EASE);
+    markCinemaPage(dv, top);
 }
 
 /*
@@ -4639,8 +4693,7 @@ function scrollToElementIfNeeded(el, container, smooth, direction) {
         // Сцена: лента всегда встаёт у верхнего края, на обоих направлениях
         // одинаково, — ленты разной высоты не гуляют по экрану от шага к шагу
         if (vertEl && !isRowViewport && isCinemaLaneWrap(container) && isCinemaDetail()) {
-            var cvTarget = cinemaLaneScrollTarget(container, vertEl, direction);
-            if (Math.abs(scrollRestTop(vertEl) - cvTarget) > 4) applyScroll(vertEl, { scrollTop: cvTarget }, smooth, CINEMA_SCROLL_S, CINEMA_SCROLL_EASE);
+            scrollCinemaTo(vertEl, cinemaLaneScrollTarget(container, vertEl, direction), smooth);
             return;
         }
         if (vertEl) {

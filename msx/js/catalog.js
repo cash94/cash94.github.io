@@ -6633,6 +6633,8 @@ async function showCatalogDetail(item, index, posterUrl) {
     // старая сборка, поэтому дублируем здесь: без класса вернётся старая вёрстка.
     dv.classList.add('catalog-detail-mode');
     dv.classList.remove('torrent-detail-mode');
+    // Ленты, спрятанные на странице прошлой карточки (markCinemaPage, control.js)
+    if (typeof window.resetCinemaPage === 'function') window.resetCinemaPage(dv);
     // Фон прошлой карточки убираем сразу, а не в renderDetailHeader: тот ждёт
     // ответа fetchCatalogItemDetails, и всё это время открытая карточка стояла
     // на кадре предыдущего фильма. Вместе с кадром снимается и его цепочка
