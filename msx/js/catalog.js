@@ -5009,6 +5009,20 @@ function userRatingsToast(text) {
     if (typeof window.showToast === 'function') window.showToast(text);
 }
 
+/**
+ * Заголовки запросов к оценкам — с токеном входа (authToken), как у вкладки
+ * «Аккаунт» (account.js). Сервер узнаёт пользователя по cookie ts_auth или по
+ * Bearer, но cookie на устройстве может не быть (истекла, вход был до неё),
+ * а сам Bearer config.js добавляет только в пакете Tizen. Без токена модуль
+ * видел анонимный запрос — и вошедшему отвечал «оценки только для вошедших».
+ */
+function userRatingsHeaders(extra) {
+    var h = extra || {};
+    var token = typeof tsAuthToken === 'function' ? tsAuthToken() : '';
+    if (token) h.Authorization = 'Bearer ' + token;
+    return h;
+}
+
 /** Строка оценок прямо над строкой действий — создаётся один раз */
 function ensureUserRatingsRow() {
     var row = getEl('catalog-user-ratings');
@@ -5058,7 +5072,7 @@ function paintUserRatings(row, data) {
 
 function loadUserRatings(key, type, id) {
     var url = '/api/user-ratings?type=' + encodeURIComponent(type) + '&id=' + encodeURIComponent(id);
-    fetch(url).then(function (resp) {
+    fetch(url, { headers: userRatingsHeaders() }).then(function (resp) {
         if (resp.status === 404 || resp.status === 501) { userRatingsUnavailable = true; return null; }
         return resp.ok ? resp.json() : null;
     }).then(function (data) {
@@ -5110,7 +5124,7 @@ function onUserRatingClick(e) {
     userRatingsBusy = true;
     fetch('/api/user-ratings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: userRatingsHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ type: row.getAttribute('data-type'), id: row.getAttribute('data-id'), rating: rating })
     }).then(function (resp) {
         return resp.json()['catch'](function () { return {}; }).then(function (data) { return { status: resp.status, data: data }; });

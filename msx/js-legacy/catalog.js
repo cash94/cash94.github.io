@@ -3872,6 +3872,12 @@ function userRatingTitle(id) {
 function userRatingsToast(text) {
   if (typeof window.showToast === 'function') window.showToast(text);
 }
+function userRatingsHeaders(extra) {
+  var h = extra || {};
+  var token = typeof tsAuthToken === 'function' ? tsAuthToken() : '';
+  if (token) h.Authorization = 'Bearer ' + token;
+  return h;
+}
 function ensureUserRatingsRow() {
   var row = getEl('catalog-user-ratings');
   if (row) return row;
@@ -3910,7 +3916,9 @@ function paintUserRatings(row, data) {
 }
 function loadUserRatings(key, type, id) {
   var url = '/api/user-ratings?type=' + encodeURIComponent(type) + '&id=' + encodeURIComponent(id);
-  fetch(url).then(function (resp) {
+  fetch(url, {
+    headers: userRatingsHeaders()
+  }).then(function (resp) {
     if (resp.status === 404 || resp.status === 501) {
       userRatingsUnavailable = true;
       return null;
@@ -3962,9 +3970,9 @@ function onUserRatingClick(e) {
   userRatingsBusy = true;
   fetch('/api/user-ratings', {
     method: 'POST',
-    headers: {
+    headers: userRatingsHeaders({
       'Content-Type': 'application/json'
-    },
+    }),
     body: JSON.stringify({
       type: row.getAttribute('data-type'),
       id: row.getAttribute('data-id'),
