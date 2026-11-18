@@ -15524,3 +15524,145 @@ html.apple-tv-ui #loading-player-overlay {
 .close-panel-btn {
   display: none !important;
 }
+
+/* ============================================================
+   ОЦЕНКИ ЗРИТЕЛЕЙ (модуль сервера user-ratings, js/catalog.js)
+   Своя строка над кнопками действий карточки. Отступы — margin, а не
+   gap: flex-gap в Chrome 66 на ТВ не работает.
+   ============================================================ */
+.catalog-user-ratings {
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  white-space: nowrap;
+  margin: 0 0 12px;
+}
+
+.catalog-user-ratings.hidden,
+#detail-view.torrent-detail-mode .catalog-user-ratings {
+  display: none !important;
+}
+
+.catalog-user-rating-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.catalog-user-rating-btn + .catalog-user-rating-btn {
+  margin-left: 8px;
+}
+
+.catalog-user-rating-icon {
+  -webkit-flex: none;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-right: 6px;
+  fill: currentColor;
+}
+
+.catalog-user-rating-btn.is-fire .catalog-user-rating-icon { fill: #ff7a1a; }
+.catalog-user-rating-btn.is-like .catalog-user-rating-icon { fill: #5aa9ff; }
+.catalog-user-rating-btn.is-dislike .catalog-user-rating-icon { fill: #a7afbf; }
+.catalog-user-rating-btn.is-poo .catalog-user-rating-icon { fill: #b9773a; }
+
+/* Своя оценка — обведена; остальные после голоса приглушены */
+.catalog-user-rating-btn.is-mine {
+  background: rgba(255, 140, 0, 0.26);
+  box-shadow: inset 0 0 0 2px rgba(255, 140, 0, 0.9);
+}
+
+.catalog-user-ratings.is-voted .catalog-user-rating-btn {
+  opacity: 0.55;
+}
+
+.catalog-user-ratings.is-voted .catalog-user-rating-btn.is-mine,
+.catalog-user-ratings .catalog-user-rating-btn.focused {
+  opacity: 1;
+}
+
+.catalog-user-rating-btn.focused {
+  box-shadow: 0 0 0 3px #ff8c00 !important;
+  background: rgba(255, 255, 255, 0.22) !important;
+}
+
+/* Карточка-«сцена»: размеры от --cs, «таблетки» помельче кнопок действий */
+/* Панель «сцены» — колонка flex с явным order (шапка 1, описание 2, кнопки 3).
+   Тот же order, что у кнопок: по разметке строка встаёт прямо над ними */
+#detail-view.catalog-detail-mode.detail-cinema .catalog-user-ratings {
+  -webkit-order: 3;
+  order: 3;
+  margin: 0 0 calc(var(--cs) * 1.1);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-user-rating-btn {
+  height: calc(var(--cs) * 2.2);
+  padding: 0 calc(var(--cs) * 0.9);
+  border-radius: calc(var(--cs) * 1.1);
+  font-size: calc(var(--cs) * 0.85);
+  background: rgba(255, 255, 255, 0.14);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-user-rating-btn + .catalog-user-rating-btn {
+  margin-left: calc(var(--cs) * 0.5);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .catalog-user-rating-icon {
+  width: calc(var(--cs) * 1.15);
+  height: calc(var(--cs) * 1.15);
+  margin-right: calc(var(--cs) * 0.4);
+}
+
+/* Фокус — белая «таблетка», как белый круг у кнопок действий */
+#detail-view.catalog-detail-mode.detail-cinema .catalog-user-rating-btn.focused {
+  background: #fff !important;
+  color: #000;
+}
+
+/* Вход в карточку: строка оценок проявляется вместе с описанием и кнопками
+   (detail-entering / detail-enter выше), между ними по задержке */
+#detail-view.catalog-detail-mode.detail-cinema.detail-entering .catalog-user-ratings {
+  opacity: 0;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema.detail-enter .catalog-user-ratings {
+  -webkit-animation: detailFadeIn 0.55s ease-in-out 0.08s both, detailRiseIn 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) 0.08s both;
+  animation: detailFadeIn 0.55s ease-in-out 0.08s both, detailRiseIn 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) 0.08s both;
+}
+
+/* Телефон боком: высоты в обрез — без оценок кнопки с подписями встают ровно
+   до нижнего края. Строка оценок отнимает у описания одну строку (3 → 2) и
+   ужимается сама; has-user-ratings ставит js/catalog.js, пока строка видна
+   (:has() в Chrome 66 нет). Всё в --cs, а он от высоты, — доли одни на любом
+   телефоне боком */
+@media screen and (orientation: landscape) and (max-height: 500px) {
+  #detail-view.catalog-detail-mode.detail-cinema.has-user-ratings #catalog-detail-overview {
+    -webkit-line-clamp: 2;
+    margin-bottom: calc(var(--cs) * 0.9) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-user-ratings {
+    margin-bottom: calc(var(--cs) * 0.8);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-user-rating-btn {
+    height: calc(var(--cs) * 1.9);
+    border-radius: calc(var(--cs) * 0.95);
+    font-size: calc(var(--cs) * 0.8);
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema .catalog-user-rating-icon {
+    width: calc(var(--cs) * 1);
+    height: calc(var(--cs) * 1);
+  }
+}

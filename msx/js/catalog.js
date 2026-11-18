@@ -4978,12 +4978,166 @@ function loadCinemaKpRating(key, type, id, imdb) {
     })['catch'](function () { });
 }
 
+// ==================== ОЦЕНКИ ЗРИТЕЛЕЙ (модуль сервера user-ratings) ====================
+//
+// Строка из четырёх кнопок над кнопками действий карточки: «Огонь», «Лайк»,
+// «Дизлайк», «Какашка» со счётчиками. Видят все, ставят только вошедшие в аккаунт, один
+// раз на фильм (держит сервер). Иконки — встроенный SVG, а не эмодзи и не
+// шрифт: на VIDAA (Chrome 66) эмодзи рисуются не везде, а нужных иконок в
+// подключённом uicons-regular-rounded нет.
+//
+// Модуля нет (404) или сервер старый (501) — блок прячется и до перезагрузки
+// больше не спрашивается. В карточке торрента блок спрятан CSS-ом.
+
+var USER_RATING_KINDS = [
+    { id: 'fire', title: 'Огонь', path: 'M12 2c.9 3.2-.9 5-2.3 6.6C8.3 10.2 7 11.9 7 14.3 7 17.5 9.2 20 12 20s5-2.5 5-5.4c0-2.1-.9-3.7-2-5-.3 1.5-1 2.5-2.1 3 .6-3.3-.1-7.2-.9-10.6z' },
+    { id: 'like', title: 'Лайк', path: 'M2 21h3.5V9.5H2V21zM22 10.5c0-1.1-.9-2-2-2h-5.6l.9-4.3v-.3c0-.4-.2-.8-.4-1.1L13.8 2 7.6 8.2c-.4.4-.6.9-.6 1.4V19c0 1.1.9 2 2 2h8.2c.8 0 1.5-.5 1.8-1.2l2.8-6.6c.1-.2.2-.5.2-.7v-2z' },
+    { id: 'dislike', title: 'Дизлайк', path: 'M22 3h-3.5v11.5H22V3zM2 13.5c0 1.1.9 2 2 2h5.6l-.9 4.3v.3c0 .4.2.8.4 1.1l1.1 1 6.2-6.2c.4-.4.6-.9.6-1.4V5c0-1.1-.9-2-2-2H6.8c-.8 0-1.5.5-1.8 1.2L2.2 10.8c-.1.2-.2.5-.2.7v2z' },
+    { id: 'poo', title: 'Какашка', path: 'M12 2.5c.7 1.1.5 2.1-.3 2.8 2.3.1 3.9 1.3 3.9 2.9 0 .3 0 .5-.1.8 1.6.4 2.7 1.6 2.7 3 0 .4-.1.8-.3 1.1 1.9.4 3.2 1.8 3.2 3.4 0 2.1-2.1 3.8-4.6 3.8H7.5c-2.5 0-4.6-1.7-4.6-3.8 0-1.6 1.3-3 3.2-3.4-.2-.3-.3-.7-.3-1.1 0-1.4 1.1-2.6 2.7-3-.1-.3-.1-.5-.1-.8 0-1.4 1.3-2.5 3.1-2.8.5-.7.6-1.6.5-2.9z' }
+];
+var userRatingsUnavailable = false;   // 404 / 501: модуля нет или сервер старый
+var userRatingsCache = {};            // «type_id» → ответ сервера
+var userRatingsKey = null;            // карточка, для которой показан блок
+var userRatingsBusy = false;          // голос в пути — второй клик не шлём
+
+function userRatingTitle(id) {
+    for (var i = 0; i < USER_RATING_KINDS.length; i++) if (USER_RATING_KINDS[i].id === id) return USER_RATING_KINDS[i].title;
+    return id;
+}
+
+function userRatingsToast(text) {
+    if (typeof window.showToast === 'function') window.showToast(text);
+}
+
+/** Строка оценок прямо над строкой действий — создаётся один раз */
+function ensureUserRatingsRow() {
+    var row = getEl('catalog-user-ratings');
+    if (row) return row;
+    var actions = getEl('catalog-detail-actions');
+    if (!actions || !actions.parentNode) return null;
+    row = document.createElement('div');
+    row.id = 'catalog-user-ratings';
+    row.className = 'catalog-user-ratings hidden';
+    var html = '';
+    for (var i = 0; i < USER_RATING_KINDS.length; i++) {
+        var k = USER_RATING_KINDS[i];
+        html += '<button class="catalog-user-rating-btn is-' + k.id + '" data-rating="' + k.id + '" title="' + k.title + '" aria-label="' + k.title + '">' +
+            '<svg class="catalog-user-rating-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="' + k.path + '"></path></svg>' +
+            '<span class="catalog-user-rating-count">0</span></button>';
+    }
+    row.innerHTML = html;
+    row.addEventListener('click', onUserRatingClick);
+    // Вне строки действий: её кнопки (getDetailActionButtons) пульт обходит
+    // как одну строку, а у оценок своя — над ней (getUserRatingButtons)
+    actions.parentNode.insertBefore(row, actions);
+    return row;
+}
+
+function setUserRatingsVisible(row, visible) {
+    // Для вёрстки: на низком экране описание уступает строке оценок место
+    // (styles.css, has-user-ratings) — :has() в Chrome 66 нет
+    var dv = getEl('detail-view');
+    if (dv) dv.classList.toggle('has-user-ratings', !!visible);
+    if (!row || row.classList.contains('hidden') === !visible) return;
+    row.classList.toggle('hidden', !visible);
+    // Кнопки появились или пропали — пульт должен о них узнать
+    if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
+}
+
+function paintUserRatings(row, data) {
+    var btns = row.querySelectorAll('.catalog-user-rating-btn');
+    for (var i = 0; i < btns.length; i++) {
+        var id = btns[i].getAttribute('data-rating');
+        var n = data.counts && data.counts[id] ? data.counts[id] : 0;
+        btns[i].querySelector('.catalog-user-rating-count').textContent = String(n);
+        btns[i].classList.toggle('is-mine', data.mine === id);
+    }
+    row.classList.toggle('is-voted', !!data.mine);
+    setUserRatingsVisible(row, true);
+}
+
+function loadUserRatings(key, type, id) {
+    var url = '/api/user-ratings?type=' + encodeURIComponent(type) + '&id=' + encodeURIComponent(id);
+    fetch(url).then(function (resp) {
+        if (resp.status === 404 || resp.status === 501) { userRatingsUnavailable = true; return null; }
+        return resp.ok ? resp.json() : null;
+    }).then(function (data) {
+        var row = getEl('catalog-user-ratings');
+        if (!row) return;
+        if (!data || !data.success) {
+            if (userRatingsUnavailable) setUserRatingsVisible(row, false);
+            return;
+        }
+        userRatingsCache[key] = data;
+        // Пока ждали, могли открыть другую карточку
+        if (userRatingsKey === key) paintUserRatings(row, data);
+    })['catch'](function () { });
+}
+
+/** Показать оценки карточки (зовёт renderCinemaScore на каждое открытие) */
+function renderUserRatings(type, id) {
+    var row = ensureUserRatingsRow();
+    if (!row) return;
+    if (userRatingsUnavailable || !id) { setUserRatingsVisible(row, false); return; }
+    var key = type + '_' + id;
+    if (userRatingsKey !== key) {
+        userRatingsKey = key;
+        row.setAttribute('data-type', type);
+        row.setAttribute('data-id', String(id));
+        // Из кэша — сразу, а свежие счётчики догрузятся: голосуют и другие
+        if (userRatingsCache[key]) paintUserRatings(row, userRatingsCache[key]);
+        else setUserRatingsVisible(row, false);
+    }
+    loadUserRatings(key, type, id);
+}
+
+function onUserRatingClick(e) {
+    var btn = e.target && e.target.closest ? e.target.closest('.catalog-user-rating-btn') : null;
+    var row = getEl('catalog-user-ratings');
+    if (!btn || !row) return;
+    var rating = btn.getAttribute('data-rating');
+    var key = userRatingsKey;
+    var known = key ? userRatingsCache[key] : null;
+    if (known && known.mine) { userRatingsToast('Вы уже оценили: ' + userRatingTitle(known.mine)); return; }
+    // Вошёл ли — по ответу сервера (signedIn): он узнаёт и по cookie сессии,
+    // а токена на устройстве может не быть. Ответа ещё нет — шлём голос, а
+    // «не вошёл» скажет сам сервер (401)
+    if (known && known.signedIn === false) {
+        userRatingsToast('Оценки ставят только вошедшие в аккаунт: «Настройки → Аккаунт»');
+        return;
+    }
+    if (userRatingsBusy) return;
+    userRatingsBusy = true;
+    fetch('/api/user-ratings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: row.getAttribute('data-type'), id: row.getAttribute('data-id'), rating: rating })
+    }).then(function (resp) {
+        return resp.json()['catch'](function () { return {}; }).then(function (data) { return { status: resp.status, data: data }; });
+    }).then(function (r) {
+        userRatingsBusy = false;
+        var data = r.data || {};
+        if (r.status === 401) { userRatingsToast('Оценки ставят только вошедшие в аккаунт: «Настройки → Аккаунт»'); return; }
+        if (data.counts) {
+            userRatingsCache[key] = data;
+            if (userRatingsKey === key) paintUserRatings(row, data);
+        }
+        if (r.status === 409) { userRatingsToast('Вы уже оценили: ' + userRatingTitle(data.mine || rating)); return; }
+        if (!data.success) { userRatingsToast(data.error || 'Оценка не сохранилась'); return; }
+        userRatingsToast('Ваша оценка: ' + userRatingTitle(rating));
+    })['catch'](function () {
+        userRatingsBusy = false;
+        userRatingsToast('Оценка не сохранилась: сервер не ответил');
+    });
+}
+
 function renderCinemaScore(item, src) {
     var box = getEl('detail-cinema-score');
     if (!box) return;
     var type = (item.media_type || 'movie') === 'tv' ? 'tv' : 'movie';
     var id = src.id || item.id;
     var key = type + '_' + id;
+    renderUserRatings(type, id);
     var ratingsEl = getEl('detail-cinema-ratings');
     if (box.getAttribute('data-key') !== key) {
         box.setAttribute('data-key', key);

@@ -556,8 +556,16 @@ function getDetailActionButtons() {
   }
   return out;
 }
+function getUserRatingButtons() {
+  var row = getEl('catalog-user-ratings');
+  if (!row || !VISIBLE(row)) return [];
+  var all = row.querySelectorAll('.catalog-user-rating-btn');
+  var out = [];
+  for (var i = 0; i < all.length; i++) if (VISIBLE(all[i])) out.push(all[i]);
+  return out;
+}
 function getDetailItems() {
-  var s = ['#detail-view .home-nav-btn', '.detail-progress-btn', '.file-item', '#catalog-resume-btn', '#catalog-watch-btn', '#catalog-best-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-favorite-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-episode-card', '.catalog-actor-card', '.catalog-recommendation-card'];
+  var s = ['#detail-view .home-nav-btn', '.detail-progress-btn', '.file-item', '#catalog-resume-btn', '#catalog-watch-btn', '#catalog-best-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-favorite-btn', '#catalog-trailer-btn', '.catalog-user-rating-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-episode-card', '.catalog-actor-card', '.catalog-recommendation-card'];
   var it = document.querySelectorAll(s.join(','));
   var a = [];
   for (var i = 0; i < it.length; i++) if (VISIBLE(it[i])) a.push(it[i]);
@@ -611,6 +619,11 @@ function cinemaLaneEdge(el) {
 }
 function getCinemaLanes() {
   var out = [];
+  var rates = getUserRatingButtons();
+  if (rates.length) out.push({
+    key: 'ratings',
+    items: rates
+  });
   var acts = getDetailActionButtons();
   if (acts.length) out.push({
     key: 'actions',
@@ -750,7 +763,7 @@ function cinemaVerticalStep(f, dir) {
       }
     }
   }
-  if (lane.key === 'actions') {
+  if (lane.key === 'actions' || lane.key === 'ratings') {
     var dv = getEl('detail-view');
     if (dv && scrollRestTop(dv) > 1) scrollCinemaTo(dv, 0, true);
   }
@@ -1684,6 +1697,9 @@ var ScreenStrategies = {
       var f = document.querySelector('.focused');
       if (!force && belongsToScreen(f, 'detail')) return true;
       var items = getDetailItems();
+      for (var fi0 = 0; fi0 < items.length; fi0++) {
+        if (!items[fi0].classList.contains('catalog-user-rating-btn')) return focusEl(items[fi0]);
+      }
       return focusEl(items[0]);
     },
     handleNavigation: function (dir) {
@@ -1926,6 +1942,34 @@ var ScreenStrategies = {
         }
         return true;
       }
+      var rateRow = getUserRatingButtons();
+      var rateIdx = rateRow.indexOf(f);
+      if (rateIdx !== -1) {
+        if (dir === 'left') {
+          if (rateIdx > 0) return focusEl(rateRow[rateIdx - 1], {
+            direction: 'left'
+          });
+          return true;
+        }
+        if (dir === 'right') {
+          if (rateIdx < rateRow.length - 1) return focusEl(rateRow[rateIdx + 1], {
+            direction: 'right'
+          });
+          return true;
+        }
+        if (dir === 'down') {
+          var actsBelow = getDetailActionButtons();
+          if (actsBelow.length) return focusEl(actsBelow[Math.min(rateIdx, actsBelow.length - 1)], {
+            direction: 'down'
+          });
+          return true;
+        }
+        if (dir === 'up') {
+          revealDetailTopbar(f);
+          return true;
+        }
+        return true;
+      }
       var actionRow = getDetailActionButtons();
       var actIdx = actionRow.indexOf(f);
       if (actIdx !== -1) {
@@ -1969,6 +2013,9 @@ var ScreenStrategies = {
           return true;
         }
         if (dir === 'up') {
+          if (rateRow.length) return focusEl(rateRow[Math.min(actIdx, rateRow.length - 1)], {
+            direction: 'up'
+          });
           revealDetailTopbar(f);
           return true;
         }

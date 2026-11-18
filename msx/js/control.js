@@ -961,6 +961,19 @@ function getDetailActionButtons() {
     return out;
 }
 
+/**
+ * Кнопки оценок зрителей (js/catalog.js, модуль user-ratings) — своя строка
+ * над строкой действий. Пусто, если строки нет или она спрятана.
+ */
+function getUserRatingButtons() {
+    var row = getEl('catalog-user-ratings');
+    if (!row || !VISIBLE(row)) return [];
+    var all = row.querySelectorAll('.catalog-user-rating-btn');
+    var out = [];
+    for (var i = 0; i < all.length; i++) if (VISIBLE(all[i])) out.push(all[i]);
+    return out;
+}
+
 function getDetailItems() {
     // '#detail-open-card-btn' — кнопка «Открыть карточку» в карточке торрента.
     // Без неё handleNavigation не находил элемент в этом списке (idx === -1) и
@@ -969,7 +982,7 @@ function getDetailItems() {
     // '#detail-view .home-nav-btn' — кнопки шапки разделов, поднятой поверх
     // карточки (js/home.js: DetailTopbar). Селектор намеренно привязан к
     // #detail-view: пока шапка на своём месте, он не совпадает ни с чем.
-    var s = ['#detail-view .home-nav-btn', '.detail-progress-btn', '.file-item', '#catalog-resume-btn', '#catalog-watch-btn', '#catalog-best-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-favorite-btn', '#catalog-trailer-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-episode-card', '.catalog-actor-card', '.catalog-recommendation-card'];
+    var s = ['#detail-view .home-nav-btn', '.detail-progress-btn', '.file-item', '#catalog-resume-btn', '#catalog-watch-btn', '#catalog-best-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-favorite-btn', '#catalog-trailer-btn', '.catalog-user-rating-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-episode-card', '.catalog-actor-card', '.catalog-recommendation-card'];
     // Сборный селектор → порядок обхода совпадает с порядком в DOM, а не с
     // порядком селекторов. Важно для торрентного detail: там ряд актёров идёт
     // ПЕРЕД файлами, и «вверх» от плитки должно попадать в него.
@@ -1060,6 +1073,8 @@ function cinemaLaneEdge(el) {
 
 function getCinemaLanes() {
     var out = [];
+    var rates = getUserRatingButtons();
+    if (rates.length) out.push({ key: 'ratings', items: rates });
     var acts = getDetailActionButtons();
     if (acts.length) out.push({ key: 'actions', items: acts });
     for (var i = 0; i < CINEMA_LANE_IDS.length; i++) {
@@ -1220,7 +1235,7 @@ function cinemaVerticalStep(f, dir) {
     // К кнопкам — всегда в самый верх: сцена показывается целиком. Прокрутку
     // заводим ДО фокуса: иначе focusEl успевал поставить свой короткий твин
     // к нулю, а этот, увидев ту же цель, уже не запускался
-    if (lane.key === 'actions') {
+    if (lane.key === 'actions' || lane.key === 'ratings') {
         var dv = getEl('detail-view');
         if (dv && scrollRestTop(dv) > 1) scrollCinemaTo(dv, 0, true);
     }
@@ -2152,6 +2167,11 @@ var ScreenStrategies = {
 
             // ИСПРАВЛЕНО: используем прямой вызов getDetailItems() вместо this.getItems()
             var items = getDetailItems();
+            // Оценки стоят над кнопками действий — первыми в разметке, но
+            // карточка открывается фокусом на кнопках, как раньше
+            for (var fi0 = 0; fi0 < items.length; fi0++) {
+                if (!items[fi0].classList.contains('catalog-user-rating-btn')) return focusEl(items[fi0]);
+            }
             return focusEl(items[0]); // || getEl('back-from-detail'));
         },
         handleNavigation: function (dir) {
@@ -2240,6 +2260,19 @@ var ScreenStrategies = {
             // соседям в порядке разметки, вниз — вон из строки, к ближайшей
             // секции ниже. Ветки для каждой кнопки больше не нужны, состав
             // строки в разных режимах (торрент / каталог) разбирается сам.
+            var rateRow = getUserRatingButtons();
+            var rateIdx = rateRow.indexOf(f);
+            if (rateIdx !== -1) {
+                if (dir === 'left') { if (rateIdx > 0) return focusEl(rateRow[rateIdx - 1], { direction: 'left' }); return true; }
+                if (dir === 'right') { if (rateIdx < rateRow.length - 1) return focusEl(rateRow[rateIdx + 1], { direction: 'right' }); return true; }
+                if (dir === 'down') {
+                    var actsBelow = getDetailActionButtons();
+                    if (actsBelow.length) return focusEl(actsBelow[Math.min(rateIdx, actsBelow.length - 1)], { direction: 'down' });
+                    return true;
+                }
+                if (dir === 'up') { revealDetailTopbar(f); return true; }
+                return true;
+            }
             var actionRow = getDetailActionButtons();
             var actIdx = actionRow.indexOf(f);
             if (actIdx !== -1) {
@@ -2258,9 +2291,13 @@ var ScreenStrategies = {
                     if (fi.length > 0) { focusEl(getDetailFileEntry(fi), { direction: 'down' }); return true; }
                     return true;
                 }
-                // Выше строки действий в карточке ничего нет — там и поднимаем
-                // шапку разделов. Раньше «вверх» отсюда просто не делало ничего.
-                if (dir === 'up') { revealDetailTopbar(f); return true; }
+                // Выше строки действий — оценки зрителей, если они есть; выше
+                // них (или сразу, если их нет) поднимаем шапку разделов
+                if (dir === 'up') {
+                    if (rateRow.length) return focusEl(rateRow[Math.min(actIdx, rateRow.length - 1)], { direction: 'up' });
+                    revealDetailTopbar(f);
+                    return true;
+                }
                 return true;
             }
             if (isB) {

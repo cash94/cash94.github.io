@@ -1050,7 +1050,7 @@ module.exports = {
                     <ul>
                         <li>Глобалы: <code>console</code> (с префиксом модуля), <code>setTimeout/setInterval/clear*</code>, <code>fetch</code>, <code>JSON</code>, <code>Math</code>, <code>Date</code>, <code>RegExp</code>, <code>Promise</code>, <code>Buffer</code>, <code>URL</code>, <code>URLSearchParams</code>, <code>TextEncoder/TextDecoder</code>, а также встроенные <code>Map</code>, <code>Set</code>, <code>Array</code> и т.д.</li>
                         <li><b>Нет</b>: <code>require</code>, <code>process</code>, <code>fs</code>, <code>eval</code>, <code>new Function</code>, WebAssembly. Всё — в одном файле; данные (словари, списки) — прямо в коде.</li>
-                        <li>Записать на диск нечего и нечем: кэш держите в памяти (<code>Map</code> с TTL и пределом размера). После перезапуска сервера он пуст — модуль должен уметь собрать данные заново.</li>
+                        <li>Файлов нет. Кэш держите в памяти (<code>Map</code> с TTL и пределом размера): после перезапуска сервера он пуст, и модуль должен уметь собрать данные заново. То, что терять нельзя (голоса, отметки пользователей), — в <code>ctx.db</code>.</li>
                         <li>Песочница — не защита от вредного кода, а страховка от случайных ошибок. Доверие держится на источнике модуля.</li>
                     </ul>
 
@@ -1060,6 +1060,16 @@ module.exports = {
                         <li><code>ctx.onDestroy(fn)</code> — уборка при выгрузке и обновлении.</li>
                         <li><code>ctx.tmdbGet('discover/movie?…')</code> — запрос к TMDB через зеркала сервера, без хоста и <code>api_key</code>; возвращает <code>Response</code>. <b>На старых серверах его нет</b> (<code>null</code>): держите запасной путь — свои зеркала из <code>https://cash94.github.io/apiproxy.json</code> (готовая обвязка — в <code>halloween-collection</code> и <code>smart-search</code>).</li>
                         <li><code>ctx.httpGet(url)</code> — GET с таймаутом 15 с и редиректами, отдаёт текст.</li>
+                        <li><code>ctx.db</code> — маленькая база модуля в БД сервера (с TorrStream 1.0.66; на старом сервере <code>null</code> — отвечайте 501 и пусть фронт прячет функцию). Ключ — строка до 200 символов, значение — JSON до 64 КБ, до 100 000 записей на модуль; у каждого модуля своё пространство ключей. Всё синхронно:
+<pre>ctx.db.get('c:movie:550')               // значение или null
+ctx.db.set('c:movie:550', { like: 3 })  // записать / заменить
+ctx.db.add('v:movie:550:7', { r: 'like' }) // только если ключа нет → true/false
+ctx.db.delete(key)                      // true, если был
+ctx.db.list('v:movie:550:', { limit: 100, offset: 0 }) // [{ key, value, updatedAt }]
+ctx.db.count('v:movie:550:')            // сколько ключей с префиксом
+ctx.db.transaction(function () { /* всё или ничего */ });</pre>
+                        Ключи стройте с префиксами (<code>тип:id:пользователь</code>), чтобы выбирать <code>list</code>/<code>count</code> по префиксу. «Один раз» (голос, отметка) — через <code>add</code>, а не <code>get</code> + <code>set</code>. Счётчики храните отдельным ключом и меняйте в той же транзакции, что и запись. Тексты от пользователей режьте по длине до записи. Пример — модуль <code>user-ratings</code>.</li>
+                        <li><code>ctx.auth.user(req)</code> — кто прислал запрос: <code>{ id, login, role }</code> или <code>null</code>, если не вошёл в аккаунт. Сессия та же, что у сервера (cookie или токен). Это единственный надёжный способ узнать пользователя: <code>clientId</code> из заголовков подделывается.</li>
                         <li><code>ctx.state.version</code> — версия сервера, <code>ctx.state.activeStreams</code> — текущие потоки; <code>ctx.utils.getClientId(req)</code> — учётка устройства.</li>
                     </ul>
 
@@ -2286,7 +2296,8 @@ mod.init({ get: (p, h) => routes[p] = h, post: (p, h) => routes[p] = h },
             'kinopoisk-collections': ['Подборки Кинопоиска', 'ряды подборок на главной'],
             'skip-intro': ['Пропуск заставок и титров', 'кнопка «Пропустить» в плеере'],
             'halloween-collection': ['Хэллоуин', 'сезонная подборка на главной и в каталоге'],
-            'smart-search': ['Поиск по смыслу', '«фильмы про гонки», «корейские сериалы про зомби» в поиске']
+            'smart-search': ['Поиск по смыслу', '«фильмы про гонки», «корейские сериалы про зомби» в поиске'],
+            'user-ratings': ['Оценки зрителей', '«Огонь», «Лайк», «Дизлайк», «Какашка» в карточке фильма']
         };
         // Имя модуля становится именем папки на сервере — только безопасные символы
         const MODULE_NAME_RE = /^[a-z0-9][a-z0-9-]{1,47}$/;
