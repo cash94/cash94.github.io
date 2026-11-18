@@ -837,7 +837,15 @@ function updatePlayPauseButton() {
 }
 var NEXT_EPISODE_WARMUP_SEC = 180;
 var warmedNextEpisodeKey = null;
+function usesServerHlsPlayback() {
+  if (window.AndroidJS) return false;
+  if (AppState.transcodingOnOff || AppState.transcodingFullOnOff) return false;
+  var apple = typeof getApplePlayer === 'function' ? getApplePlayer() : null;
+  return !(apple && apple.template);
+}
+window.usesServerHlsPlayback = usesServerHlsPlayback;
 function maybeWarmNextEpisode(absoluteTime) {
+  if (!usesServerHlsPlayback()) return;
   if (!currentTorrentHash || !currentEpisodeFiles || !currentEpisodeFiles.length) return;
   var next = currentEpisodeFiles[currentEpisodeIndex + 1];
   if (!next || !next.id) return;
@@ -850,10 +858,8 @@ function maybeWarmNextEpisode(absoluteTime) {
   warmedNextEpisodeKey = key;
   console.log('🔥 Прогрев следующей серии: ' + (currentEpisodeIndex + 2));
   preloadTorrents(currentTorrentHash, next.id);
-  if (!AppState.transcodingOnOff && !AppState.transcodingFullOnOff) {
-    var savedClientId = localStorage.getItem('clientId');
-    fetchWithTimeout(SERVER_URL + '/api/file/info?hash=' + currentTorrentHash + '&fileId=' + next.id + '&clientId=' + encodeURIComponent(savedClientId), null, FILE_INFO_FETCH_TIMEOUT_MS)['catch'](function () {});
-  }
+  var savedClientId = localStorage.getItem('clientId');
+  fetchWithTimeout(SERVER_URL + '/api/file/info?hash=' + currentTorrentHash + '&fileId=' + next.id + '&clientId=' + encodeURIComponent(savedClientId), null, FILE_INFO_FETCH_TIMEOUT_MS)['catch'](function () {});
 }
 function hudStat(label, value, valueClass) {
   return '<span class="hud-stat"><span class="hud-stat-label">' + label + '</span>' + '<span class="hud-stat-value' + (valueClass ? ' ' + valueClass : '') + '">' + value + '</span></span>';
@@ -3600,7 +3606,9 @@ function _preparePlaybackMetadata() {
     noteCollectionPlayback(currentTimecodeData.hash, currentTimecodeData.fileId);
     var wantTimecode = initialSeek === null;
     var requests = [loadPlaybackPrepare(currentTimecodeData.hash, currentTimecodeData.fileId, wantTimecode), getFileNameByHash(currentTimecodeData.hash, currentTimecodeData.fileId)];
-    if (initialSeek === null || initialSeek === 0) preloadTorrents(currentTimecodeData.hash, currentTimecodeData.fileId);
+    if ((initialSeek === null || initialSeek === 0) && usesServerHlsPlayback()) {
+      preloadTorrents(currentTimecodeData.hash, currentTimecodeData.fileId);
+    }
     var promiseResults = yield Promise.all(requests);
     if (signal.aborted) return null;
     var prepared = promiseResults[0];
@@ -4189,7 +4197,16 @@ function _startHLSPlayback() {
       var preloadRef = parseStreamRef(originalUrl);
       if (preloadRef) {
         var preloadTitle = AppState.currentDetailItem ? AppState.currentDetailItem.title || AppState.currentDetailItem.name || '' : '';
-        if (!(yield runPlaybackPreload(preloadRef.hash, preloadRef.fileId, preloadTitle))) return false;
+        var resumeAt = initialSeek;
+        if (resumeAt === null) {
+          if (!isPlaybackPreloadActive()) runPlaybackPreload(preloadRef.hash, null, preloadTitle);
+          resumeAt = yield loadTimecodeFromServer(preloadRef.hash, preloadRef.fileId);
+          if (!isPlaybackPreloadActive()) return false;
+        }
+        if (resumeAt > 0) {
+          console.log('⏭️ Предзагрузка пропущена: старт с ' + formatTime(resumeAt));
+          skipPlaybackPreload(preloadRef.hash);
+        } else if (!(yield runPlaybackPreload(preloadRef.hash, preloadRef.fileId, preloadTitle))) return false;
       }
     }
     var applePlayer = typeof getApplePlayer === 'function' ? getApplePlayer() : null;

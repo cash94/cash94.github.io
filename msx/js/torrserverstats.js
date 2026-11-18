@@ -50,6 +50,9 @@ async function fetchTorrentStatsForBuffer(hash) {
         var torrentData = {
           preloaded_bytes: torrent.preloaded_bytes || 0,
           preload_size: torrent.torrent_size || torrent.preload_size || 1,
+          // Объём, который TorrServer греет по ?preload (его «Размер
+          // предзагрузки»). Не preload_size выше: тот исторически — размер раздачи
+          preload_target: torrent.preload_size || 0,
           download_speed: torrent.download_speed || 0,  // уже в байтах/с
           active_peers: torrent.active_peers || 0,
           total_peers: torrent.total_peers || 0,
@@ -231,13 +234,15 @@ function stopTorrentStatsUpdates() {
 // стартом плеера startHLSPlayback (player.js) зовёт runPlaybackPreload: тот
 // просит TorrServer прогреть файл (?preload=preload, как preloadTorrents в
 // player.js) и раз в секунду показывает в окне скорость, пиры, сиды и сколько
-// буфера уже набрано. Набралось PRELOAD_TARGET_BYTES — окно закрывается и
-// воспроизведение стартует. По окну видно, живая ли раздача, и если нет —
-// «Назад» отменяет запуск и останавливает раздачу на сервере.
+// буфера уже набрано. По окну видно, живая ли раздача, и если нет — «Назад»
+// отменяет запуск и останавливает раздачу на сервере.
 //
-// Ответ на ?preload=preload TorrServer держит открытым, пока греет свой объём
-// (настройка «Размер предзагрузки» у него). Если тот меньше 32 МБ, до цели
-// счётчик не дорастёт никогда — поэтому успешный ответ тоже значит «готово».
+// Окно закрывается, как у Lampa: TorrServer ответил на ?preload=preload (ответ
+// он держит открытым, пока греет свой объём — настройку «Размер предзагрузки»)
+// или его preloaded_bytes дошёл до PRELOAD_DONE_FRACTION от его же
+// preload_size. Раньше цель была своя, 32 МБ: при «Размере предзагрузки»
+// больше неё плеер стартовал недогретым, при меньшем — ждал ответа впустую.
+// Свои 32 МБ остались запасной целью, пока TorrServer не сообщил preload_size.
 //
 // Клавиши ловим в фазе перехвата на window, как встроенная клавиатура (osk.js):
 // раньше обработчиков control.js, которые иначе увели бы фокус по экрану под
@@ -245,7 +250,18 @@ function stopTorrentStatsUpdates() {
 // (control.js), у него keyCode 0 — поэтому проверяем ещё и e.key.
 
 var PRELOAD_TARGET_BYTES = 32 * 1024 * 1024;
+var PRELOAD_DONE_FRACTION = 0.95;
 var PRELOAD_POLL_MS = 1000;
+
+/**
+ * Сколько байт набрать до старта: 95 % от preload_size TorrServer, а пока он
+ * его не сообщил (первый опрос, окно ожидания файла) — PRELOAD_TARGET_BYTES.
+ * По этой же цели считается процент в окне — к закрытию шкала полная.
+ */
+function preloadGoalBytes(state) {
+  var target = state.stats && state.stats.preload_target;
+  return target > 0 ? Math.max(1, Math.floor(target * PRELOAD_DONE_FRACTION)) : PRELOAD_TARGET_BYTES;
+}
 
 // Проба файла (ffprobe на сервере) — пока идёт предзагрузка, а не после неё.
 // Раньше плеер после окна ещё ждал /api/playback/prepare, а тот — ffprobe по
@@ -257,11 +273,12 @@ var PRELOAD_POLL_MS = 1000;
 var PRELOAD_PROBE_AFTER_BYTES = 4 * 1024 * 1024;
 
 /**
- * Нужна ли проба этому запуску: Android отдаёт ссылку своему плееру и пробу
- * не спрашивает, режимы транскодирования живут без неё — как и прогрев
- * следующей серии (maybeWarmNextEpisode, player.js).
+ * Нужна ли проба этому запуску: только потоку через HLS сервера
+ * (usesServerHlsPlayback, player.js). Android и Apple отдают ссылку своему
+ * плееру, прямой файл и gst живут без пробы — как и прогрев следующей серии.
  */
 function preloadWantsProbe() {
+  if (typeof usesServerHlsPlayback === 'function') return usesServerHlsPlayback();
   return !window.AndroidJS && !AppState.transcodingOnOff && !AppState.transcodingFullOnOff;
 }
 
@@ -515,8 +532,8 @@ function setPreloadMedia(state, title) {
 function renderPlaybackPreload(state) {
   var els = getPreloadPanel();
   var stats = state.stats;
-  var loaded = Math.min(state.loaded, PRELOAD_TARGET_BYTES);
-  var progress = loaded * 100 / PRELOAD_TARGET_BYTES;
+  var goal = preloadGoalBytes(state);
+  var progress = Math.min(state.loaded, goal) * 100 / goal;
   els.fill.style.width = progress.toFixed(1) + '%';
   els.percent.textContent = Math.round(progress) + '%';
   setPreloadSpiders(progress / 100);
@@ -546,7 +563,7 @@ function playbackPreloadTick(state) {
     }
     if (state.loaded >= PRELOAD_PROBE_AFTER_BYTES) startPreloadProbe(state);
     renderPlaybackPreload(state);
-    if (state.loaded >= PRELOAD_TARGET_BYTES && !state.waiting) { finishPlaybackPreload(state, true); return; }
+    if (state.loaded >= preloadGoalBytes(state) && !state.waiting) { finishPlaybackPreload(state, true); return; }
     schedulePlaybackPreloadTick(state, PRELOAD_POLL_MS);
   });
 }
@@ -794,7 +811,7 @@ function startPreloadRequest(state) {
     if (activePlaybackPreload !== state) return;
     if (response.ok) {
       // TorrServer догрел свой объём — ждать больше нечего
-      state.loaded = Math.max(state.loaded, PRELOAD_TARGET_BYTES);
+      state.loaded = Math.max(state.loaded, preloadGoalBytes(state));
       renderPlaybackPreload(state);
       finishPlaybackPreload(state, true);
     } else {
@@ -812,6 +829,18 @@ function startPreloadRequest(state) {
 function endPlaybackPreloadWait() {
   var state = activePlaybackPreload;
   if (state && state.waiting) finishPlaybackPreload(state, false);
+}
+
+/**
+ * Запуск без прогрева («Продолжить» с таймкода, player.js): окно ожидания
+ * этой раздачи закрываем как успешное — экран стоит до первого кадра, — но
+ * ?preload не шлём: TorrServer грел бы начало файла, а плеер стартует с середины.
+ */
+function skipPlaybackPreload(hash) {
+  var state = activePlaybackPreload;
+  if (!state || state.hash !== String(hash).toLowerCase()) return;
+  state.waiting = false;
+  finishPlaybackPreload(state, true);
 }
 
 function isPlaybackPreloadActive() {
@@ -834,5 +863,6 @@ window.torrentStatsCache = torrentStatsCache;
 window.refreshTorrentStatsCadence = refreshTorrentStatsCadence;
 window.runPlaybackPreload = runPlaybackPreload;
 window.endPlaybackPreloadWait = endPlaybackPreloadWait;
+window.skipPlaybackPreload = skipPlaybackPreload;
 window.isPlaybackPreloadActive = isPlaybackPreloadActive;
 window.isPreloadScreenShown = isPreloadScreenShown;

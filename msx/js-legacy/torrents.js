@@ -1776,7 +1776,7 @@ function _saveClientConfig() {
 }
 function preloadDetailFile(hash, fileId) {
   if (!hash || !fileId) return;
-  if (window.AndroidJS || AppState.platform === 'webos' || AppState.tizenApp) return;
+  if (typeof usesServerHlsPlayback !== 'function' || !usesServerHlsPlayback()) return;
   if (typeof preloadTorrents !== 'function') return;
   if (AppState.currentScreen !== 'detail') return;
   var openItem = AppState.currentDetailItem;

@@ -2067,11 +2067,12 @@ async function saveClientConfig() {
  */
 function preloadDetailFile(hash, fileId) {
     if (!hash || !fileId) return;
-    // Android отдаёт ссылку своему плееру, webOS и Tizen играют файл напрямую с
-    // TorrServer — пробы ffprobe нет у обоих, и прогрев под неё только держал
-    // бы раздачу работающей и тратил память TorrServer
-    if (window.AndroidJS || AppState.platform === 'webos' || AppState.tizenApp) return;
-    // torrents.js грузится раньше player.js, где объявлен preloadTorrents
+    // Только потоку через HLS сервера (usesServerHlsPlayback, player.js):
+    // Android и Apple отдают ссылку своему плееру, webOS, Tizen, VIDAA 9.5+ и
+    // gst играют файл напрямую с TorrServer — пробы ffprobe там нет, и прогрев
+    // под неё только держал бы раздачу работающей и тратил память TorrServer.
+    // torrents.js грузится раньше player.js, где объявлены обе функции
+    if (typeof usesServerHlsPlayback !== 'function' || !usesServerHlsPlayback()) return;
     if (typeof preloadTorrents !== 'function') return;
     // Таймкоды грузятся асинхронно, и за это время человек мог уйти на другую
     // карточку: греть раздачу, которой уже нет на экране, незачем.

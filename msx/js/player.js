@@ -1048,11 +1048,33 @@ function updatePlayPauseButton() {
  *
  * Одна попытка на серию. Ролики короче шести минут не трогаем: там «за три
  * минуты до конца» — это почти сразу после старта.
+ *
+ * Только для потока через HLS сервера (usesServerHlsPlayback): прямой файл
+ * (webOS, Tizen, VIDAA 9.5+, Apple, переключатель на ПК) и gst пробы не ждут,
+ * а прогрев там тратил бы канал и память TorrServer — на Tizen с MonoServer
+ * это память самого телевизора.
  */
 var NEXT_EPISODE_WARMUP_SEC = 180;
 var warmedNextEpisodeKey = null;
 
+/**
+ * Идёт ли воспроизведение через HLS самого сервера (initServerProxyPlayback).
+ * Всё фоновое вокруг потока — прогрев следующей серии, прогрев файла под
+ * пробу, проба во время предзагрузки — только для него. Прямой файл
+ * (transcodingFullOnOff: webOS, Tizen, VIDAA 9.5+, Apple), gst
+ * (transcodingOnOff) и внешние плееры Android и Apple берут файл с TorrServer
+ * сами, и прогрев там лишь занимает канал.
+ */
+function usesServerHlsPlayback() {
+  if (window.AndroidJS) return false;
+  if (AppState.transcodingOnOff || AppState.transcodingFullOnOff) return false;
+  var apple = (typeof getApplePlayer === 'function') ? getApplePlayer() : null;
+  return !(apple && apple.template);
+}
+window.usesServerHlsPlayback = usesServerHlsPlayback;
+
 function maybeWarmNextEpisode(absoluteTime) {
+  if (!usesServerHlsPlayback()) return;
   if (!currentTorrentHash || !currentEpisodeFiles || !currentEpisodeFiles.length) return;
   var next = currentEpisodeFiles[currentEpisodeIndex + 1];
   if (!next || !next.id) return;
@@ -1066,12 +1088,9 @@ function maybeWarmNextEpisode(absoluteTime) {
 
   console.log('🔥 Прогрев следующей серии: ' + (currentEpisodeIndex + 2));
   preloadTorrents(currentTorrentHash, next.id);
-  // Пробу файла нужна только обычному режиму — транскодирование живёт без неё
-  if (!AppState.transcodingOnOff && !AppState.transcodingFullOnOff) {
-    var savedClientId = localStorage.getItem('clientId');
-    fetchWithTimeout(SERVER_URL + '/api/file/info?hash=' + currentTorrentHash + '&fileId=' + next.id +
-      '&clientId=' + encodeURIComponent(savedClientId), null, FILE_INFO_FETCH_TIMEOUT_MS)['catch'](function () { });
-  }
+  var savedClientId = localStorage.getItem('clientId');
+  fetchWithTimeout(SERVER_URL + '/api/file/info?hash=' + currentTorrentHash + '&fileId=' + next.id +
+    '&clientId=' + encodeURIComponent(savedClientId), null, FILE_INFO_FETCH_TIMEOUT_MS)['catch'](function () { });
 }
 
 /**
@@ -4123,7 +4142,11 @@ async function preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, sig
     loadPlaybackPrepare(currentTimecodeData.hash, currentTimecodeData.fileId, wantTimecode),
     getFileNameByHash(currentTimecodeData.hash, currentTimecodeData.fileId)
   ];
-  if (initialSeek === null || initialSeek === 0) preloadTorrents(currentTimecodeData.hash, currentTimecodeData.fileId);
+  // Прогрев головы файла под пробу — только потоку через HLS сервера: прямой
+  // файл и gst пробы не ждут (usesServerHlsPlayback)
+  if ((initialSeek === null || initialSeek === 0) && usesServerHlsPlayback()) {
+    preloadTorrents(currentTimecodeData.hash, currentTimecodeData.fileId);
+  }
   var promiseResults = await Promise.all(requests);
   if (signal.aborted) return null;
   var prepared = promiseResults[0]; var fileName = promiseResults[1];
@@ -4630,7 +4653,22 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     var preloadRef = parseStreamRef(originalUrl);
     if (preloadRef) {
       var preloadTitle = AppState.currentDetailItem ? (AppState.currentDetailItem.title || AppState.currentDetailItem.name || '') : '';
-      if (!(await runPlaybackPreload(preloadRef.hash, preloadRef.fileId, preloadTitle))) return false;
+      // «Продолжить» с таймкода: ?preload греет начало файла, а плеер стартует
+      // с середины — такой прогрев только отнимает канал. Позицию не передали —
+      // спрашиваем её уже под окном (окно ожидания: пиры видно, «Назад»
+      // отменяет), а не перед ним — ensureTorrentLoaded на холодной раздаче
+      // ждёт до пары секунд
+      var resumeAt = initialSeek;
+      if (resumeAt === null) {
+        if (!isPlaybackPreloadActive()) runPlaybackPreload(preloadRef.hash, null, preloadTitle);
+        resumeAt = await loadTimecodeFromServer(preloadRef.hash, preloadRef.fileId);
+        // «Назад» в окне, пока ждали позицию
+        if (!isPlaybackPreloadActive()) return false;
+      }
+      if (resumeAt > 0) {
+        console.log('⏭️ Предзагрузка пропущена: старт с ' + formatTime(resumeAt));
+        skipPlaybackPreload(preloadRef.hash);
+      } else if (!(await runPlaybackPreload(preloadRef.hash, preloadRef.fileId, preloadTitle))) return false;
     }
   }
   // Устройство Apple с выбранным внешним плеером (Infuse, VLC, плееры tvOS…):

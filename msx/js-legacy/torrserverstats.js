@@ -43,6 +43,7 @@ function _fetchTorrentStatsForBuffer() {
           var torrentData = {
             preloaded_bytes: torrent.preloaded_bytes || 0,
             preload_size: torrent.torrent_size || torrent.preload_size || 1,
+            preload_target: torrent.preload_size || 0,
             download_speed: torrent.download_speed || 0,
             active_peers: torrent.active_peers || 0,
             total_peers: torrent.total_peers || 0,
@@ -176,9 +177,15 @@ function stopTorrentStatsUpdates() {
   if (wasRunning) console.log('📊 Остановлен опрос статистики TorrServer');
 }
 var PRELOAD_TARGET_BYTES = 32 * 1024 * 1024;
+var PRELOAD_DONE_FRACTION = 0.95;
 var PRELOAD_POLL_MS = 1000;
+function preloadGoalBytes(state) {
+  var target = state.stats && state.stats.preload_target;
+  return target > 0 ? Math.max(1, Math.floor(target * PRELOAD_DONE_FRACTION)) : PRELOAD_TARGET_BYTES;
+}
 var PRELOAD_PROBE_AFTER_BYTES = 4 * 1024 * 1024;
 function preloadWantsProbe() {
+  if (typeof usesServerHlsPlayback === 'function') return usesServerHlsPlayback();
   return !window.AndroidJS && !AppState.transcodingOnOff && !AppState.transcodingFullOnOff;
 }
 function startPreloadProbe(state) {
@@ -382,8 +389,8 @@ function setPreloadMedia(state, title) {
 function renderPlaybackPreload(state) {
   var els = getPreloadPanel();
   var stats = state.stats;
-  var loaded = Math.min(state.loaded, PRELOAD_TARGET_BYTES);
-  var progress = loaded * 100 / PRELOAD_TARGET_BYTES;
+  var goal = preloadGoalBytes(state);
+  var progress = Math.min(state.loaded, goal) * 100 / goal;
   els.fill.style.width = progress.toFixed(1) + '%';
   els.percent.textContent = Math.round(progress) + '%';
   setPreloadSpiders(progress / 100);
@@ -412,7 +419,7 @@ function playbackPreloadTick(state) {
     }
     if (state.loaded >= PRELOAD_PROBE_AFTER_BYTES) startPreloadProbe(state);
     renderPlaybackPreload(state);
-    if (state.loaded >= PRELOAD_TARGET_BYTES && !state.waiting) {
+    if (state.loaded >= preloadGoalBytes(state) && !state.waiting) {
       finishPlaybackPreload(state, true);
       return;
     }
@@ -610,7 +617,7 @@ function startPreloadRequest(state) {
   (window.bgFetch ? window.bgFetch(url, options) : fetch(url, options)).then(function (response) {
     if (activePlaybackPreload !== state) return;
     if (response.ok) {
-      state.loaded = Math.max(state.loaded, PRELOAD_TARGET_BYTES);
+      state.loaded = Math.max(state.loaded, preloadGoalBytes(state));
       renderPlaybackPreload(state);
       finishPlaybackPreload(state, true);
     } else {
@@ -626,6 +633,12 @@ function startPreloadRequest(state) {
 function endPlaybackPreloadWait() {
   var state = activePlaybackPreload;
   if (state && state.waiting) finishPlaybackPreload(state, false);
+}
+function skipPlaybackPreload(hash) {
+  var state = activePlaybackPreload;
+  if (!state || state.hash !== String(hash).toLowerCase()) return;
+  state.waiting = false;
+  finishPlaybackPreload(state, true);
 }
 function isPlaybackPreloadActive() {
   return !!activePlaybackPreload;
@@ -643,5 +656,6 @@ window.torrentStatsCache = torrentStatsCache;
 window.refreshTorrentStatsCadence = refreshTorrentStatsCadence;
 window.runPlaybackPreload = runPlaybackPreload;
 window.endPlaybackPreloadWait = endPlaybackPreloadWait;
+window.skipPlaybackPreload = skipPlaybackPreload;
 window.isPlaybackPreloadActive = isPlaybackPreloadActive;
 window.isPreloadScreenShown = isPreloadScreenShown;
