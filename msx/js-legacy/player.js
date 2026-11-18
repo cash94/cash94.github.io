@@ -3894,7 +3894,7 @@ function _initTranscodingOffPlayback() {
     videoPlayer.addEventListener('loadedmetadata', onLoadedMetadata);
     videoPlayer.addEventListener('canplay', onCanPlay);
     videoPlayer.addEventListener('error', onError);
-    if (AppState.tizenApp) videoPlayer.addEventListener('playing', onPlaying);
+    videoPlayer.addEventListener('playing', onPlaying);
     AppState._directPlaybackDetach = detachDirectListeners;
     AppState._loadingTimeout = setTimeout(function () {
       if (!started && !signal.aborted) startPlayback();
@@ -3905,7 +3905,7 @@ function _initTranscodingOffPlayback() {
     webosSubsStart(videoPlayer, staleMediaId);
     directProbeStart();
     AppState.nativeVideoPlayer = videoPlayer;
-    if (AppState.tizenApp) showPlayerLoading('Воспроизведение...', null);else hidePlayerLoading();
+    showPlayerLoading('Буферизация...', null);
   });
   return _initTranscodingOffPlayback.apply(this, arguments);
 }
@@ -3914,6 +3914,7 @@ function initServerProxyPlayback(_x52, _x53, _x54) {
 }
 function _initServerProxyPlayback() {
   _initServerProxyPlayback = _asyncToGenerator(function* (metadata, initialSeek, signal) {
+    showPlayerLoading('Буферизация...', null);
     var seekParam = initialSeek && initialSeek > 0 ? '&start=' + initialSeek.toFixed(2) : '';
     var durationParam = metadata.fileInfo.duration && metadata.fileInfo.duration > 0 ? '&duration=' + metadata.fileInfo.duration.toFixed(0) : '';
     var audioParam = metadata.audioTrack !== null && metadata.audioChosen !== false ? '&audio=' + metadata.audioTrack : '';

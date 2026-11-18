@@ -4327,8 +4327,9 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
   // Спиннер — пока не пошли кадры. Без предзагрузки TorrServer отдаёт начало
   // файла не сразу, а AVPlay (tizen-avplay.js) ещё и готовит файл целиком до
   // canplay: заставка «Воспроизведение…» гасла с концом startHLSPlayback, и
-  // секунды, а то и десятки секунд был просто чёрный экран. Пока только в
-  // приложении для Tizen — у остальных спиннер гаснет, как раньше
+  // секунды, а то и десятки секунд был просто чёрный экран. Сначала было
+  // только в приложении для Tizen; с «Продолжить» без предзагрузки <video>
+  // ещё и ищет середину файла — теперь на всех устройствах
   var onPlaying = function () {
     videoPlayer.removeEventListener('playing', onPlaying);
     hidePlayerLoading();
@@ -4384,7 +4385,7 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
   videoPlayer.addEventListener('loadedmetadata', onLoadedMetadata);
   videoPlayer.addEventListener('canplay', onCanPlay);
   videoPlayer.addEventListener('error', onError);
-  if (AppState.tizenApp) videoPlayer.addEventListener('playing', onPlaying);
+  videoPlayer.addEventListener('playing', onPlaying);
   // Ссылку держим, чтобы снять слушатели прошлого файла: 'error' живёт всё
   // воспроизведение, и без этого на <video> оседал ещё один на каждую серию
   AppState._directPlaybackDetach = detachDirectListeners;
@@ -4400,11 +4401,15 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
   webosSubsStart(videoPlayer, staleMediaId);
   directProbeStart();
   AppState.nativeVideoPlayer = videoPlayer;
-  if (AppState.tizenApp) showPlayerLoading('Воспроизведение...', null);
-  else hidePlayerLoading();
+  showPlayerLoading('Буферизация...', null);
 }
 
 async function initServerProxyPlayback(metadata, initialSeek, signal) {
+  // Кружок сразу, а не с плейлистом (MANIFEST_PARSED): пока сервер поднимает
+  // поток — а с таймкода ffmpeg ещё тянет из раздачи середину файла, — плеер
+  // секундами стоял пустым и чёрным. Предзагрузка с позиции невозможна:
+  // ?preload у TorrServer смещения не принимает и греет только начало и хвост
+  showPlayerLoading('Буферизация...', null);
   var seekParam = (initialSeek && initialSeek > 0) ? ('&start=' + initialSeek.toFixed(2)) : '';
   var durationParam = (metadata.fileInfo.duration && metadata.fileInfo.duration > 0) ? ('&duration=' + metadata.fileInfo.duration.toFixed(0)) : '';
   // Не выбрана — без audio: сервер возьмёт дорожку с пометкой default
