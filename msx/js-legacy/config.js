@@ -114,6 +114,7 @@ var AppState = {
   playerScreensaver: true,
   preloadBeforePlay: true,
   builtinKeyboard: false,
+  noFavoriteHold: false,
   detailUnderSearch: false,
   hls: null,
   currentStreamId: null,

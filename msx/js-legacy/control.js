@@ -4716,6 +4716,10 @@ function setupFocusRescue() {
           return;
         }
         if (hf && typeof window.getCardCatalogItem === 'function' && window.getCardCatalogItem(hf)) {
+          if (AppState.noFavoriteHold) {
+            if (!okRepeat) onOk();
+            return;
+          }
           if (!okRepeat) {
             okHoldHandled = false;
             okHoldFocused = hf;

@@ -2398,6 +2398,18 @@ function setupCheckboxes() {
     });
   }
 
+  // «Отключить добавление в избранное по удержанию» (раздел «Прочее»). Флаг
+  // читает control.js на каждом нажатии ОК на карточке фильма
+  var noFavoriteHoldCheckbox = getEl('no-favorite-hold');
+  if (noFavoriteHoldCheckbox) {
+    AppState.noFavoriteHold = localStorage.getItem('noFavoriteHold') === 'true';
+    noFavoriteHoldCheckbox.checked = AppState.noFavoriteHold;
+    noFavoriteHoldCheckbox.addEventListener('change', function (e) {
+      AppState.noFavoriteHold = e.target.checked;
+      localStorage.setItem('noFavoriteHold', AppState.noFavoriteHold);
+    });
+  }
+
   setupSearchFilterDefaults();
 
   // 2. Скрытие часов

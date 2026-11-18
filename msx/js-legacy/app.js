@@ -1862,6 +1862,15 @@ function setupCheckboxes() {
       console.log('⌨️ Встроенная клавиатура:', AppState.builtinKeyboard ? 'включена' : 'выключена');
     });
   }
+  var noFavoriteHoldCheckbox = getEl('no-favorite-hold');
+  if (noFavoriteHoldCheckbox) {
+    AppState.noFavoriteHold = localStorage.getItem('noFavoriteHold') === 'true';
+    noFavoriteHoldCheckbox.checked = AppState.noFavoriteHold;
+    noFavoriteHoldCheckbox.addEventListener('change', function (e) {
+      AppState.noFavoriteHold = e.target.checked;
+      localStorage.setItem('noFavoriteHold', AppState.noFavoriteHold);
+    });
+  }
   setupSearchFilterDefaults();
   var hideClockCheckbox = getEl('hide-clock');
   if (window.AndroidJS) {

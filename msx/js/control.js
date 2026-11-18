@@ -5511,6 +5511,15 @@ function setupFocusRescue() {
                 // «Избранного») — долгое OK добавляет в избранное или убирает
                 // оттуда (toggleFavoriteCard, catalog.js); обычное — на отпускании
                 if (hf && typeof window.getCardCatalogItem === 'function' && window.getCardCatalogItem(hf)) {
+                    // «Прочее → Отключить добавление в избранное по удержанию»:
+                    // ОК открывает карточку сразу на нажатии, без ожидания
+                    // отпускания — на случай, когда отпускание до нас не
+                    // доходит (клиент Apple TV) и любое нажатие выглядело
+                    // удержанием. Повтор при удержании карточку повторно не жмёт
+                    if (AppState.noFavoriteHold) {
+                        if (!okRepeat) onOk();
+                        return;
+                    }
                     if (!okRepeat) {
                         okHoldHandled = false;
                         okHoldFocused = hf;
