@@ -11,6 +11,7 @@ var filteredResults = [];
 var currentSearchQuery = '';
 var currentSearchMode = 'globalsearch';
 var globalSearchResults = [];
+var globalSearchInterpreted = null;
 var tmdbSearchController = null;
 var tmdbSearchSequence = 0;
 var currentSort = 'date-desc';
@@ -1821,7 +1822,7 @@ function _addProgressToDetail() {
             if (detailView) detailView.style.pointerEvents = 'auto';
           });
         });
-        return function (_x46) {
+        return function (_x48) {
           return _ref3.apply(this, arguments);
         };
       }());
@@ -6305,21 +6306,30 @@ function _searchTMDB() {
     try {
       var encodedQuery = encodeURIComponent(query.trim());
       var allResults = null;
-      var combined = yield fetch('/api/tmdb/search/all?query=' + encodedQuery, {
-        signal: controller.signal
-      });
+      var interpreted = null;
+      var smart = yield fetchSmartSearch(encodedQuery, controller.signal);
       if (searchSequence !== tmdbSearchSequence) return;
-      if (combined.ok) {
-        var combinedData = yield combined.json();
-        if (combinedData && Array.isArray(combinedData.results)) allResults = combinedData.results;
-      }
-      if (allResults === null && combined.status === 404) {
-        allResults = yield searchTMDBLegacy(encodedQuery, controller.signal);
+      if (smart) {
+        allResults = smart.results;
+        interpreted = smart.interpreted;
+      } else {
+        var combined = yield fetch('/api/tmdb/search/all?query=' + encodedQuery, {
+          signal: controller.signal
+        });
         if (searchSequence !== tmdbSearchSequence) return;
+        if (combined.ok) {
+          var combinedData = yield combined.json();
+          if (combinedData && Array.isArray(combinedData.results)) allResults = combinedData.results;
+        }
+        if (allResults === null && combined.status === 404) {
+          allResults = yield searchTMDBLegacy(encodedQuery, controller.signal);
+          if (searchSequence !== tmdbSearchSequence) return;
+        }
+        if (allResults === null) throw new Error('TMDB: HTTP ' + combined.status);
       }
-      if (allResults === null) throw new Error('TMDB: HTTP ' + combined.status);
       for (var ri = 0; ri < allResults.length; ri++) allResults[ri].searchQuery = query;
       globalSearchResults = allResults;
+      globalSearchInterpreted = interpreted;
       currentSearchQuery = query;
       if (window.Nav) {
         var navSearch = Nav.top();
@@ -6341,7 +6351,39 @@ function _searchTMDB() {
   });
   return _searchTMDB.apply(this, arguments);
 }
-function searchTMDBLegacy(_x43, _x44) {
+var smartSearchModuleMissing = false;
+function fetchSmartSearch(_x43, _x44) {
+  return _fetchSmartSearch.apply(this, arguments);
+}
+function _fetchSmartSearch() {
+  _fetchSmartSearch = _asyncToGenerator(function* (encodedQuery, signal) {
+    if (smartSearchModuleMissing) return null;
+    try {
+      var res = yield fetch('/api/smart-search?query=' + encodedQuery, {
+        signal: signal
+      });
+      if (res.status === 404) {
+        smartSearchModuleMissing = true;
+        return null;
+      }
+      if (!res.ok) return null;
+      var data = yield res.json();
+      if (!data || !data.smart || !Array.isArray(data.results)) return null;
+      var chips = data.interpreted && Array.isArray(data.interpreted.chips) ? data.interpreted.chips : [];
+      return {
+        results: data.results,
+        interpreted: chips.length ? {
+          chips: chips
+        } : null
+      };
+    } catch (e) {
+      if (e && e.name === 'AbortError') throw e;
+      return null;
+    }
+  });
+  return _fetchSmartSearch.apply(this, arguments);
+}
+function searchTMDBLegacy(_x45, _x46) {
   return _searchTMDBLegacy.apply(this, arguments);
 }
 function _searchTMDBLegacy() {
@@ -6447,7 +6489,8 @@ function renderFilteredGlobalResults(results) {
   searchResultsDiv.appendChild(resultsBody);
   var statsDiv = document.createElement('div');
   statsDiv.className = 'filter-stats';
-  statsDiv.innerHTML = 'Найдено в TMDB: <span>' + results.length + '</span>' + (results.length > limit ? ' (показано ' + limit + ')' : '');
+  var interpretedHtml = globalSearchInterpreted ? 'По смыслу: <span>' + escapeHtml(globalSearchInterpreted.chips.join(' · ')) + '</span> · ' : '';
+  statsDiv.innerHTML = interpretedHtml + 'Найдено в TMDB: <span>' + results.length + '</span>' + (results.length > limit ? ' (показано ' + limit + ')' : '');
   resultsBody.appendChild(statsDiv);
   var grid = document.createElement('div');
   grid.className = 'global-search-grid';
@@ -6529,7 +6572,7 @@ function renderFilteredGlobalResults(results) {
     }
   };
 }
-function showGlobalSearchDetail(_x45) {
+function showGlobalSearchDetail(_x47) {
   return _showGlobalSearchDetail.apply(this, arguments);
 }
 function _showGlobalSearchDetail() {

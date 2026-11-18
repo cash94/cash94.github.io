@@ -34,6 +34,13 @@
       "description": "Сезонная подборка «Хэллоуин» по ключевому слову TMDB: ряд главной (20 фильмов) и категория каталога (все фильмы и сериалы). Показ — только в сезон, решает фронт.",
       "url": "https://cash94.github.io/torrstream-modules/halloween-collection/module.js",
       "sha256": "92521fc3cbd964bdc9f584a991b89fddaa5754ed1cc96d6d42445338669c1305"
+    },
+    "smart-search": {
+      "name": "smart-search",
+      "version": "1.0.0",
+      "description": "Поиск по смыслу: «фильмы про гонки», «корейские сериалы про зомби», «комедии 90-х» — тема, жанр, страна и годы из текста запроса превращаются в подборку TMDB (discover). Около 290 тем; по названию ищет как раньше.",
+      "url": "https://cash94.github.io/torrstream-modules/smart-search/module.js",
+      "sha256": "92521fc3cbd964bdc9f584a991b89fddaa5754ed1cc96d6d42445338669c1305"
     }
   }
 }

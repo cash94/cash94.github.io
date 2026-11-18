@@ -6,6 +6,9 @@ var filteredResults = [];
 var currentSearchQuery = '';
 var currentSearchMode = 'globalsearch';
 var globalSearchResults = [];
+// Что сервер понял в запросе при поиске по смыслу (/api/tmdb/search/all →
+// interpreted): { chips: ['гонки', 'фильмы'] } или null — поиск по названию
+var globalSearchInterpreted = null;
 var tmdbSearchController = null;
 var tmdbSearchSequence = 0;
 
@@ -7892,24 +7895,35 @@ async function searchTMDB(query) {
     showLoading('Поиск в TMDB...');
     try {
         var encodedQuery = encodeURIComponent(query.trim());
-        // Фильмы и сериалы — одним запросом: оба похода в TMDB и склейку
-        // делает сервер (/api/tmdb/search/all). Он же и сортирует.
         var allResults = null;
-        var combined = await fetch('/api/tmdb/search/all?query=' + encodedQuery, { signal: controller.signal });
+        var interpreted = null;
+        // «Фильмы про гонки» — сначала модуль поиска по смыслу (smart-search).
+        // Он отвечает smart: false, если это похоже на название, — тогда
+        // ищем по названию, как всегда
+        var smart = await fetchSmartSearch(encodedQuery, controller.signal);
         if (searchSequence !== tmdbSearchSequence) return;
-        if (combined.ok) {
-            var combinedData = await combined.json();
-            if (combinedData && Array.isArray(combinedData.results)) allResults = combinedData.results;
-        }
-        // Маршрута нет (404) — старый серверный бинарник, а js пришёл с
-        // зеркала свежий: делаем как раньше, двумя запросами
-        if (allResults === null && combined.status === 404) {
-            allResults = await searchTMDBLegacy(encodedQuery, controller.signal);
+        if (smart) {
+            allResults = smart.results;
+            interpreted = smart.interpreted;
+        } else {
+            // Фильмы и сериалы — одним запросом: оба похода в TMDB и склейку
+            // делает сервер (/api/tmdb/search/all). Он же и сортирует.
+            var combined = await fetch('/api/tmdb/search/all?query=' + encodedQuery, { signal: controller.signal });
             if (searchSequence !== tmdbSearchSequence) return;
+            if (combined.ok) {
+                var combinedData = await combined.json();
+                if (combinedData && Array.isArray(combinedData.results)) allResults = combinedData.results;
+            }
+            // Маршрута нет (404) — старый серверный бинарник, а js пришёл с
+            // зеркала свежий: делаем как раньше, двумя запросами
+            if (allResults === null && combined.status === 404) {
+                allResults = await searchTMDBLegacy(encodedQuery, controller.signal);
+                if (searchSequence !== tmdbSearchSequence) return;
+            }
+            if (allResults === null) throw new Error('TMDB: HTTP ' + combined.status);
         }
-        if (allResults === null) throw new Error('TMDB: HTTP ' + combined.status);
         for (var ri = 0; ri < allResults.length; ri++) allResults[ri].searchQuery = query;
-        globalSearchResults = allResults; currentSearchQuery = query;
+        globalSearchResults = allResults; globalSearchInterpreted = interpreted; currentSearchQuery = query;
         // Запись поиска в стеке переходов помнит, что это выдача TMDB и по
         // какому запросу, — чтобы вернуть её, если её подменят раздачами
         if (window.Nav) { var navSearch = Nav.top(); if (navSearch && navSearch.screen === 'search') { navSearch.data.tmdb = true; navSearch.data.query = query; navSearch.data.label = query; } }
@@ -7921,6 +7935,32 @@ async function searchTMDB(query) {
         }
     } finally {
         if (searchSequence === tmdbSearchSequence) hideLoading();
+    }
+}
+
+// Модуля smart-search на сервере нет (ответил 404) — до перезагрузки
+// страницы его больше не спрашиваем
+var smartSearchModuleMissing = false;
+
+/**
+ * Поиск по смыслу через модуль сервера smart-search (/api/smart-search).
+ * { results, interpreted } — модуль понял запрос («фильмы про гонки»);
+ * null — не понял, модуля нет или он не ответил: искать по названию.
+ * Ошибку модуля наружу не пускаем — поиск по названию должен работать всегда.
+ */
+async function fetchSmartSearch(encodedQuery, signal) {
+    if (smartSearchModuleMissing) return null;
+    try {
+        var res = await fetch('/api/smart-search?query=' + encodedQuery, { signal: signal });
+        if (res.status === 404) { smartSearchModuleMissing = true; return null; }
+        if (!res.ok) return null;
+        var data = await res.json();
+        if (!data || !data.smart || !Array.isArray(data.results)) return null;
+        var chips = data.interpreted && Array.isArray(data.interpreted.chips) ? data.interpreted.chips : [];
+        return { results: data.results, interpreted: chips.length ? { chips: chips } : null };
+    } catch (e) {
+        if (e && e.name === 'AbortError') throw e;
+        return null;
     }
 }
 
@@ -8021,7 +8061,9 @@ function renderFilteredGlobalResults(results) {
 
     var statsDiv = document.createElement('div');
     statsDiv.className = 'filter-stats';
-    statsDiv.innerHTML = 'Найдено в TMDB: <span>' + results.length + '</span>' + (results.length > limit ? ' (показано ' + limit + ')' : '');
+    // Поиск по смыслу — показываем, что поняли: «По смыслу: гонки · фильмы»
+    var interpretedHtml = globalSearchInterpreted ? 'По смыслу: <span>' + escapeHtml(globalSearchInterpreted.chips.join(' · ')) + '</span> · ' : '';
+    statsDiv.innerHTML = interpretedHtml + 'Найдено в TMDB: <span>' + results.length + '</span>' + (results.length > limit ? ' (показано ' + limit + ')' : '');
     resultsBody.appendChild(statsDiv);
 
     /* Сетка и карточки — те же, что у сетки каталога.

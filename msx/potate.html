@@ -792,6 +792,21 @@
             background: #0f1419; color: #fff; font-size: 15px;
         }
         .auth-card .btn { width: 100%; margin-top: 18px; padding: 11px; font-size: 15px; }
+        .access-form.module-install-form { display: grid; grid-template-columns: minmax(140px, 220px) 1fr auto; gap: 10px; align-items: end; }
+        .module-install-form label { display: block; font-size: 13px; color: #8899a6; margin-bottom: 6px; }
+        @media (max-width: 700px) { .access-form.module-install-form { grid-template-columns: 1fr; } }
+        .module-guide summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; }
+        .module-guide summary::-webkit-details-marker { display: none; }
+        .module-guide summary::after { content: '▸'; color: #8899a6; font-size: 18px; margin-left: auto; transition: transform 0.15s; }
+        .module-guide[open] summary::after { transform: rotate(90deg); }
+        .module-guide summary h2 { margin: 0; }
+        .module-guide h3 { margin: 22px 0 8px; font-size: 16px; color: #cfe3f5; }
+        .module-guide p, .module-guide li { color: #aab8c5; font-size: 14px; line-height: 1.55; }
+        .module-guide p { margin: 12px 0 0; }
+        .module-guide ul, .module-guide ol { margin: 0; padding-left: 22px; }
+        .module-guide li { margin: 5px 0; }
+        .module-guide code { background: #0f1419; border: 1px solid #2a3a4c; border-radius: 4px; padding: 1px 5px; font-size: 13px; color: #e6edf3; }
+        .module-guide pre { background: #0f1419; border: 1px solid #2a3a4c; border-radius: 6px; padding: 12px 14px; margin: 8px 0; overflow-x: auto; font-size: 12.5px; line-height: 1.45; color: #e6edf3; }
         .auth-error { color: #ff6b6b; font-size: 14px; margin-top: 12px; min-height: 18px; }
         .auth-server { color: #5a6c7d; font-size: 12px; margin-top: 16px; word-break: break-all; }
         .admin-user { font-size: 13px; color: #cfe3f5; }
@@ -927,7 +942,7 @@
             </div>
         </div>
 
-        <!-- === МОДУЛИ: включить / выключить (module-loader.js) === -->
+        <!-- === МОДУЛИ: установка, включение, обновление (module-loader.js) === -->
         <div class="tab-content" id="tab-modules">
             <div class="section">
                 <div class="section-header">
@@ -938,6 +953,152 @@
                 <div id="modulesList" class="table-wrap">
                     <div class="loading">Загрузка...</div>
                 </div>
+            </div>
+
+            <div class="section">
+                <div class="section-header">
+                    <h2>📦 Доступные модули</h2>
+                </div>
+                <p style="color:#5a6c7d; margin:0 0 12px;">Модули из каталога TorrStream (cash94.github.io/registry.json). Новые сервер ставит и сам — раз в полчаса, — здесь можно не ждать.</p>
+                <div id="modulesAvailable" class="table-wrap">
+                    <div class="loading">Загрузка...</div>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="section-header">
+                    <h2>🔗 Установить по ссылке</h2>
+                </div>
+                <p style="color:#5a6c7d; margin:0 0 12px;">Модуль — это код, который выполняется на сервере. Ставьте только из источника, которому доверяете.</p>
+                <div class="access-form module-install-form">
+                    <div>
+                        <label for="moduleInstallName">Имя (латиница, цифры, дефис)</label>
+                        <input id="moduleInstallName" placeholder="my-module" autocomplete="off" spellcheck="false">
+                    </div>
+                    <div>
+                        <label for="moduleInstallUrl">Ссылка на module.js</label>
+                        <input id="moduleInstallUrl" placeholder="https://example.com/my-module/module.js" autocomplete="off" spellcheck="false">
+                    </div>
+                    <button class="btn btn-success" onclick="installModuleByUrl()">📥 Установить</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <details class="module-guide">
+                    <summary><h2>📘 Как написать модуль</h2></summary>
+
+                    <p>Модуль — один JS-файл, который сервер скачивает, кладёт в <code>&lt;папка данных&gt;/modules/&lt;имя&gt;/module.js</code> и запускает в песочнице (<code>module-loader.js</code>). Модуль добавляет серверу свои маршруты <code>/api/…</code>, и для этого не нужно выпускать новую версию сервера.</p>
+
+                    <h3>1. Каркас</h3>
+<pre>// module.js — Что делает модуль (my-module)
+//
+// Какие маршруты отдаёт и в каком формате, кто на фронте их спрашивает
+// и что будет, если модуля нет (фронт обязан пережить 404).
+
+var TTL_MS = 24 * 60 * 60 * 1000;
+var timers = [];
+var destroyed = false;
+
+// Сборка данных модуля — возвращает Promise
+function getData() { /* … */ }
+
+module.exports = {
+    name: 'my-module',
+    version: '1.0.0',
+
+    init: function (app, ctx) {
+        destroyed = false;
+        var log = ctx.log;
+
+        app.get('/api/my-module/items', function (req, res) {
+            getData().then(function (data) {
+                res.json({ success: true, items: data });
+            }, function (e) {
+                log.error('items:', e.message);
+                res.status(502).json({ success: false, error: e.message });
+            });
+        });
+
+        ctx.onDestroy(function () {
+            destroyed = true;
+            timers.forEach(clearTimeout);
+            timers = [];
+        });
+        return { ready: true };
+    },
+
+    destroy: function () {
+        destroyed = true;
+        timers.forEach(clearTimeout);
+        timers = [];
+    }
+};</pre>
+
+                    <h3>2. Обязательные правила</h3>
+                    <ul>
+                        <li><b>Экспорт</b> — объект с <code>name</code>, <code>version</code>, <code>init(app, ctx)</code> и <code>destroy()</code>. Без <code>init</code> модуль не загрузится.</li>
+                        <li><b>Версия</b> — сервер берёт <b>первое</b> вхождение <code>version: '…'</code> во всём файле. Не пишите <code>version:</code> выше экспорта, даже в комментарии.</li>
+                        <li><b>Маршруты — только синхронно внутри <code>init</code>.</b> Загрузчик запоминает добавленные маршруты, чтобы снять их при обновлении. Маршрут, добавленный из <code>setTimeout</code> или после <code>await</code>, не снимется, и после обновления будут отвечать две копии модуля.</li>
+                        <li><b>Адреса</b> — <code>/api/&lt;имя-модуля&gt;/…</code>. Маршруты сервера стоят раньше маршрутов модулей, поэтому существующий адрес модулем не перекрыть.</li>
+                        <li><b>Имя</b> — латиница, цифры, дефис (<code>my-module</code>). Из него получается имя папки на сервере.</li>
+                        <li><b>Таймеры</b> — каждый запоминать и снимать в <code>onDestroy</code>/<code>destroy</code>. Перед любой отложенной работой проверять флаг <code>destroyed</code>.</li>
+                        <li><b>Всегда отвечать.</b> Каждый маршрут завершается <code>res.json</code>: обрабатывайте и успех, и ошибку промиса. Не ответивший маршрут вешает телевизор до таймаута.</li>
+                        <li><b>Фронт должен жить без модуля.</b> Модуль могут выключить в админке, а старый сервер может его не поставить. Ответ 404 означает «модуля нет», и фронт работает по-старому.</li>
+                    </ul>
+
+                    <h3>3. Что доступно в песочнице</h3>
+                    <ul>
+                        <li>Глобалы: <code>console</code> (с префиксом модуля), <code>setTimeout/setInterval/clear*</code>, <code>fetch</code>, <code>JSON</code>, <code>Math</code>, <code>Date</code>, <code>RegExp</code>, <code>Promise</code>, <code>Buffer</code>, <code>URL</code>, <code>URLSearchParams</code>, <code>TextEncoder/TextDecoder</code>, а также встроенные <code>Map</code>, <code>Set</code>, <code>Array</code> и т.д.</li>
+                        <li><b>Нет</b>: <code>require</code>, <code>process</code>, <code>fs</code>, <code>eval</code>, <code>new Function</code>, WebAssembly. Всё — в одном файле; данные (словари, списки) — прямо в коде.</li>
+                        <li>Записать на диск нечего и нечем: кэш держите в памяти (<code>Map</code> с TTL и пределом размера). После перезапуска сервера он пуст — модуль должен уметь собрать данные заново.</li>
+                        <li>Песочница — не защита от вредного кода, а страховка от случайных ошибок. Доверие держится на источнике модуля.</li>
+                    </ul>
+
+                    <h3>4. Что даёт <code>ctx</code></h3>
+                    <ul>
+                        <li><code>ctx.log.log / warn / error</code> — журнал сервера с префиксом модуля.</li>
+                        <li><code>ctx.onDestroy(fn)</code> — уборка при выгрузке и обновлении.</li>
+                        <li><code>ctx.tmdbGet('discover/movie?…')</code> — запрос к TMDB через зеркала сервера, без хоста и <code>api_key</code>; возвращает <code>Response</code>. <b>На старых серверах его нет</b> (<code>null</code>): держите запасной путь — свои зеркала из <code>https://cash94.github.io/apiproxy.json</code> (готовая обвязка — в <code>halloween-collection</code> и <code>smart-search</code>).</li>
+                        <li><code>ctx.httpGet(url)</code> — GET с таймаутом 15 с и редиректами, отдаёт текст.</li>
+                        <li><code>ctx.state.version</code> — версия сервера, <code>ctx.state.activeStreams</code> — текущие потоки; <code>ctx.utils.getClientId(req)</code> — учётка устройства.</li>
+                    </ul>
+
+                    <h3>5. Сеть и нагрузка</h3>
+                    <ul>
+                        <li>У каждого внешнего запроса — таймаут (обычно 15 с). Голый <code>fetch</code> без таймаута может висеть минутами.</li>
+                        <li>Параллельно — не больше 6–8 запросов к одному зеркалу. Одинаковые одновременные запросы склеивайте в один промис (<code>inflight</code>).</li>
+                        <li>Тяжёлую сборку (подборки, каталоги) кэшируйте на часы или дни и прогревайте с задержкой после старта (20 с и больше), чтобы не мешать каталогам сервера.</li>
+                        <li>Неполный результат (часть запросов упала) не кладите в кэш надолго.</li>
+                        <li>Проверку администратора модуль не получает: его маршрут доступен любому устройству, которое пускает сервер. Не делайте маршрутов, которые что-то удаляют или раскрывают чужие данные.</li>
+                    </ul>
+
+                    <h3>6. Проверка у себя</h3>
+                    <ul>
+                        <li>Быстро, без сервера: загрузить файл тем же загрузчиком и вызвать <code>init</code> с поддельным <code>app</code>:
+<pre>const ML = require('./module-loader.js');
+const ml = new ML({ modulesDir: require('os').tmpdir() + '/mod-test' });
+ml.context = {};
+const mod = ml._executeSandboxed(require('fs').readFileSync('module.js', 'utf8'), 'my-module');
+const routes = {};
+mod.init({ get: (p, h) => routes[p] = h, post: (p, h) => routes[p] = h },
+         { log: console, onDestroy() {}, tmdbGet: null });</pre></li>
+                        <li>На сервере: блок «Установить по ссылке» ниже (нужен адрес <code>.js</code> по http/https). В журнале должно появиться <code>🧩 Модуль загружен: my-module v1.0.0</code>.</li>
+                    </ul>
+
+                    <h3>7. Публикация в каталог</h3>
+                    <ol>
+                        <li>Файл — в <code>cash94.github.io/torrstream-modules/&lt;имя&gt;/module.js</code>.</li>
+                        <li>Поднять <code>version</code> в модуле. Без этого серверы не увидят обновление.</li>
+                        <li>Запись в <code>cash94.github.io/registry.json</code>: <code>name</code>, <code>version</code>, <code>description</code>, <code>url</code> и <code>sha256</code>. Поле <code>sha256</code> — хеш <b>строки версии</b>, а не файла:
+<pre>node -e "console.log(require('crypto').createHash('sha256').update('1.0.0').digest('hex'))"</pre></li>
+                        <li>Серверы сами ставят новые модули и обновляют изменившиеся раз в 30 минут. Ускорить можно кнопкой «Проверить обновления».</li>
+                        <li>Модуль из каталога удалять с сервера бесполезно: через полчаса он вернётся. Чтобы он не работал, его выключают. Насовсем модуль убирают, удалив запись из <code>registry.json</code>.</li>
+                        <li>Понятное название для этой вкладки — в <code>MODULE_INFO</code> в <code>potate.html</code>. Без него показывается <code>description</code> из каталога.</li>
+                    </ol>
+
+                    <h3>8. Модули, которые собираются</h3>
+                    <p><code>smart-search</code> собирается скриптом из <code>videoloop-server/tools/smart-search</code> (код и словарь тем отдельно): <code>node tools/smart-search/build.js</code>. Собранный файл в зеркале руками не правят.</p>
+                </details>
             </div>
         </div>
 
@@ -2117,43 +2278,162 @@
             }
         }
 
-        // Что делает модуль — коротко для админки (в реестре описаний нет)
+        // Что делает модуль — коротко для админки. Для модулей, которых здесь
+        // нет, берём описание из каталога (registry.json, поле description)
         const MODULE_INFO = {
             'rutube-proxy': ['Трейлеры RuTube', 'поиск трейлеров и их показ на баннере главной и в карточке'],
             'rus-catalog': ['Русские фильмы и сериалы', 'каталог «Русские»'],
             'kinopoisk-collections': ['Подборки Кинопоиска', 'ряды подборок на главной'],
-            'skip-intro': ['Пропуск заставок и титров', 'кнопка «Пропустить» в плеере']
+            'skip-intro': ['Пропуск заставок и титров', 'кнопка «Пропустить» в плеере'],
+            'halloween-collection': ['Хэллоуин', 'сезонная подборка на главной и в каталоге'],
+            'smart-search': ['Поиск по смыслу', '«фильмы про гонки», «корейские сериалы про зомби» в поиске']
         };
+        // Имя модуля становится именем папки на сервере — только безопасные символы
+        const MODULE_NAME_RE = /^[a-z0-9][a-z0-9-]{1,47}$/;
+
+        // Каталог модулей с прошлой загрузки вкладки: { name: { version, url, sha256, description } }
+        let modulesRemote = {};
+
+        function moduleTitle(name) {
+            return (MODULE_INFO[name] || [name])[0];
+        }
+
+        function moduleSubtitle(name) {
+            const info = MODULE_INFO[name];
+            const remote = modulesRemote[name];
+            const text = info ? info[1] : (remote && remote.description) || '';
+            return text ? text + ' · ' + name : name;
+        }
+
+        // Версии вида 1.2.10: сравниваем по числам, а не строкой
+        function versionNewer(a, b) {
+            const pa = String(a || '0').split('.').map(n => parseInt(n, 10) || 0);
+            const pb = String(b || '0').split('.').map(n => parseInt(n, 10) || 0);
+            for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+                if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0);
+            }
+            return false;
+        }
 
         async function loadModules() {
             const el = document.getElementById('modulesList');
-            try {
-                const d = await apiFetch('/api/modules');
-                if (!d.modules || !d.modules.length) { el.innerHTML = '<div class="empty-state">Модули не установлены</div>'; return; }
-                let html = '<table><thead><tr><th>Модуль</th><th>Версия</th><th>Состояние</th><th>Действие</th></tr></thead><tbody>';
-                d.modules.forEach((m) => {
-                    const info = MODULE_INFO[m.name];
-                    const on = m.enabled !== false;   // старый сервер поля не отдаёт — все модули у него включены
-                    const state = !on
-                        ? '<span class="badge badge-warning">Выключен</span>'
-                        : (m.loaded !== false ? '<span class="badge badge-success">Работает</span>' : '<span class="badge badge-danger">Не загрузился</span>');
-                    html += `<tr${on ? '' : ' style="opacity:0.7"'}>
-                        <td><b>${escapeHtml(info ? info[0] : m.name)}</b><div style="color:#5a6c7d; font-size:12px;">${escapeHtml(info ? info[1] + ' · ' + m.name : m.name)}</div></td>
-                        <td><span class="badge badge-info">${escapeHtml(m.version)}</span></td>
-                        <td>${state}</td>
-                        <td>${on
+            const availEl = document.getElementById('modulesAvailable');
+            // Каталог может не ответить (у сервера нет интернета) — установленные
+            // всё равно показываем
+            const [installed, available] = await Promise.allSettled([
+                apiFetch('/api/modules'),
+                apiFetch('/api/modules/available')
+            ]);
+            modulesRemote = available.status === 'fulfilled' && available.value && available.value.modules ? available.value.modules : {};
+
+            if (installed.status === 'rejected') {
+                el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + escapeHtml(installed.reason.message) + '</div>';
+            } else {
+                const mods = installed.value.modules || [];
+                if (!mods.length) {
+                    el.innerHTML = '<div class="empty-state">Модули не установлены</div>';
+                } else {
+                    let html = '<table><thead><tr><th>Модуль</th><th>Версия</th><th>Состояние</th><th>Действие</th></tr></thead><tbody>';
+                    mods.forEach((m) => {
+                        const on = m.enabled !== false;   // старый сервер поля не отдаёт — все модули у него включены
+                        const remote = modulesRemote[m.name];
+                        const state = !on
+                            ? '<span class="badge badge-warning">Выключен</span>'
+                            : (m.loaded !== false ? '<span class="badge badge-success">Работает</span>' : '<span class="badge badge-danger">Не загрузился</span>');
+                        const update = remote && remote.url && versionNewer(remote.version, m.version)
+                            ? ` <button class="btn btn-success" onclick="installModuleFromCatalog('${escapeHtml(m.name)}')">⬆️ Обновить до ${escapeHtml(remote.version)}</button>`
+                            : '';
+                        // Модуль из каталога удалять бесполезно: автоустановка вернёт
+                        // его через полчаса. Для них — «Выключить», удалить — только свои
+                        const remove = !remote && available.status === 'fulfilled'
+                            ? ` <button class="btn btn-danger" onclick="removeModule('${escapeHtml(m.name)}')">🗑️ Удалить</button>`
+                            : '';
+                        const toggle = on
                             ? `<button class="btn btn-secondary" onclick="setModuleEnabled('${escapeHtml(m.name)}', false)">⏸️ Выключить</button>`
-                            : `<button class="btn btn-success" onclick="setModuleEnabled('${escapeHtml(m.name)}', true)">▶️ Включить</button>`}</td>
-                    </tr>`;
+                            : `<button class="btn btn-success" onclick="setModuleEnabled('${escapeHtml(m.name)}', true)">▶️ Включить</button>`;
+                        const own = !remote && available.status === 'fulfilled' ? ' · свой' : '';
+                        html += `<tr${on ? '' : ' style="opacity:0.7"'}>
+                            <td><b>${escapeHtml(moduleTitle(m.name))}</b><div style="color:#5a6c7d; font-size:12px;">${escapeHtml(moduleSubtitle(m.name) + own)}</div></td>
+                            <td><span class="badge badge-info">${escapeHtml(m.version)}</span></td>
+                            <td>${state}</td>
+                            <td>${toggle}${update}${remove}</td>
+                        </tr>`;
+                    });
+                    el.innerHTML = html + '</tbody></table>';
+                }
+            }
+
+            if (available.status === 'rejected') {
+                availEl.innerHTML = '<div class="empty-state">❌ Каталог не загрузился: ' + escapeHtml(available.reason.message) + '</div>';
+                return;
+            }
+            const installedNames = installed.status === 'fulfilled' ? (installed.value.modules || []).map(m => m.name) : [];
+            const fresh = Object.keys(modulesRemote).filter(name => installedNames.indexOf(name) === -1);
+            if (!fresh.length) {
+                availEl.innerHTML = '<div class="empty-state">Все модули из каталога уже установлены</div>';
+                return;
+            }
+            let html = '<table><thead><tr><th>Модуль</th><th>Версия</th><th>Действие</th></tr></thead><tbody>';
+            fresh.forEach((name) => {
+                const r = modulesRemote[name] || {};
+                html += `<tr>
+                    <td><b>${escapeHtml(moduleTitle(name))}</b><div style="color:#5a6c7d; font-size:12px;">${escapeHtml(moduleSubtitle(name))}</div></td>
+                    <td><span class="badge badge-info">${escapeHtml(r.version || '?')}</span></td>
+                    <td><button class="btn btn-success" onclick="installModuleFromCatalog('${escapeHtml(name)}')">📥 Установить</button></td>
+                </tr>`;
+            });
+            availEl.innerHTML = html + '</tbody></table>';
+        }
+
+        async function installModule(name, url, sha256) {
+            showToast('⏳ Установка: ' + moduleTitle(name) + '...');
+            try {
+                const d = await apiFetch('/api/modules/install', {
+                    method: 'POST',
+                    body: JSON.stringify(sha256 ? { name, url, sha256 } : { name, url })
                 });
-                el.innerHTML = html + '</tbody></table>';
+                showToast('✅ Установлен: ' + moduleTitle(name) + (d.meta && d.meta.version ? ' ' + d.meta.version : ''));
+                return true;
             } catch (e) {
-                el.innerHTML = '<div class="empty-state">❌ Ошибка: ' + escapeHtml(e.message) + '</div>';
+                showToast('❌ Не установился: ' + e.message, true);
+                return false;
+            } finally {
+                loadModules();
             }
         }
 
+        function installModuleFromCatalog(name) {
+            const r = modulesRemote[name];
+            if (!r || !r.url) { showToast('❌ Модуля нет в каталоге', true); return; }
+            installModule(name, r.url, r.sha256);
+        }
+
+        async function installModuleByUrl() {
+            const nameEl = document.getElementById('moduleInstallName');
+            const urlEl = document.getElementById('moduleInstallUrl');
+            const name = nameEl.value.trim().toLowerCase();
+            const url = urlEl.value.trim();
+            if (!MODULE_NAME_RE.test(name)) { showToast('❌ Имя: латиница, цифры и дефис, от 2 до 48 символов', true); nameEl.focus(); return; }
+            if (!/^https?:\/\/\S+\.js(\?\S*)?$/i.test(url)) { showToast('❌ Нужна ссылка на .js-файл (http:// или https://)', true); urlEl.focus(); return; }
+            if (modulesRemote[name] && modulesRemote[name].url !== url &&
+                !confirm(`Модуль «${name}» есть в каталоге. Своя версия заменит его, а каталог при следующем обновлении может вернуть свою. Продолжить?`)) return;
+            if (!confirm(`Установить модуль «${name}» с адреса\n${url}?\n\nЕго код будет выполняться на сервере.`)) return;
+            if (await installModule(name, url, null)) { nameEl.value = ''; urlEl.value = ''; }
+        }
+
+        async function removeModule(name) {
+            if (!confirm(`Удалить модуль «${moduleTitle(name)}» с сервера?`)) return;
+            try {
+                await apiFetch('/api/modules/' + encodeURIComponent(name), { method: 'DELETE' });
+                showToast('🗑️ Удалён: ' + moduleTitle(name));
+            } catch (e) {
+                showToast('❌ Ошибка: ' + e.message, true);
+            }
+            loadModules();
+        }
+
         async function setModuleEnabled(name, enabled) {
-            const title = (MODULE_INFO[name] || [name])[0];
+            const title = moduleTitle(name);
             if (!enabled && !confirm(`Выключить модуль «${title}»? Его функции перестанут работать у всех устройств.`)) return;
             try {
                 await apiFetch('/api/modules/' + encodeURIComponent(name) + (enabled ? '/enable' : '/disable'), { method: 'POST' });
