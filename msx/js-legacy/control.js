@@ -3602,6 +3602,14 @@ function txApply(container, left, duration) {
   container._txX = left;
   track.style.transform = 'translate3d(' + -left + 'px,0,0)';
 }
+function tileStepPx(container) {
+  var track = container && container._txTrack || container;
+  var a = track && track.firstElementChild;
+  while (a && !a.offsetWidth) a = a.nextElementSibling;
+  var b = a && a.nextElementSibling;
+  while (b && !b.offsetWidth) b = b.nextElementSibling;
+  return a && b ? Math.abs(b.offsetLeft - a.offsetLeft) : 0;
+}
 function setScrollXImmediate(container, left) {
   if (!container) return;
   clearPendingScroll(container, '_navPendX');
@@ -3618,7 +3626,16 @@ function setScrollX(container, left, smooth, duration) {
   if (!container) return;
   left = Math.max(0, Math.min(getMaxScrollX(container), left));
   var rest = getScrollX(container) + pendingScrollDeltaX(container);
-  duration = typeof duration === 'number' ? scrollAnimDurationX(duration) : navStepScrollDuration(speedDuration(left - rest, scrollAnimSpeedX(SCROLL_SMOOTH.speedX)), scrollAnimDurationX(NAV_STEP_BASE_MS / 1000));
+  if (typeof duration === 'number') {
+    duration = scrollAnimDurationX(duration);
+  } else {
+    var speedX = scrollAnimSpeedX(SCROLL_SMOOTH.speedX);
+    var stepDur = speedDuration(left - rest, speedX);
+    if (!stepDur && speedX > 0 && Math.abs(left - rest) <= tileStepPx(container) * 1.05) {
+      stepDur = SCROLL_SMOOTH.maxDuration;
+    }
+    duration = navStepScrollDuration(stepDur, scrollAnimDurationX(NAV_STEP_BASE_MS / 1000));
+  }
   var animated = smooth && !_instantScrollDepth && duration > 0;
   if (animated && Math.abs(rest - left) < 2) return;
   if (animated) {
@@ -5317,13 +5334,9 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
       sw.anchor = t.clientX;
     }
     if (e.cancelable) e.preventDefault();
+    if (sw.steps) return;
     var travel = sw.anchor - t.clientX;
-    while (Math.abs(travel) >= SWIPE_STEP_PX) {
-      var sign = travel > 0 ? 1 : -1;
-      sw.anchor -= sign * SWIPE_STEP_PX;
-      travel -= sign * SWIPE_STEP_PX;
-      addOwed(sw, sign);
-    }
+    if (Math.abs(travel) >= SWIPE_STEP_PX) addOwed(sw, travel > 0 ? 1 : -1);
   }, {
     passive: false
   });

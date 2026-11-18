@@ -4136,6 +4136,20 @@ function txApply(container, left, duration) {
     track.style.transform = 'translate3d(' + (-left) + 'px,0,0)';
 }
 
+/**
+ * Шаг ленты на одну плитку, px: от левого края первой видимой плитки до
+ * второй (ширина плюс зазор). Зовётся только для переезда длиннее
+ * maxDuration — редкий путь, две чтения offsetLeft. 0 — плиток меньше двух.
+ */
+function tileStepPx(container) {
+    var track = (container && container._txTrack) || container;
+    var a = track && track.firstElementChild;
+    while (a && !a.offsetWidth) a = a.nextElementSibling;
+    var b = a && a.nextElementSibling;
+    while (b && !b.offsetWidth) b = b.nextElementSibling;
+    return a && b ? Math.abs(b.offsetLeft - a.offsetLeft) : 0;
+}
+
 /** Смещение без анимации (колесо мыши, драг пальцем) */
 function setScrollXImmediate(container, left) {
     if (!container) return;
@@ -4172,11 +4186,20 @@ function setScrollX(container, left, smooth, duration) {
     // Срок шага прогоняем через тот же режим прокрутки, что и саму скорость:
     // при 'fast' он вдвое короче, при 'none' обнуляется, и поправка отключается
     // сама собой — там и постоянной скорости нет, позиция ставится сразу.
-    duration = (typeof duration === 'number')
-        ? scrollAnimDurationX(duration)
-        : navStepScrollDuration(
-            speedDuration(left - rest, scrollAnimSpeedX(SCROLL_SMOOTH.speedX)),
-            scrollAnimDurationX(NAV_STEP_BASE_MS / 1000));
+    if (typeof duration === 'number') {
+        duration = scrollAnimDurationX(duration);
+    } else {
+        var speedX = scrollAnimSpeedX(SCROLL_SMOOTH.speedX);
+        var stepDur = speedDuration(left - rest, speedX);
+        // Шаг ровно на одну плитку — всегда поездка, даже если плитка шире
+        // порога maxDuration: серии в карточке-«сцене» (33,5cu, ~465px на 720 и
+        // ~700 на 1080) выходили за него на сотые доли секунды, и каждая
+        // переключалась скачком. Едет за maxDuration, чуть быстрее обычного
+        if (!stepDur && speedX > 0 && Math.abs(left - rest) <= tileStepPx(container) * 1.05) {
+            stepDur = SCROLL_SMOOTH.maxDuration;
+        }
+        duration = navStepScrollDuration(stepDur, scrollAnimDurationX(NAV_STEP_BASE_MS / 1000));
+    }
 
     var animated = smooth && !_instantScrollDepth && duration > 0;
 
@@ -6039,6 +6062,11 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
  * пульта, — прокрутку ленты к карточке делает фокус (как в сетках, жесты по
  * строкам выше). Нативную горизонталь у лент выключает CSS (touch-action:
  * pan-y): вертикаль остаётся странице (#main-container, карточка фильма).
+ *
+ * С 2026-11-18 один свайп — одна плитка, как бы длинно или сильно ни вели
+ * пальцем (просьба пользователя): раньше шаг давали каждые SWIPE_STEP_PX пути,
+ * и сильный мах пролистывал несколько карточек. Шаг — на SWIPE_STEP_PX пути
+ * или коротким махом при отрыве, дальше жест ничего не добавляет.
  */
 (function () {
     var H_SCROLL_SELECTOR = '.files-list, ' +
@@ -6312,14 +6340,11 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 
         if (e.cancelable) e.preventDefault();
 
+        // Один шаг на жест: он уже сделан — остаток пути ничего не добавляет
+        if (sw.steps) return;
         // Палец влево — фокус вправо, как при прокрутке ленты
         var travel = sw.anchor - t.clientX;
-        while (Math.abs(travel) >= SWIPE_STEP_PX) {
-            var sign = travel > 0 ? 1 : -1;
-            sw.anchor -= sign * SWIPE_STEP_PX;
-            travel -= sign * SWIPE_STEP_PX;
-            addOwed(sw, sign);
-        }
+        if (Math.abs(travel) >= SWIPE_STEP_PX) addOwed(sw, travel > 0 ? 1 : -1);
     }, { passive: false });
 
     function endSwipe(e) {
