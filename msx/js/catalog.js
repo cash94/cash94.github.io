@@ -4941,9 +4941,16 @@ function formatCinemaVotes(n) {
 // не ходило в сеть вовсе. Модуля нет (404) — больше не спрашиваем до перезагрузки
 var cinemaKpRatings = {};
 var cinemaKpUnavailable = false;
+// Оценка TMDB открытой карточки — { key: 'movie_550', value: 8.4 } (renderCinemaScore)
+var cinemaTmdbRating = { key: null, value: null };
 
 function cinemaRatingsHtml(r) {
     var html = '';
+    // TMDB — первой: оценки в одном месте, звезды в строке меты больше нет
+    var box = getEl('detail-cinema-score');
+    if (cinemaTmdbRating.value && box && box.getAttribute('data-key') === cinemaTmdbRating.key) {
+        html += '<span class="detail-cinema-rating is-tmdb"><b>TMDB</b>' + cinemaTmdbRating.value.toFixed(1) + '</span>';
+    }
     if (r && r.kp) html += '<span class="detail-cinema-rating is-kp"><b>КП</b>' + r.kp.toFixed(1) + '</span>';
     if (r && r.imdb) html += '<span class="detail-cinema-rating is-imdb"><b>IMDb</b>' + r.imdb.toFixed(1) + '</span>';
     // Оценка зрителей этого сервера — сразу за IMDb (userRatingBadgeHtml)
@@ -4957,6 +4964,35 @@ function updateCinemaScoreVisibility() {
     var vote = getEl('detail-cinema-vote'), ratings = getEl('detail-cinema-ratings'), badges = getEl('detail-cinema-badges');
     var any = (vote && vote.style.display !== 'none') || (ratings && ratings.innerHTML) || (badges && badges.innerHTML);
     box.style.display = any ? '' : 'none';
+    updateCinemaHeadWrap();
+}
+
+// Телефон боком — тот же медиазапрос, что у правил cinema-head-wrapped
+var CINEMA_PHONE_LANDSCAPE_MQ = '(orientation: landscape) and (max-height: 500px)';
+var cinemaHeadWrapWatched = false;
+
+/**
+ * Телефон боком: блок оценок (возраст, статус, TMDB, КП, IMDb, «Зрители»)
+ * перенёсся под строку сведений — лишний ряд сдвигал кнопки с подписями за
+ * низ экрана. Класс cinema-head-wrapped отнимает у описания строку
+ * (styles.css). CSS перенос не видит — меряем.
+ */
+function updateCinemaHeadWrap() {
+    var dv = getEl('detail-view');
+    if (!dv) return;
+    if (!cinemaHeadWrapWatched) {
+        cinemaHeadWrapWatched = true;
+        window.addEventListener('resize', function () { updateCinemaHeadWrap(); });
+    }
+    var wrapped = false;
+    var phone = window.matchMedia && window.matchMedia(CINEMA_PHONE_LANDSCAPE_MQ).matches;
+    if (phone && dv.classList.contains('detail-cinema')) {
+        var meta = getEl('detail-cinema-meta'), box = getEl('detail-cinema-score');
+        if (meta && box && box.style.display !== 'none' && box.parentNode === meta.parentNode) {
+            wrapped = box.getBoundingClientRect().top >= meta.getBoundingClientRect().bottom - 1;
+        }
+    }
+    dv.classList.toggle('cinema-head-wrapped', wrapped);
 }
 
 function loadCinemaKpRating(key, type, id, imdb) {
@@ -5187,12 +5223,16 @@ function renderCinemaScore(item, src) {
     var key = type + '_' + id;
     renderUserRatings(type, id);
     var ratingsEl = getEl('detail-cinema-ratings');
-    if (box.getAttribute('data-key') !== key) {
-        box.setAttribute('data-key', key);
-        if (ratingsEl) ratingsEl.innerHTML = '';
-        if (cinemaKpRatings.hasOwnProperty(key)) {
-            if (ratingsEl) ratingsEl.innerHTML = cinemaRatingsHtml(cinemaKpRatings[key]);
-        } else if (id) {
+    box.setAttribute('data-key', key);
+    // Оценка TMDB — первая плашка группы (cinemaRatingsHtml). Пишем на каждый
+    // вызов: детали могут прийти позже краткой записи и уточнить её
+    cinemaTmdbRating = { key: key, value: getSafeCatalogRating(src) || getSafeCatalogRating(item) };
+    if (ratingsEl) {
+        // TMDB и «Зрители» видны сразу, КП и IMDb добавятся с ответом модуля
+        var hasKp = cinemaKpRatings.hasOwnProperty(key);
+        ratingsEl.innerHTML = cinemaRatingsHtml(hasKp ? cinemaKpRatings[key] : null);
+        if (!hasKp && id && ratingsEl.getAttribute('data-kp-key') !== key) {
+            ratingsEl.setAttribute('data-kp-key', key);
             loadCinemaKpRating(key, type, id, src.imdb_id || '');
         }
     }
@@ -5240,18 +5280,11 @@ function renderCinemaHead(item, src) {
         var rt = formatCinemaRuntime(src.runtime);
         if (rt) parts.push(rt);
     }
-    // Оценку показывает блок с кругляшом (renderCinemaScore). Звезда в строке —
-    // запасная, для экранов, где блока нет (уже 16:10): пишем её всегда, а
-    // видимость решает CSS (.detail-cinema-meta-star) — тогда и поворот экрана
-    // переключает её сам, без перерисовки
-    var rating = getSafeCatalogRating(src) || getSafeCatalogRating(item);
+    // Оценка TMDB — не звездой здесь, а первой плашкой в группе рейтингов
+    // (cinemaRatingsHtml): TMDB, КП, IMDb и «Зрители» стоят вместе, а статус
+    // и возраст (плашки блока оценки) — сразу за годом и длительностью
     var meta = getEl('detail-cinema-meta');
-    if (meta) {
-        meta.innerHTML = parts.join('<span class="detail-cinema-dot">·</span>') + (rating
-            ? '<span class="detail-cinema-meta-star">' + (parts.length ? '<span class="detail-cinema-dot">·</span>' : '') +
-              '<span class="detail-cinema-star">★</span> ' + rating.toFixed(1) + '</span>'
-            : '');
-    }
+    if (meta) meta.innerHTML = parts.join('<span class="detail-cinema-dot">·</span>');
 
     var chips = [];
     var genres = getNormalizedCatalogGenres(src);

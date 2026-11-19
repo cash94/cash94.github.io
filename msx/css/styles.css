@@ -15673,3 +15673,43 @@ html.apple-tv-ui #loading-player-overlay {
   background: #7c5cff;
   color: #fff;
 }
+
+/* Оценка TMDB — первой плашкой в группе рейтингов (TMDB → КП → IMDb →
+   «Зрители»), а не звездой в строке меты: все оценки в одном месте, а
+   статус и возраст (плашки до рейтингов) встают сразу за годом и длительностью */
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-rating.is-tmdb b {
+  background: #01b4e4;
+  color: #0d253f;
+}
+
+/* Группы блока оценки (возраст и статус, рейтинги) на узком экране переносятся
+   рядами — без зазора плашки рядов касались. Отступ сверху и снизу у всех
+   групп одинаковый: в одну строку ничего не сдвигает, при переносе даёт
+   промежуток; нижний отступ блока уменьшен на столько же */
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head .detail-cinema-score > div {
+  margin-top: calc(var(--cs) * 0.2);
+  margin-bottom: calc(var(--cs) * 0.2);
+}
+
+#detail-view.catalog-detail-mode.detail-cinema .detail-cinema-head > .detail-cinema-score {
+  margin-bottom: calc(var(--cs) * 0.65);
+}
+
+/* Телефон боком: сведения и группа оценок не влезли в одну строку
+   (cinema-head-wrapped — updateCinemaHeadWrap в catalog.js меряет перенос) —
+   лишний ряд сдвигал кнопки с подписями за низ экрана. Описание отдаёт ему
+   ещё строку, отступы ужимаются */
+@media screen and (orientation: landscape) and (max-height: 500px) {
+  #detail-view.catalog-detail-mode.detail-cinema.cinema-head-wrapped #catalog-detail-overview {
+    -webkit-line-clamp: 2;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema.cinema-head-wrapped.has-user-ratings #catalog-detail-overview {
+    -webkit-line-clamp: 1;
+    margin-bottom: calc(var(--cs) * 0.5) !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema.cinema-head-wrapped .catalog-user-ratings {
+    margin-bottom: calc(var(--cs) * 0.5);
+  }
+}

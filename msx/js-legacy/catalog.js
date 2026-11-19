@@ -3805,8 +3805,16 @@ function formatCinemaVotes(n) {
 }
 var cinemaKpRatings = {};
 var cinemaKpUnavailable = false;
+var cinemaTmdbRating = {
+  key: null,
+  value: null
+};
 function cinemaRatingsHtml(r) {
   var html = '';
+  var box = getEl('detail-cinema-score');
+  if (cinemaTmdbRating.value && box && box.getAttribute('data-key') === cinemaTmdbRating.key) {
+    html += '<span class="detail-cinema-rating is-tmdb"><b>TMDB</b>' + cinemaTmdbRating.value.toFixed(1) + '</span>';
+  }
   if (r && r.kp) html += '<span class="detail-cinema-rating is-kp"><b>КП</b>' + r.kp.toFixed(1) + '</span>';
   if (r && r.imdb) html += '<span class="detail-cinema-rating is-imdb"><b>IMDb</b>' + r.imdb.toFixed(1) + '</span>';
   html += userRatingBadgeHtml();
@@ -3820,6 +3828,29 @@ function updateCinemaScoreVisibility() {
     badges = getEl('detail-cinema-badges');
   var any = vote && vote.style.display !== 'none' || ratings && ratings.innerHTML || badges && badges.innerHTML;
   box.style.display = any ? '' : 'none';
+  updateCinemaHeadWrap();
+}
+var CINEMA_PHONE_LANDSCAPE_MQ = '(orientation: landscape) and (max-height: 500px)';
+var cinemaHeadWrapWatched = false;
+function updateCinemaHeadWrap() {
+  var dv = getEl('detail-view');
+  if (!dv) return;
+  if (!cinemaHeadWrapWatched) {
+    cinemaHeadWrapWatched = true;
+    window.addEventListener('resize', function () {
+      updateCinemaHeadWrap();
+    });
+  }
+  var wrapped = false;
+  var phone = window.matchMedia && window.matchMedia(CINEMA_PHONE_LANDSCAPE_MQ).matches;
+  if (phone && dv.classList.contains('detail-cinema')) {
+    var meta = getEl('detail-cinema-meta'),
+      box = getEl('detail-cinema-score');
+    if (meta && box && box.style.display !== 'none' && box.parentNode === meta.parentNode) {
+      wrapped = box.getBoundingClientRect().top >= meta.getBoundingClientRect().bottom - 1;
+    }
+  }
+  dv.classList.toggle('cinema-head-wrapped', wrapped);
 }
 function loadCinemaKpRating(key, type, id, imdb) {
   if (cinemaKpUnavailable) return;
@@ -4039,12 +4070,16 @@ function renderCinemaScore(item, src) {
   var key = type + '_' + id;
   renderUserRatings(type, id);
   var ratingsEl = getEl('detail-cinema-ratings');
-  if (box.getAttribute('data-key') !== key) {
-    box.setAttribute('data-key', key);
-    if (ratingsEl) ratingsEl.innerHTML = '';
-    if (cinemaKpRatings.hasOwnProperty(key)) {
-      if (ratingsEl) ratingsEl.innerHTML = cinemaRatingsHtml(cinemaKpRatings[key]);
-    } else if (id) {
+  box.setAttribute('data-key', key);
+  cinemaTmdbRating = {
+    key: key,
+    value: getSafeCatalogRating(src) || getSafeCatalogRating(item)
+  };
+  if (ratingsEl) {
+    var hasKp = cinemaKpRatings.hasOwnProperty(key);
+    ratingsEl.innerHTML = cinemaRatingsHtml(hasKp ? cinemaKpRatings[key] : null);
+    if (!hasKp && id && ratingsEl.getAttribute('data-kp-key') !== key) {
+      ratingsEl.setAttribute('data-kp-key', key);
       loadCinemaKpRating(key, type, id, src.imdb_id || '');
     }
   }
@@ -4087,11 +4122,8 @@ function renderCinemaHead(item, src) {
     var rt = formatCinemaRuntime(src.runtime);
     if (rt) parts.push(rt);
   }
-  var rating = getSafeCatalogRating(src) || getSafeCatalogRating(item);
   var meta = getEl('detail-cinema-meta');
-  if (meta) {
-    meta.innerHTML = parts.join('<span class="detail-cinema-dot">·</span>') + (rating ? '<span class="detail-cinema-meta-star">' + (parts.length ? '<span class="detail-cinema-dot">·</span>' : '') + '<span class="detail-cinema-star">★</span> ' + rating.toFixed(1) + '</span>' : '');
-  }
+  if (meta) meta.innerHTML = parts.join('<span class="detail-cinema-dot">·</span>');
   var chips = [];
   var genres = getNormalizedCatalogGenres(src);
   for (var i = 0; i < genres.length && i < 3; i++) {
