@@ -814,6 +814,44 @@ function showPlayerHeading(hash, fileId, fallbackText, fileName) {
   });
 }
 
+// ---- Заголовок нативного плеера Android ----
+// Тот же заголовок, что у веб-плеера: логотип TMDB (без него — название) и под
+// ним у сериала «Сезон 1 · Серия 5 · Название серии». Плеер приложения рисует
+// его сам, ему уходят: title_logo (адрес картинки), title_name (название
+// TMDB — вместо логотипа, пока тот грузится или его нет) и episode_line (у
+// каждого элемента плейлиста — своя). Раздача без id TMDB — ничего из этого не
+// уходит, и плеер показывает прежний текст (title / title_base + серия).
+var ANDROID_HEADING_WAIT_MS = 1500;
+
+/**
+ * Загрузить логотип и название TMDB раздачи заранее, но ждать недолго: нативный
+ * плеер открывается сразу, и опаздывать ему ради картинки незачем (тогда
+ * заголовок будет прежним текстом).
+ */
+function prefetchAndroidHeading(hash) {
+  var ref = resolvePlayerTmdbRef(hash);
+  if (!ref) return Promise.resolve(null);
+  return Promise.race([
+    loadPlayerHeadingEntry(ref),
+    new Promise(function (resolve) { setTimeout(function () { resolve(null); }, ANDROID_HEADING_WAIT_MS); })
+  ])['catch'](function () { return null; });
+}
+
+/** { title_logo, title_name } из уже загруженного кэша или null — без запросов */
+function androidHeadingFields(hash) {
+  var ref = resolvePlayerTmdbRef(hash);
+  if (!ref) return null;
+  var entry = playerHeadingCache[ref.type + ':' + ref.id];
+  if (!entry || entry.pending || (!entry.name && !entry.logo)) return null;
+  return { title_logo: entry.logo || '', title_name: entry.name || '' };
+}
+
+/** Строка серии для файла раздачи или '' (фильм, раздача без TMDB) */
+function androidEpisodeLine(hash, file, ref) {
+  if (!ref || ref.type !== 'tv' || !file) return '';
+  return buildPlayerEpisodeLine(hash, file.id, file.path || file.name);
+}
+
 async function getFileNameByHash(hash, fileId) {
   if (!hash || !fileId) return null;
   var torrent = null;
@@ -3028,6 +3066,7 @@ function buildEpisodesPlaylist(fromIndex, startSeekTime) {
     if (typeof torrentProgressCache !== 'undefined' && torrentProgressCache) progress = torrentProgressCache.get(currentTorrentHash);
   } catch (e) { /* кэша нет — пойдём с нулевыми таймкодами */ }
   var byFileId = (progress && progress.byFileId) || {};
+  var headingRef = resolvePlayerTmdbRef(currentTorrentHash);
   var playlist = [];
   for (var i = 0; i < currentEpisodeFiles.length; i++) {
     var file = currentEpisodeFiles[i];
@@ -3047,6 +3086,8 @@ function buildEpisodesPlaylist(fromIndex, startSeekTime) {
       // показывает её в списке серий и заголовке вместо «Эпизод N»). Отдельным
       // полем: title по-прежнему уходит внешним плеерам и старым версиям
       episode_title: getEpisodeLabel(file, i),
+      // «Сезон 1 · Серия 5 · Название» под логотипом — как в веб-плеере
+      episode_line: androidEpisodeLine(currentTorrentHash, file, headingRef),
       timecode: itemTime,
       timeline: {
         hash: currentTorrentHash + '_' + file.id,
@@ -3168,6 +3209,15 @@ function openAndroidPlayer(playURL, playerData) {
     currentTimecodeData.hash = urlData.torrentHash;
     currentTimecodeData.fileId = urlData.fileId;
     currentTimecodeData.timecode = (playerData && playerData.timecode) || 0;
+    // Логотип и название TMDB для заголовка плеера, если они уже загружены
+    // (prefetchAndroidHeading); сам запуск ради них не откладываем
+    if (playerData && !playerData.title_logo && !playerData.title_name) {
+      var headingFields = androidHeadingFields(urlData.torrentHash);
+      if (headingFields) {
+        playerData.title_logo = headingFields.title_logo;
+        playerData.title_name = headingFields.title_name;
+      }
+    }
   }
   if (lastExternalOpen.url === playURL && Date.now() - lastExternalOpen.time < EXTERNAL_OPEN_DEDUP_MS) return false;
   lastExternalOpen.url = playURL; lastExternalOpen.time = Date.now();
@@ -3180,6 +3230,7 @@ function openAndroidPlayer(playURL, playerData) {
   return true;
 }
 window.openAndroidPlayer = openAndroidPlayer;
+window.prefetchAndroidHeading = prefetchAndroidHeading;
 
 function playInExternalPlayer(url, title, timecode, fromSearch) {
   if (!window.AndroidJS || !url) return false;
@@ -3191,8 +3242,12 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
     var playURL = AppState.currentTorrserverUrl + "/stream?link=" + torrentHash + "&index=" + fileId + "&play=play";
     var item = AppState.currentDetailItem;
     var skipTorrent = findLoadedTorrent(torrentHash) || item;
+    var headingFields = androidHeadingFields(torrentHash);
     var playerData = {
       url: playURL, title: title || 'Видео', iptv: false, timecode: seekTime,
+      // Логотип TMDB и название — встроенный плеер рисует заголовок как веб-плеер
+      title_logo: headingFields ? headingFields.title_logo : '',
+      title_name: headingFields ? headingFields.title_name : '',
       // Для встроенного плеера — без номера серии, он допишет его сам
       title_base: buildBasePlayerTitle(),
       // Данные для кнопки «Пропустить»: встроенный плеер сам дёргает этот API на
@@ -3230,6 +3285,12 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       var playlist = buildEpisodesPlaylist(currentEpisodeIndex, seekTime);
       if (playlist) playerData.playlist = playlist;
     }
+    // Строка серии текущего файла — и для одиночного запуска без плейлиста
+    var currentFile = null;
+    for (var cf = 0; cf < (currentEpisodeFiles || []).length; cf++) {
+      if (String(currentEpisodeFiles[cf].id) === String(fileId)) { currentFile = currentEpisodeFiles[cf]; break; }
+    }
+    playerData.episode_line = androidEpisodeLine(torrentHash, currentFile || { id: fileId }, resolvePlayerTmdbRef(torrentHash));
     playerData.auto_next = !!AppState.autoSwitchEpisodes;
     // «Автопропуск заставки и титров»: встроенный плеер приложения (с 1.1.31)
     // отсчитывает на кнопке пропуска и пропускает сам, как веб-плеер
@@ -4362,6 +4423,14 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
     }
     refreshNativeSubtitles(videoPlayer);
     applyDirectProbe();
+    // Tizen (AVPlay): сохранённая дорожка ждёт разбор файла, а тот без прогрева
+    // раздачи приходит через десятки секунд или не приходит вовсе — не ждём его
+    if (AppState.tizenAvplayActive && nativeAudioPref >= 0) {
+      var probeGen = directProbe.gen;
+      setTimeout(function () {
+        if (!signal.aborted && probeGen === directProbe.gen) tizenApplyAudioPrefEarly(videoPlayer);
+      }, TIZEN_AUDIO_PREF_WAIT_MS);
+    }
   };
 
   var onCanPlay = function () {
@@ -4741,6 +4810,8 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       } catch (e) { /* нет таймкода — стартуем с начала */ }
     }
 
+    // Логотип и название TMDB для заголовка встроенного плеера (ждём недолго)
+    if (androidRef) await prefetchAndroidHeading(androidRef.hash);
     if (playInExternalPlayer(originalUrl, buildExternalPlayerTitle(), androidSeek, fromSearch)) {
       getEl('config-screen').style.display = 'none';
       // Запуск с главной: главная (она внутри torrserver-section) остаётся под
@@ -5597,9 +5668,12 @@ function applyProbeAudioList(streams) {
     return { title: probeTitle(s, 'audio', k), language: probeLang(s) || 'und', channels: s.channels || null, codec: (s.codec_name || '').toUpperCase(), probed: true };
   });
   // Сохранённая дорожка ждала этот список (applyNativeAudioPref) — номер в нём
-  if (nativeAudioPref >= 0 && nativeAudioPref < streams.length) {
-    var tv = probeAudio.map[nativeAudioPref];
+  // (или уже включена по номеру AVPlay, не дожидаясь списка — probeAudioPending)
+  var wanted = nativeAudioPref >= 0 ? nativeAudioPref : probeAudioPending;
+  if (wanted >= 0 && wanted < streams.length) {
+    var tv = probeAudio.map[wanted];
     nativeAudioPref = -1;
+    probeAudioPending = -1;
     if (tv >= 0) for (var j = 0; j < at.length; j++) at[j].enabled = (j === tv);
   }
   currentAudioTrack = 0;
@@ -5644,6 +5718,29 @@ function tizenAudioMap(native, streams) {
   }
   for (var n = 0; n < streams.length; n++) if (map[n] === undefined) map[n] = -1;
   return map;
+}
+
+/**
+ * Tizen (AVPlay): сохранённую дорожку включаем по номеру AVPlay, не дожидаясь
+ * разбора файла. Разбор (службы на ТВ → CUB) ждёт голову раздачи у TorrServer, и
+ * без прогрева это десятки секунд — всё это время играла бы дорожка по умолчанию.
+ * Номер сохранён по списку разбора, у AVPlay порядок бывает другой, поэтому
+ * выбор остаётся в probeAudioPending: когда разбор придёт, applyProbeAudioList
+ * включит ту дорожку, что стоит за этим номером в файле.
+ */
+var TIZEN_AUDIO_PREF_WAIT_MS = 2500;
+var probeAudioPending = -1;
+
+function tizenApplyAudioPrefEarly(videoPlayer) {
+  if (!AppState.tizenAvplayActive || probeAudio.on || nativeAudioPref < 0) return;
+  var at = videoPlayer && videoPlayer.audioTracks;
+  if (!at || at.length < 2 || nativeAudioPref >= at.length) return;
+  var index = nativeAudioPref;
+  probeAudioPending = index;
+  nativeAudioPref = -1;
+  for (var i = 0; i < at.length; i++) at[i].enabled = (i === index);
+  currentAudioTrack = index;
+  renderAudioTracks();
 }
 
 /** Разбор файла не ответил никто — сохранённую дорожку включаем по номеру AVPlay */
@@ -5782,6 +5879,7 @@ function directProbeStart() {
   directProbe.streams = null;
   directProbe.count = '';
   probeAudio.on = false; probeAudio.map = []; probeAudio.gaveUp = false;
+  probeAudioPending = -1;
   var gen = ++directProbe.gen;
   var hash = currentTimecodeData.hash, fileId = currentTimecodeData.fileId;
   var done = function (streams, via) {

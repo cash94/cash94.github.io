@@ -2021,6 +2021,7 @@ function _checkServer() {
       }
       throw new Error('Сервер не отвечает');
     } catch (error) {
+      if (stale()) return checkServerLatest;
       console.error('Ошибка проверки сервера:', error);
       statusIndicator.className = 'status-indicator status-offline';
       statusText.textContent = 'Сервер недоступен ✗';

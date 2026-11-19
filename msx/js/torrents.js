@@ -2340,6 +2340,8 @@ async function checkServer(shouldLoadTorrents = true) {
         }
         throw new Error('Сервер не отвечает');
     } catch (error) {
+        // Оборванная новой проверкой проба — не ошибка этого сервера
+        if (stale()) return checkServerLatest;
         console.error('Ошибка проверки сервера:', error);
         statusIndicator.className = 'status-indicator status-offline'; statusText.textContent = 'Сервер недоступен ✗'; AppState.serverOnline = false; AppState.monoServer = null; return false;
     }

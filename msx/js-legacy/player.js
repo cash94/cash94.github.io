@@ -659,6 +659,32 @@ function showPlayerHeading(hash, fileId, fallbackText, fileName) {
     if (mine === playerHeadingGen && titleElement) titleElement.style.visibility = '';
   });
 }
+var ANDROID_HEADING_WAIT_MS = 1500;
+function prefetchAndroidHeading(hash) {
+  var ref = resolvePlayerTmdbRef(hash);
+  if (!ref) return Promise.resolve(null);
+  return Promise.race([loadPlayerHeadingEntry(ref), new Promise(function (resolve) {
+    setTimeout(function () {
+      resolve(null);
+    }, ANDROID_HEADING_WAIT_MS);
+  })])['catch'](function () {
+    return null;
+  });
+}
+function androidHeadingFields(hash) {
+  var ref = resolvePlayerTmdbRef(hash);
+  if (!ref) return null;
+  var entry = playerHeadingCache[ref.type + ':' + ref.id];
+  if (!entry || entry.pending || !entry.name && !entry.logo) return null;
+  return {
+    title_logo: entry.logo || '',
+    title_name: entry.name || ''
+  };
+}
+function androidEpisodeLine(hash, file, ref) {
+  if (!ref || ref.type !== 'tv' || !file) return '';
+  return buildPlayerEpisodeLine(hash, file.id, file.path || file.name);
+}
 function getFileNameByHash(_x, _x2) {
   return _getFileNameByHash.apply(this, arguments);
 }
@@ -2693,6 +2719,7 @@ function buildEpisodesPlaylist(fromIndex, startSeekTime) {
     if (typeof torrentProgressCache !== 'undefined' && torrentProgressCache) progress = torrentProgressCache.get(currentTorrentHash);
   } catch (e) {}
   var byFileId = progress && progress.byFileId || {};
+  var headingRef = resolvePlayerTmdbRef(currentTorrentHash);
   var playlist = [];
   for (var i = 0; i < currentEpisodeFiles.length; i++) {
     var file = currentEpisodeFiles[i];
@@ -2705,6 +2732,7 @@ function buildEpisodesPlaylist(fromIndex, startSeekTime) {
       url: itemUrl,
       title: file.name || file.path || 'Серия ' + (i + 1),
       episode_title: getEpisodeLabel(file, i),
+      episode_line: androidEpisodeLine(currentTorrentHash, file, headingRef),
       timecode: itemTime,
       timeline: {
         hash: currentTorrentHash + '_' + file.id,
@@ -2768,6 +2796,13 @@ function openAndroidPlayer(playURL, playerData) {
     currentTimecodeData.hash = urlData.torrentHash;
     currentTimecodeData.fileId = urlData.fileId;
     currentTimecodeData.timecode = playerData && playerData.timecode || 0;
+    if (playerData && !playerData.title_logo && !playerData.title_name) {
+      var headingFields = androidHeadingFields(urlData.torrentHash);
+      if (headingFields) {
+        playerData.title_logo = headingFields.title_logo;
+        playerData.title_name = headingFields.title_name;
+      }
+    }
   }
   if (lastExternalOpen.url === playURL && Date.now() - lastExternalOpen.time < EXTERNAL_OPEN_DEDUP_MS) return false;
   lastExternalOpen.url = playURL;
@@ -2779,6 +2814,7 @@ function openAndroidPlayer(playURL, playerData) {
   return true;
 }
 window.openAndroidPlayer = openAndroidPlayer;
+window.prefetchAndroidHeading = prefetchAndroidHeading;
 function playInExternalPlayer(url, title, timecode, fromSearch) {
   if (!window.AndroidJS || !url) return false;
   var ref = parseStreamRef(url);
@@ -2792,11 +2828,14 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
     var playURL = AppState.currentTorrserverUrl + "/stream?link=" + torrentHash + "&index=" + fileId + "&play=play";
     var item = AppState.currentDetailItem;
     var skipTorrent = findLoadedTorrent(torrentHash) || item;
+    var headingFields = androidHeadingFields(torrentHash);
     var playerData = {
       url: playURL,
       title: title || 'Видео',
       iptv: false,
       timecode: seekTime,
+      title_logo: headingFields ? headingFields.title_logo : '',
+      title_name: headingFields ? headingFields.title_name : '',
       title_base: buildBasePlayerTitle(),
       skip_api: getSkipApiBase() + '/v2/media',
       tmdb_id: getTorrentTmdbId(skipTorrent) || AppState.currentTMDB || null,
@@ -2820,6 +2859,16 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       var playlist = buildEpisodesPlaylist(currentEpisodeIndex, seekTime);
       if (playlist) playerData.playlist = playlist;
     }
+    var currentFile = null;
+    for (var cf = 0; cf < (currentEpisodeFiles || []).length; cf++) {
+      if (String(currentEpisodeFiles[cf].id) === String(fileId)) {
+        currentFile = currentEpisodeFiles[cf];
+        break;
+      }
+    }
+    playerData.episode_line = androidEpisodeLine(torrentHash, currentFile || {
+      id: fileId
+    }, resolvePlayerTmdbRef(torrentHash));
     playerData.auto_next = !!AppState.autoSwitchEpisodes;
     playerData.auto_skip = !!AppState.autoSkipIntro;
     var authHeaders = getAuthHeaders();
@@ -3879,6 +3928,12 @@ function _initTranscodingOffPlayback() {
       }
       refreshNativeSubtitles(videoPlayer);
       applyDirectProbe();
+      if (AppState.tizenAvplayActive && nativeAudioPref >= 0) {
+        var probeGen = directProbe.gen;
+        setTimeout(function () {
+          if (!signal.aborted && probeGen === directProbe.gen) tizenApplyAudioPrefEarly(videoPlayer);
+        }, TIZEN_AUDIO_PREF_WAIT_MS);
+      }
     };
     var onCanPlay = function () {
       startPlayback();
@@ -4256,6 +4311,7 @@ function _startHLSPlayback() {
           if (savedSeek > 0) androidSeek = savedSeek;
         } catch (e) {}
       }
+      if (androidRef) yield prefetchAndroidHeading(androidRef.hash);
       if (playInExternalPlayer(originalUrl, buildExternalPlayerTitle(), androidSeek, fromSearch)) {
         getEl('config-screen').style.display = 'none';
         if (!androidReturnHome) getEl('torrserver-section').style.display = 'none';
@@ -5200,9 +5256,11 @@ function applyProbeAudioList(streams) {
       probed: true
     };
   });
-  if (nativeAudioPref >= 0 && nativeAudioPref < streams.length) {
-    var tv = probeAudio.map[nativeAudioPref];
+  var wanted = nativeAudioPref >= 0 ? nativeAudioPref : probeAudioPending;
+  if (wanted >= 0 && wanted < streams.length) {
+    var tv = probeAudio.map[wanted];
     nativeAudioPref = -1;
+    probeAudioPending = -1;
     if (tv >= 0) for (var j = 0; j < at.length; j++) at[j].enabled = j === tv;
   }
   currentAudioTrack = 0;
@@ -5244,6 +5302,19 @@ function tizenAudioMap(native, streams) {
   }
   for (var n = 0; n < streams.length; n++) if (map[n] === undefined) map[n] = -1;
   return map;
+}
+var TIZEN_AUDIO_PREF_WAIT_MS = 2500;
+var probeAudioPending = -1;
+function tizenApplyAudioPrefEarly(videoPlayer) {
+  if (!AppState.tizenAvplayActive || probeAudio.on || nativeAudioPref < 0) return;
+  var at = videoPlayer && videoPlayer.audioTracks;
+  if (!at || at.length < 2 || nativeAudioPref >= at.length) return;
+  var index = nativeAudioPref;
+  probeAudioPending = index;
+  nativeAudioPref = -1;
+  for (var i = 0; i < at.length; i++) at[i].enabled = i === index;
+  currentAudioTrack = index;
+  renderAudioTracks();
 }
 function directProbeGaveUp() {
   if (!AppState.tizenAvplayActive || probeAudio.on) return;
@@ -5371,6 +5442,7 @@ function directProbeStart() {
   probeAudio.on = false;
   probeAudio.map = [];
   probeAudio.gaveUp = false;
+  probeAudioPending = -1;
   var gen = ++directProbe.gen;
   var hash = currentTimecodeData.hash,
     fileId = currentTimecodeData.fileId;
