@@ -91,10 +91,17 @@ var TizenAVPlay = function () {
     return out;
   }
   function currentIndex(type) {
+    var idx = -1;
     try {
       var info = av().getCurrentStreamInfo() || [];
-      for (var i = 0; i < info.length; i++) if (info[i].type === type) return parseInt(info[i].index, 10);
+      for (var i = 0; i < info.length; i++) if (info[i].type === type) {
+        idx = parseInt(info[i].index, 10);
+        break;
+      }
     } catch (e) {}
+    if (!(idx >= 0)) return -1;
+    var list = tracksOf(type);
+    for (var k = 0; k < list.length; k++) if (list[k].index === idx) return idx;
     return -1;
   }
   function trimLang(code) {
@@ -267,6 +274,8 @@ var TizenAVPlay = function () {
         };
         Object.defineProperty(item, 'enabled', {
           get: function () {
+            if (!prepared && pendingAudio >= 0) return i === pendingAudio;
+            if (wantAudio >= 0) return t.index === wantAudio;
             var c = currentIndex('AUDIO');
             return c >= 0 ? c === t.index : i === 0;
           },

@@ -5257,14 +5257,18 @@ function applyProbeAudioList(streams) {
     };
   });
   var wanted = nativeAudioPref >= 0 ? nativeAudioPref : probeAudioPending;
+  var chosen = -1;
   if (wanted >= 0 && wanted < streams.length) {
     var tv = probeAudio.map[wanted];
     nativeAudioPref = -1;
     probeAudioPending = -1;
-    if (tv >= 0) for (var j = 0; j < at.length; j++) at[j].enabled = j === tv;
+    if (tv >= 0) {
+      for (var j = 0; j < at.length; j++) at[j].enabled = j === tv;
+      chosen = wanted;
+    }
   }
-  currentAudioTrack = 0;
-  for (var k = 0; k < at.length; k++) {
+  currentAudioTrack = chosen >= 0 ? chosen : 0;
+  for (var k = 0; chosen < 0 && k < at.length; k++) {
     if (!at[k].enabled) continue;
     var item = probeAudio.map.indexOf(k);
     if (item >= 0) currentAudioTrack = item;

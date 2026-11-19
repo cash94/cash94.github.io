@@ -104,12 +104,21 @@ var TizenAVPlay = (function () {
         return out;
     }
 
-    /** Номер (index AVPlay) дорожки этого типа, что играет сейчас; -1 — неизвестно */
+    /**
+     * Номер (index AVPlay) дорожки этого типа, что играет сейчас; -1 — неизвестно.
+     * Номер, которого нет среди дорожек этого типа в getTotalTrackInfo, — тоже
+     * «неизвестно»: прошивки нумеруют getCurrentStreamInfo по-разному, и такой
+     * номер не совпадал ни с одной дорожкой — «включённой» не считалась ни одна
+     */
     function currentIndex(type) {
+        var idx = -1;
         try {
             var info = av().getCurrentStreamInfo() || [];
-            for (var i = 0; i < info.length; i++) if (info[i].type === type) return parseInt(info[i].index, 10);
+            for (var i = 0; i < info.length; i++) if (info[i].type === type) { idx = parseInt(info[i].index, 10); break; }
         } catch (e) { }
+        if (!(idx >= 0)) return -1;
+        var list = tracksOf(type);
+        for (var k = 0; k < list.length; k++) if (list[k].index === idx) return idx;
         return -1;
     }
 
@@ -287,7 +296,18 @@ var TizenAVPlay = (function () {
                 var item = { id: String(t.index), kind: 'main', label: audioLabel(t.extra), language: trimLang(t.extra.language),
                     codec: String(t.extra.fourCC || ''), channels: parseInt(t.extra.channels, 10) || 0 };
                 Object.defineProperty(item, 'enabled', {
-                    get: function () { var c = currentIndex('AUDIO'); return c >= 0 ? c === t.index : i === 0; },
+                    // Выбранная нами дорожка — та, что выбрали, как mode у субтитров
+                    // (textIndex). getCurrentStreamInfo сразу после setSelectTrack
+                    // (а до play() — всегда) отдаёт дорожку по умолчанию, на Tizen 5
+                    // и во время показа: player.js по ней пересчитывал выбранный
+                    // пункт (applyProbeAudioList) — галочка вставала на первую
+                    // дорожку при игравшей третьей, и следующая серия получала
+                    // первую. Что дорожка правда включилась, сверяет enforceTracks
+                    get: function () {
+                        if (!prepared && pendingAudio >= 0) return i === pendingAudio;
+                        if (wantAudio >= 0) return t.index === wantAudio;
+                        var c = currentIndex('AUDIO'); return c >= 0 ? c === t.index : i === 0;
+                    },
                     set: function (v) { if (v) selectAudio(i); }
                 });
                 items.push(item);

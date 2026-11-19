@@ -5670,14 +5670,22 @@ function applyProbeAudioList(streams) {
   // Сохранённая дорожка ждала этот список (applyNativeAudioPref) — номер в нём
   // (или уже включена по номеру AVPlay, не дожидаясь списка — probeAudioPending)
   var wanted = nativeAudioPref >= 0 ? nativeAudioPref : probeAudioPending;
+  var chosen = -1;
   if (wanted >= 0 && wanted < streams.length) {
     var tv = probeAudio.map[wanted];
     nativeAudioPref = -1;
     probeAudioPending = -1;
-    if (tv >= 0) for (var j = 0; j < at.length; j++) at[j].enabled = (j === tv);
+    if (tv >= 0) {
+      for (var j = 0; j < at.length; j++) at[j].enabled = (j === tv);
+      chosen = wanted;
+    }
   }
-  currentAudioTrack = 0;
-  for (var k = 0; k < at.length; k++) {
+  // Только что включённую — сразу пунктом списка, а не обратным чтением
+  // enabled: AVPlay до play() (Tizen 5 — и во время показа) называет играющей
+  // дорожку по умолчанию, галочка вставала на первую, и switchToEpisode
+  // передавал следующей серии первую дорожку вместо выбранной
+  currentAudioTrack = chosen >= 0 ? chosen : 0;
+  for (var k = 0; chosen < 0 && k < at.length; k++) {
     if (!at[k].enabled) continue;
     var item = probeAudio.map.indexOf(k);
     if (item >= 0) currentAudioTrack = item;
