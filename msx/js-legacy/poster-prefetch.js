@@ -26,13 +26,17 @@
     if (chromeMajor >= 66) return 2;
     return 3;
   }
+  var nativeImg = false;
+  try {
+    nativeImg = !!(window.AndroidJS && typeof AndroidJS.imagePrefetch === 'function' && AndroidJS.imagePrefetch());
+  } catch (e) {}
   var acceptIdx = guessAccept();
   var storeKey = PF.STORE_KEY + '_' + (chromeMajor || ua.length);
   try {
     var saved = parseInt(localStorage.getItem(storeKey), 10);
     if (saved >= 0 && saved < ACCEPTS.length) acceptIdx = saved;
   } catch (e) {}
-  var WORKER_SRC = 'var q=[],lq=[],active=0,la=0,max=' + PF.CONCURRENCY + ',lmax=' + PF.LOW_CONCURRENCY + ',cap=' + PF.QUEUE_MAX + ',lcap=' + PF.LOW_QUEUE_MAX + ',acc="",ctl={};' + 'onmessage=function(e){var d=e.data;if(d.accept)acc=d.accept;' + 'if(d.droplow){var dr=lq;lq=[];if(dr.length)postMessage({dropped:dr});return;}' + 'if(d.rid){if(d.abort){if(ctl[d.rid]){try{ctl[d.rid].abort();}catch(x){}delete ctl[d.rid];}return;}req(d);return;}' + 'if(d.urls&&d.low){for(var a=0;a<d.urls.length;a++){var w=d.urls[a];if(q.indexOf(w)===-1&&lq.indexOf(w)===-1)lq.push(w);}if(lq.length>lcap)lq.length=lcap;}' + 'else if(d.urls){for(var i=d.urls.length-1;i>=0;i--){var u=d.urls[i],j=q.indexOf(u),k=lq.indexOf(u);if(j!==-1)q.splice(j,1);if(k!==-1)lq.splice(k,1);q.unshift(u);}' + 'if(q.length>cap)q.length=cap;}pump();};' + 'function req(d){var c=null;try{c=new AbortController();}catch(x){}if(c)ctl[d.rid]=c;' + 'var o={method:d.method||"GET",headers:d.headers||{}};if(d.body!=null)o.body=d.body;if(c)o.signal=c.signal;if(d.keepalive)o.keepalive=true;if(d.cache)o.cache=d.cache;' + 'fetch(d.url,o).then(function(r){var m={rid:d.rid,status:r.status,statusText:r.statusText,ok:r.ok,ct:r.headers.get("content-type")||"",url:r.url,h:{}};try{r.headers.forEach(function(v,k){m.h[String(k).toLowerCase()]=v;});}catch(x){}' + 'if(d.mode==="none"){postMessage(m);var fin=function(){delete ctl[d.rid];};r.blob().then(fin,fin);return;}' + 'if(d.mode==="buffer"){return r.arrayBuffer().then(function(b){delete ctl[d.rid];m.buf=b;postMessage(m,[b]);});}' + 'return r.text().then(function(t){delete ctl[d.rid];' + 'if(d.mode!=="text"){var s=String(t).trim(),f=s.charAt(0);if(f==="{"||f==="["||/json/i.test(m.ct)){try{m.json=JSON.parse(t);m.parsed=1;postMessage(m);return;}catch(x){}}}' + 'm.text=t;postMessage(m);});})' + '.catch(function(e){delete ctl[d.rid];postMessage({rid:d.rid,err:(e&&e.name)||"TypeError",msg:(e&&e.message)||""});});}' + 'function pump(){while(active<max){if(q.length){active++;get(q.shift(),0);}else if(lq.length&&la<lmax){active++;la++;get(lq.shift(),1);}else break;}}' + 'function get(u,low){fetch(u,{mode:"cors",headers:{Accept:acc}})' + '.then(function(r){if(!r.ok)throw 0;return r.blob();})' + '.then(function(){postMessage({ok:u});},function(){postMessage({fail:u});})' + '.then(function(){active--;if(low)la--;pump();});}' + 'postMessage({ready:1});';
+  var WORKER_SRC = 'var q=[],lq=[],active=0,la=0,max=' + PF.CONCURRENCY + ',lmax=' + PF.LOW_CONCURRENCY + ',cap=' + PF.QUEUE_MAX + ',lcap=' + PF.LOW_QUEUE_MAX + ',acc="",ctl={},mk=0,bn=0,bt={};' + 'onmessage=function(e){var d=e.data;if(d.accept)acc=d.accept;if(d.mark)mk=1;' + 'if(d.droplow){var dr=lq;lq=[];if(dr.length)postMessage({dropped:dr});return;}' + 'if(d.rid){if(d.abort){if(ctl[d.rid]){try{ctl[d.rid].abort();}catch(x){}delete ctl[d.rid];}return;}req(d);return;}' + 'if(d.urls&&d.low){for(var a=0;a<d.urls.length;a++){var w=d.urls[a];if(q.indexOf(w)===-1&&lq.indexOf(w)===-1)lq.push(w);}if(lq.length>lcap)lq.length=lcap;}' + 'else if(d.urls){bn++;for(var i=d.urls.length-1;i>=0;i--){var u=d.urls[i],j=q.indexOf(u),k=lq.indexOf(u);if(j!==-1)q.splice(j,1);if(k!==-1)lq.splice(k,1);q.unshift(u);bt[u]=bn;}' + 'if(q.length>cap)q.length=cap;}pump();};' + 'function req(d){var c=null;try{c=new AbortController();}catch(x){}if(c)ctl[d.rid]=c;' + 'var o={method:d.method||"GET",headers:d.headers||{}};if(d.body!=null)o.body=d.body;if(c)o.signal=c.signal;if(d.keepalive)o.keepalive=true;if(d.cache)o.cache=d.cache;' + 'fetch(d.url,o).then(function(r){var m={rid:d.rid,status:r.status,statusText:r.statusText,ok:r.ok,ct:r.headers.get("content-type")||"",url:r.url,h:{}};try{r.headers.forEach(function(v,k){m.h[String(k).toLowerCase()]=v;});}catch(x){}' + 'if(d.mode==="none"){postMessage(m);var fin=function(){delete ctl[d.rid];};r.blob().then(fin,fin);return;}' + 'if(d.mode==="buffer"){return r.arrayBuffer().then(function(b){delete ctl[d.rid];m.buf=b;postMessage(m,[b]);});}' + 'return r.text().then(function(t){delete ctl[d.rid];' + 'if(d.mode!=="text"){var s=String(t).trim(),f=s.charAt(0);if(f==="{"||f==="["||/json/i.test(m.ct)){try{m.json=JSON.parse(t);m.parsed=1;postMessage(m);return;}catch(x){}}}' + 'm.text=t;postMessage(m);});})' + '.catch(function(e){delete ctl[d.rid];postMessage({rid:d.rid,err:(e&&e.name)||"TypeError",msg:(e&&e.message)||""});});}' + 'function pump(){while(active<max){if(q.length){active++;get(q.shift(),0);}else if(lq.length&&la<lmax){active++;la++;get(lq.shift(),1);}else break;}}' + 'function get(u,low){var f=u;if(mk&&u.indexOf("/t/p/")!==-1)f=u+(u.indexOf("?")===-1?"?":"&")+"ts_pf="+(low?"l":"u."+(bt[u]||0));delete bt[u];' + 'fetch(f,{mode:"cors",headers:{Accept:acc}})' + '.then(function(r){if(!r.ok)throw 0;return r.blob();})' + '.then(function(){postMessage({ok:u});},function(){postMessage({fail:u});})' + '.then(function(){active--;if(low)la--;pump();});}' + 'postMessage({ready:1});';
   var worker = null;
   var workerFailed = false;
   function getWorker() {
@@ -51,7 +55,10 @@
         failAllRequests();
         flushReadyWaiters();
       };
-      worker.postMessage({
+      worker.postMessage(nativeImg ? {
+        accept: ACCEPTS[acceptIdx],
+        mark: 1
+      } : {
         accept: ACCEPTS[acceptIdx]
       });
     } catch (e) {
@@ -127,6 +134,15 @@
     if (worker) worker.postMessage({
       droplow: 1
     });
+    if (!nativeImg) return;
+    var dropped = [];
+    try {
+      dropped = JSON.parse(AndroidJS.imagePrefetchDropLow() || '[]');
+    } catch (e) {}
+    for (var i = 0; i < dropped.length; i++) {
+      delete lowPending[dropped[i]];
+      if (Object.prototype.hasOwnProperty.call(known, dropped[i])) known[dropped[i]] = -1;
+    }
   }
   var reqSeq = 0;
   var reqPending = {};
@@ -344,7 +360,7 @@
     return p;
   }
   var stats = {};
-  var calibrated = false;
+  var calibrated = nativeImg;
   var switches = 0;
   function hostOf(url) {
     var m = /^https?:\/\/([^/]+)/.exec(url);

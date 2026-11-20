@@ -76,6 +76,13 @@
         return 3;
     }
 
+    // Android-приложение качает картинки TMDB само и один раз (AndroidJS.imagePrefetch,
+    // browser/ImageCache.kt): воркер только говорит ему, что и в каком порядке. Без этого
+    // каждую новую картинку качали дважды — WebView для воркера и приложение для своего
+    // дискового кэша (у WebView приложения HTTP-кэш выключен)
+    var nativeImg = false;
+    try { nativeImg = !!(window.AndroidJS && typeof AndroidJS.imagePrefetch === 'function' && AndroidJS.imagePrefetch()); } catch (e) { }
+
     var acceptIdx = guessAccept();
     var storeKey = PF.STORE_KEY + '_' + (chromeMajor || ua.length);
     try {
@@ -95,15 +102,15 @@
     // Последней строкой — {ready}: по нему основной поток узнаёт, что воркер
     // действительно исполняется (на части ТВ Blob-воркер создаётся, но молчит).
     var WORKER_SRC =
-        'var q=[],lq=[],active=0,la=0,max=' + PF.CONCURRENCY + ',lmax=' + PF.LOW_CONCURRENCY + ',cap=' + PF.QUEUE_MAX + ',lcap=' + PF.LOW_QUEUE_MAX + ',acc="",ctl={};' +
-        'onmessage=function(e){var d=e.data;if(d.accept)acc=d.accept;' +
+        'var q=[],lq=[],active=0,la=0,max=' + PF.CONCURRENCY + ',lmax=' + PF.LOW_CONCURRENCY + ',cap=' + PF.QUEUE_MAX + ',lcap=' + PF.LOW_QUEUE_MAX + ',acc="",ctl={},mk=0,bn=0,bt={};' +
+        'onmessage=function(e){var d=e.data;if(d.accept)acc=d.accept;if(d.mark)mk=1;' +
         // Очистка фоновой очереди: уже начатые скачивания доходят до конца
         // (их не больше lmax), а выброшенные адреса уходят обратно — основной
         // поток забывает их, и следующая просьба о них снова поставит в очередь
         'if(d.droplow){var dr=lq;lq=[];if(dr.length)postMessage({dropped:dr});return;}' +
         'if(d.rid){if(d.abort){if(ctl[d.rid]){try{ctl[d.rid].abort();}catch(x){}delete ctl[d.rid];}return;}req(d);return;}' +
         'if(d.urls&&d.low){for(var a=0;a<d.urls.length;a++){var w=d.urls[a];if(q.indexOf(w)===-1&&lq.indexOf(w)===-1)lq.push(w);}if(lq.length>lcap)lq.length=lcap;}' +
-        'else if(d.urls){for(var i=d.urls.length-1;i>=0;i--){var u=d.urls[i],j=q.indexOf(u),k=lq.indexOf(u);if(j!==-1)q.splice(j,1);if(k!==-1)lq.splice(k,1);q.unshift(u);}' +
+        'else if(d.urls){bn++;for(var i=d.urls.length-1;i>=0;i--){var u=d.urls[i],j=q.indexOf(u),k=lq.indexOf(u);if(j!==-1)q.splice(j,1);if(k!==-1)lq.splice(k,1);q.unshift(u);bt[u]=bn;}' +
         'if(q.length>cap)q.length=cap;}pump();};' +
         'function req(d){var c=null;try{c=new AbortController();}catch(x){}if(c)ctl[d.rid]=c;' +
         'var o={method:d.method||"GET",headers:d.headers||{}};if(d.body!=null)o.body=d.body;if(c)o.signal=c.signal;if(d.keepalive)o.keepalive=true;if(d.cache)o.cache=d.cache;' +
@@ -115,7 +122,11 @@
         'm.text=t;postMessage(m);});})' +
         '.catch(function(e){delete ctl[d.rid];postMessage({rid:d.rid,err:(e&&e.name)||"TypeError",msg:(e&&e.message)||""});});}' +
         'function pump(){while(active<max){if(q.length){active++;get(q.shift(),0);}else if(lq.length&&la<lmax){active++;la++;get(lq.shift(),1);}else break;}}' +
-        'function get(u,low){fetch(u,{mode:"cors",headers:{Accept:acc}})' +
+        // В Android-приложении (mk) картинку TMDB качает само приложение (ImageCache):
+        // метка ts_pf — «положи в свой кэш», ответ приходит сразу и пустой. u.<пачка> —
+        // срочная (свежая пачка впереди), l — фоновая
+        'function get(u,low){var f=u;if(mk&&u.indexOf("/t/p/")!==-1)f=u+(u.indexOf("?")===-1?"?":"&")+"ts_pf="+(low?"l":"u."+(bt[u]||0));delete bt[u];' +
+        'fetch(f,{mode:"cors",headers:{Accept:acc}})' +
         '.then(function(r){if(!r.ok)throw 0;return r.blob();})' +
         '.then(function(){postMessage({ok:u});},function(){postMessage({fail:u});})' +
         '.then(function(){active--;if(low)la--;pump();});}' +
@@ -132,7 +143,7 @@
             worker = new Worker(url);
             worker.onmessage = onWorkerMessage;
             worker.onerror = function () { workerFailed = true; workerReady = false; worker = null; failAllRequests(); flushReadyWaiters(); };
-            worker.postMessage({ accept: ACCEPTS[acceptIdx] });
+            worker.postMessage(nativeImg ? { accept: ACCEPTS[acceptIdx], mark: 1 } : { accept: ACCEPTS[acceptIdx] });
         } catch (e) {
             workerFailed = true;
             worker = null;
@@ -211,6 +222,15 @@
      */
     function dropLow() {
         if (worker) worker.postMessage({ droplow: 1 });
+        if (!nativeImg) return;
+        // Воркер отдаёт фоновые адреса приложению сразу, так что очередь — у него. Выброшенное
+        // забываем: «скачан» здесь значит «отдан приложению», а оно его уже не скачает
+        var dropped = [];
+        try { dropped = JSON.parse(AndroidJS.imagePrefetchDropLow() || '[]'); } catch (e) { }
+        for (var i = 0; i < dropped.length; i++) {
+            delete lowPending[dropped[i]];
+            if (Object.prototype.hasOwnProperty.call(known, dropped[i])) known[dropped[i]] = -1;
+        }
     }
 
     // ==================== ЗАПРОСЫ ЧЕРЕЗ ВОРКЕР (BgFetch) ====================
@@ -444,7 +464,9 @@
     // откуда он пришёл. Промахи считаем по зеркалам: у зеркала без Vary кэш
     // попадает при любом Accept, и его попадания ничего не говорят о других.
     var stats = {};       // host → {hit, miss}
-    var calibrated = false;
+    // В Android-приложении картинки идут не из HTTP-кэша, а с диска приложения, и Accept на
+    // попадание не влияет — проверять нечего
+    var calibrated = nativeImg;
     var switches = 0;     // сколько раз меняли Accept
 
     function hostOf(url) {
