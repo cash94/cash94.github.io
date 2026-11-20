@@ -33,9 +33,10 @@
         CONCURRENCY: 6,
         // Очередь не длиннее: свежие просьбы встают в начало, старые отваливаются
         QUEUE_MAX: 120,
-        // Фоновая очередь (want(urls, {low: true})) — заранее «на потом»: всё
-        // для главной под заставкой. Идёт, только когда срочная пуста, и не
-        // больше LOW_CONCURRENCY разом: срочное и картинки страницы не ждут её
+        // Фоновая очередь (want(urls, {low: true})) — заранее «на потом»: ряды
+        // главной впереди фокуса. Идёт, только когда срочная пуста, и не
+        // больше LOW_CONCURRENCY разом: срочное и картинки страницы не ждут её.
+        // dropLow() очищает её — ушли с главной, и «потом» уже не наступит
         LOW_QUEUE_MAX: 600,
         LOW_CONCURRENCY: 3,
         // Сколько адресов помним скачанными (дальше — забываем самые старые)
@@ -96,6 +97,10 @@
     var WORKER_SRC =
         'var q=[],lq=[],active=0,la=0,max=' + PF.CONCURRENCY + ',lmax=' + PF.LOW_CONCURRENCY + ',cap=' + PF.QUEUE_MAX + ',lcap=' + PF.LOW_QUEUE_MAX + ',acc="",ctl={};' +
         'onmessage=function(e){var d=e.data;if(d.accept)acc=d.accept;' +
+        // Очистка фоновой очереди: уже начатые скачивания доходят до конца
+        // (их не больше lmax), а выброшенные адреса уходят обратно — основной
+        // поток забывает их, и следующая просьба о них снова поставит в очередь
+        'if(d.droplow){var dr=lq;lq=[];if(dr.length)postMessage({dropped:dr});return;}' +
         'if(d.rid){if(d.abort){if(ctl[d.rid]){try{ctl[d.rid].abort();}catch(x){}delete ctl[d.rid];}return;}req(d);return;}' +
         'if(d.urls&&d.low){for(var a=0;a<d.urls.length;a++){var w=d.urls[a];if(q.indexOf(w)===-1&&lq.indexOf(w)===-1)lq.push(w);}if(lq.length>lcap)lq.length=lcap;}' +
         'else if(d.urls){for(var i=d.urls.length-1;i>=0;i--){var u=d.urls[i],j=q.indexOf(u),k=lq.indexOf(u);if(j!==-1)q.splice(j,1);if(k!==-1)lq.splice(k,1);q.unshift(u);}' +
@@ -152,6 +157,15 @@
         var d = e.data || {};
         if (d.ready) { workerReady = true; workerSilent = false; flushReadyWaiters(); return; }
         if (d.rid) { settleRequest(d); return; }
+        if (d.dropped) {
+            for (var i = 0; i < d.dropped.length; i++) {
+                var u = d.dropped[i];
+                delete lowPending[u];
+                // Не скачан и в работе уже не стоит — «не просили», а не «скачан»
+                if (known[u] === 0) known[u] = -1;
+            }
+            return;
+        }
         if (d.ok || d.fail) delete lowPending[d.ok || d.fail];
         if (d.ok) remember(d.ok, now());
         // Не скачалось (зеркало молчит, нет CORS) — забываем: просьба придёт снова
@@ -188,6 +202,15 @@
         if (!fresh.length) return;
         var w = getWorker();
         if (w) w.postMessage(low ? { urls: fresh, low: 1 } : { urls: fresh });
+    }
+
+    /**
+     * Очистить фоновую очередь: то, что ещё не начали качать, не качаем.
+     * Срочная очередь и уже идущие скачивания не трогаются — недокачанной
+     * картинки в кэше не бывает, а начатую жалко бросать на полпути.
+     */
+    function dropLow() {
+        if (worker) worker.postMessage({ droplow: 1 });
     }
 
     // ==================== ЗАПРОСЫ ЧЕРЕЗ ВОРКЕР (BgFetch) ====================
@@ -491,6 +514,7 @@
 
     window.PosterPrefetch = {
         want: want,
+        dropLow: dropLow,
         json: json,
         fetch: bgFetch,
         // Для отладки: какой Accept сейчас и что насчитала самопроверка

@@ -30,7 +30,9 @@
     LOGO_PRELOAD_MAX: 2,
     ART_NEAR: 2,
     ART_PREFETCH_DELAY_MS: 150,
-    STARTUP_ITEMS: 20,
+    PREFETCH_ROWS_AHEAD: 3,
+    PREFETCH_ROWS_BEHIND: 1,
+    PREFETCH_RESUME_MS: 700,
     STARTUP_BACKDROPS: 2,
     STARTUP_CAT_BANNERS: 2,
     LOADER_POSTERS_MAX_MS: 6000,
@@ -2104,6 +2106,7 @@
       warmRow(index - 1);
       loadRowPosters(index + 1);
       loadRowPosters(index - 1);
+      prefetchHomeWindow();
     }, HOME.PREFETCH_DELAY_MS);
   }
   function warmRow(i) {
@@ -2207,15 +2210,27 @@
     prefetchNearArt(items, idx);
     preloadNearLogos(items, idx);
   }
-  var startupPrefetchDone = false;
-  function prefetchHomeStartup() {
-    if (startupPrefetchDone || !window.PosterPrefetch) return;
-    startupPrefetchDone = true;
+  var prefetchedRows = {};
+  var prefetchGen = 0;
+  var prefetchResumeTimer = null;
+  var prefetchPaused = false;
+  function homeAway() {
+    return !isHomeVisible() || detailShownState(el('detail-view'));
+  }
+  function prefetchHomeWindow() {
+    if (!window.PosterPrefetch || homeAway()) return;
+    prefetchPaused = false;
+    var active = homeState.activeRow;
+    var count = homeState.rowKeys.length;
+    if (!count || active < 0) return;
+    var order = [active];
+    for (var d = 1; d <= Math.max(HOME.PREFETCH_ROWS_AHEAD, HOME.PREFETCH_ROWS_BEHIND); d++) {
+      if (d <= HOME.PREFETCH_ROWS_AHEAD && active + d < count) order.push(active + d);
+      if (d <= HOME.PREFETCH_ROWS_BEHIND && active - d >= 0) order.push(active - d);
+    }
     var tiles = [],
-      tilesRest = [],
-      backdrops = [],
-      backdropsRest = [],
-      logos = [];
+      art = [],
+      catKeys = [];
     var seen = {};
     var add = function (list, url) {
       if (url && !seen[url]) {
@@ -2223,45 +2238,75 @@
         list.push(url);
       }
     };
-    for (var r = 0; r < homeState.rowKeys.length; r++) {
-      var items = homeState.data[homeState.rowKeys[r]] || [];
-      var shown = r === homeState.activeRow;
-      for (var i = 0; i < items.length && i < HOME.STARTUP_ITEMS; i++) {
-        var it = items[i];
-        if (!it || it.homeCat) continue;
-        if (!shown) {
-          var tile = it.backdrop_path ? tmdbImage(it.backdrop_path, homeState.tileImgSize) : it.poster_path ? posterUrlFor(it.poster_path) : '';
-          add(i < 6 ? tiles : tilesRest, tile);
+    for (var o = 0; o < order.length; o++) {
+      var r = order[o];
+      var rowKey = homeState.rowKeys[r];
+      var cards = homeState.rows[r];
+      if (!rowKey || !cards || !cards.length || prefetchedRows[rowKey]) continue;
+      prefetchedRows[rowKey] = true;
+      var items = homeState.data[rowKey] || [];
+      var pageLoads = Math.abs(r - active) <= 1;
+      var n = 0;
+      for (var c = 0; c < cards.length; c++) {
+        var card = cards[c];
+        if (card.dataset.homeCat) {
+          if (catKeys.indexOf(card.dataset.homeCat) === -1) catKeys.push(card.dataset.homeCat);
+          continue;
         }
-        if (it.backdrop_path && i < HOME.STARTUP_BACKDROPS && !(shown && i === 0)) {
+        var it = items[parseInt(card.dataset.itemIndex, 10)];
+        if (!it) continue;
+        if (!pageLoads) {
+          add(tiles, it.backdrop_path ? tmdbImage(it.backdrop_path, homeState.tileImgSize) : it.poster_path ? posterUrlFor(it.poster_path) : '');
+        }
+        if (it.backdrop_path && n < HOME.STARTUP_BACKDROPS && !(r === active && n === 0)) {
           var bd = homeState.goodBackdrops[it.backdrop_path] || backdropUrlFor(it.backdrop_path);
-          if (!backdropImgs.get(bd)) add(i === 0 ? backdrops : backdropsRest, bd);
+          if (!backdropImgs.get(bd)) add(art, bd);
         }
         var k = heroKey(it);
         var info = k ? knownLogo(it, k) : null;
-        if (info && info.url && !info.loaded && !info.loading) add(logos, info.url);
+        if (info && info.url && !info.loaded && !info.loading) add(art, info.url);
+        n++;
       }
     }
-    window.PosterPrefetch.want(tiles.concat(backdrops, logos, tilesRest, backdropsRest), {
+    if (tiles.length || art.length) window.PosterPrefetch.want(tiles.concat(art), {
       low: true
     });
-    prefetchCategoryBanners();
+    if (catKeys.length) prefetchCategoryBanners(catKeys);
   }
-  function prefetchCategoryBanners() {
-    if (!window.CategoryBanners || typeof CategoryBanners.get !== 'function') return;
-    var keys = [];
-    for (var r = 0; r < homeState.rows.length; r++) {
-      var cards = homeState.rows[r] || [];
-      for (var c = 0; c < cards.length; c++) {
-        var key = cards[c].dataset && cards[c].dataset.homeCat;
-        if (key && keys.indexOf(key) === -1) keys.push(key);
-      }
+  function pauseHomePrefetch() {
+    if (prefetchResumeTimer) {
+      clearTimeout(prefetchResumeTimer);
+      prefetchResumeTimer = null;
     }
+    if (prefetchPaused) return;
+    prefetchPaused = true;
+    if (artPrefetchTimer) {
+      clearTimeout(artPrefetchTimer);
+      artPrefetchTimer = null;
+    }
+    prefetchGen++;
+    prefetchedRows = {};
+    if (window.PosterPrefetch && typeof PosterPrefetch.dropLow === 'function') PosterPrefetch.dropLow();
+  }
+  function resumeHomePrefetch() {
+    if (!prefetchPaused) return;
+    if (prefetchResumeTimer) clearTimeout(prefetchResumeTimer);
+    prefetchResumeTimer = setTimeout(function () {
+      prefetchResumeTimer = null;
+      if (homeAway()) return;
+      prefetchPaused = false;
+      prefetchHomeWindow();
+    }, HOME.PREFETCH_RESUME_MS);
+  }
+  function prefetchCategoryBanners(keys) {
+    if (!window.CategoryBanners || typeof CategoryBanners.get !== 'function') return;
+    var gen = prefetchGen;
     var at = 0;
     (function next() {
-      if (at >= keys.length) return;
+      if (at >= keys.length || gen !== prefetchGen) return;
       var key = keys[at++];
       Promise.resolve(CategoryBanners.get(key)).then(function (list) {
+        if (gen !== prefetchGen) return;
         var urls = [];
         for (var i = 0; list && i < list.length && i < HOME.STARTUP_CAT_BANNERS; i++) {
           var it = list[i];
@@ -2288,6 +2333,7 @@
         return;
       }
       artPrefetchTimer = null;
+      if (homeAway()) return;
       var urls = [];
       for (var d = 1; d <= HOME.ART_NEAR; d++) {
         var pair = [idx + d, idx - d];
@@ -2490,6 +2536,7 @@
     if (typeof window.loadCatalog !== 'function') return true;
     if (homeState.openingCategory) return true;
     pauseHeroForExit();
+    pauseHomePrefetch();
     if (window.Nav) Nav.push('grid', {
       key: 'cat:' + catKey,
       label: catKey
@@ -2539,6 +2586,7 @@
     homeState.lastColIndex = index;
     if (window.Nav) Nav.push('detail', Nav.detailData(item, index));
     pauseHeroForExit();
+    pauseHomePrefetch();
     setTimeout(function () {
       suspendHero();
       if (window.AppState && AppState.currentScreen === 'home') {
@@ -2819,6 +2867,7 @@
     homeState.rows = [];
     homeState.rowEls = [];
     homeState.rowKeys = [];
+    prefetchedRows = {};
     homeState.rowCols = [];
     homeState.activeRow = 0;
     homeState.data = {};
@@ -2890,7 +2939,7 @@
             if (isHomeFocusable()) focusTopbar();
             dismissModuleLoader();
           }
-          if (renderedRows > 0) prefetchHomeStartup();
+          if (renderedRows > 0) prefetchHomeWindow();
           finish(renderedRows > 0);
           return;
         }
@@ -2994,6 +3043,7 @@
         AppState.contentScroll.home = 0;
         suspendHero();
       }
+      if (screen !== 'home') pauseHomePrefetch();
       if (screen === 'home') {
         var screens = document.querySelectorAll('#torrserver-section .content-screen');
         for (var i = 0; i < screens.length; i++) {
@@ -3014,6 +3064,7 @@
       if (homeBtn) {
         if (screen === 'home') homeBtn.classList.add('active');else homeBtn.classList.remove('active');
       }
+      if (screen === 'home') resumeHomePrefetch();
       if (typeof origShowContentScreen === 'function') {
         return origShowContentScreen.apply(this, arguments);
       }
@@ -3421,8 +3472,10 @@
     new MutationObserver(function () {
       if (!detailShownState(dv)) {
         uncoverHome();
+        resumeHomePrefetch();
         return;
       }
+      pauseHomePrefetch();
       if (!cover.on && !cover.timer) cover.timer = setTimeout(coverHome, COVER_DELAY_MS);
     }).observe(dv, {
       attributes: true,
