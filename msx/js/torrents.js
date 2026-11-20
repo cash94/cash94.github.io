@@ -2291,7 +2291,26 @@ function getTorrentSeasons(torrent, parse) {
 }
 window.getTorrentSeasons = getTorrentSeasons;
 
-async function checkServer(shouldLoadTorrents = true) {
+/**
+ * Номер последней проверки, её промис и проба /echo. checkServer() зовут на
+ * каждый ввод символа в поле адреса (debouncedCheck в app.js), на смену
+ * логина/пароля, при старте — проверки идут внахлёст. Новая обрывает пробу
+ * прежней: та отвечает уже не за текущий адрес, и её «Сервер недоступен» или
+ * «доступен» затёр бы статус свежей. Оборванная проверка возвращает результат
+ * последней — её ждущим (loadTorrents, ensureTorrserverOnline) важен он.
+ */
+var checkServerSeq = 0;
+var checkServerLatest = null;
+var checkServerProbe = null;
+
+function checkServer(shouldLoadTorrents = true) {
+    var seq = ++checkServerSeq;
+    if (checkServerProbe) { try { checkServerProbe.abort(); } catch (e) { } checkServerProbe = null; }
+    checkServerLatest = checkServerRun(shouldLoadTorrents, function () { return seq !== checkServerSeq; });
+    return checkServerLatest;
+}
+
+async function checkServerRun(shouldLoadTorrents, stale) {
     var urlInput = getEl('torrserver-url');
     var statusIndicator = getEl('status-indicator');
     var statusText = getEl('status-text');
@@ -2316,6 +2335,7 @@ async function checkServer(shouldLoadTorrents = true) {
             if (login && password) headers['Authorization'] = 'Basic ' + btoa(login + ':' + password);
         }
         var probe = new AbortController();
+        checkServerProbe = probe;
         var probeTimer = setTimeout(function () { probe.abort(); }, TORRSERVER_PROBE_TIMEOUT_MS);
         var response;
         try {
@@ -2323,7 +2343,10 @@ async function checkServer(shouldLoadTorrents = true) {
             response = await bgFetch(testUrl + '/echo', { method: 'GET', headers: headers, signal: probe.signal, bgMode: 'text' });
         } finally {
             clearTimeout(probeTimer);
+            if (checkServerProbe === probe) checkServerProbe = null;
         }
+        // Пока ждали ответ, началась новая проверка — статус выставит она
+        if (stale()) return checkServerLatest;
         if (response.ok) {
             //var text = await response.text();
             //if (text.includes('MatriX.')) {

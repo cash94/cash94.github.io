@@ -1822,7 +1822,7 @@ function _addProgressToDetail() {
             if (detailView) detailView.style.pointerEvents = 'auto';
           });
         });
-        return function (_x48) {
+        return function (_x50) {
           return _ref3.apply(this, arguments);
         };
       }());
@@ -1958,11 +1958,27 @@ function getTorrentSeasons(torrent, parse) {
   return parse ? parse(title) : extractSeasonsFromTitle(title);
 }
 window.getTorrentSeasons = getTorrentSeasons;
-function checkServer() {
-  return _checkServer.apply(this, arguments);
+var checkServerSeq = 0;
+var checkServerLatest = null;
+var checkServerProbe = null;
+function checkServer(shouldLoadTorrents = true) {
+  var seq = ++checkServerSeq;
+  if (checkServerProbe) {
+    try {
+      checkServerProbe.abort();
+    } catch (e) {}
+    checkServerProbe = null;
+  }
+  checkServerLatest = checkServerRun(shouldLoadTorrents, function () {
+    return seq !== checkServerSeq;
+  });
+  return checkServerLatest;
 }
-function _checkServer() {
-  _checkServer = _asyncToGenerator(function* (shouldLoadTorrents = true) {
+function checkServerRun(_x8, _x9) {
+  return _checkServerRun.apply(this, arguments);
+}
+function _checkServerRun() {
+  _checkServerRun = _asyncToGenerator(function* (shouldLoadTorrents, stale) {
     var urlInput = getEl('torrserver-url');
     var statusIndicator = getEl('status-indicator');
     var statusText = getEl('status-text');
@@ -1990,6 +2006,7 @@ function _checkServer() {
         if (login && password) headers['Authorization'] = 'Basic ' + btoa(login + ':' + password);
       }
       var probe = new AbortController();
+      checkServerProbe = probe;
       var probeTimer = setTimeout(function () {
         probe.abort();
       }, TORRSERVER_PROBE_TIMEOUT_MS);
@@ -2003,7 +2020,9 @@ function _checkServer() {
         });
       } finally {
         clearTimeout(probeTimer);
+        if (checkServerProbe === probe) checkServerProbe = null;
       }
+      if (stale()) return checkServerLatest;
       if (response.ok) {
         statusIndicator.className = 'status-indicator status-online';
         statusText.textContent = 'Сервер доступен ✓';
@@ -2030,7 +2049,7 @@ function _checkServer() {
       return false;
     }
   });
-  return _checkServer.apply(this, arguments);
+  return _checkServerRun.apply(this, arguments);
 }
 function loadTorrents() {
   return _loadTorrents.apply(this, arguments);
@@ -2315,7 +2334,7 @@ function tsServerJson(path) {
     return null;
   });
 }
-function getTmdbDetailsWithCache(_x8, _x9) {
+function getTmdbDetailsWithCache(_x0, _x1) {
   return _getTmdbDetailsWithCache.apply(this, arguments);
 }
 function _getTmdbDetailsWithCache() {
@@ -2662,7 +2681,7 @@ function cleanTitleFromSeasons(title, seasons) {
   return title.replace(/\[сезон[^\]]*\]/gi, '').replace(/\[season[^\]]*\]/gi, '').replace(/сезон\s*[\d\s,–-]+/gi, '').replace(/season\s*[\d\s,–-]+/gi, '').replace(/\bS\d+\b/gi, '').replace(/\s+/g, ' ').trim();
 }
 var seasonCache = new LruCache(200, 24 * 60 * 60 * 1000);
-function loadSeasonStills(_x0, _x1) {
+function loadSeasonStills(_x10, _x11) {
   return _loadSeasonStills.apply(this, arguments);
 }
 function _loadSeasonStills() {
@@ -2892,7 +2911,7 @@ function updateDetailOverviewForFocus(el) {
   if (!seriesOverview) sub.style.display = 'none';
 }
 window.updateDetailOverviewForFocus = updateDetailOverviewForFocus;
-function loadMovieStill(_x10) {
+function loadMovieStill(_x12) {
   return _loadMovieStill.apply(this, arguments);
 }
 function _loadMovieStill() {
@@ -2921,7 +2940,7 @@ function clearTorrentFilesCache(hash) {
 function clearAllTorrentFilesCache() {
   torrentFilesCache.clear();
 }
-function getTorrentFilesWithCache(_x11) {
+function getTorrentFilesWithCache(_x13) {
   return _getTorrentFilesWithCache.apply(this, arguments);
 }
 function _getTorrentFilesWithCache() {
@@ -3429,7 +3448,7 @@ function focusTorrentDetailStart() {
   setFocus(0);
 }
 var detailAutoFocusEl = null;
-function showDetail(_x12) {
+function showDetail(_x14) {
   return _showDetail.apply(this, arguments);
 }
 function _showDetail() {
@@ -3619,7 +3638,7 @@ function _showDetail() {
   });
   return _showDetail.apply(this, arguments);
 }
-function loadAllTmdbDataForTorrent(_x13, _x14) {
+function loadAllTmdbDataForTorrent(_x15, _x16) {
   return _loadAllTmdbDataForTorrent.apply(this, arguments);
 }
 function _loadAllTmdbDataForTorrent() {
@@ -4036,7 +4055,7 @@ function setupFilePlayButtonDelegation() {
         if (detailView) detailView.style.pointerEvents = 'auto';
       });
     });
-    return function (_x15) {
+    return function (_x17) {
       return _ref.apply(this, arguments);
     };
   }());
@@ -4199,7 +4218,7 @@ function addFileItem(file, hash, name, episodeIndex) {
   while (used < list._pool.length && !list._pool[used].classList.contains('hidden')) used++;
   return fillFileItem(acquireFileItem(list, used), file, hash, name, episodeIndex);
 }
-function loadStillsAndUpdateFiles(_x16, _x17, _x18, _x19) {
+function loadStillsAndUpdateFiles(_x18, _x19, _x20, _x21) {
   return _loadStillsAndUpdateFiles.apply(this, arguments);
 }
 function _loadStillsAndUpdateFiles() {
@@ -4354,7 +4373,7 @@ function getTorrentProgressBatch(hash, files) {
     throw error;
   });
 }
-function loadProgressForTorrent(_x20, _x21) {
+function loadProgressForTorrent(_x22, _x23) {
   return _loadProgressForTorrent.apply(this, arguments);
 }
 function _loadProgressForTorrent() {
@@ -4377,7 +4396,7 @@ function _loadProgressForTorrent() {
   });
   return _loadProgressForTorrent.apply(this, arguments);
 }
-function loadProgressForFileItems(_x22, _x23) {
+function loadProgressForFileItems(_x24, _x25) {
   return _loadProgressForFileItems.apply(this, arguments);
 }
 function _loadProgressForFileItems() {
@@ -4652,7 +4671,7 @@ function showJacredUnavailableBanner(error) {
   return true;
 }
 window.showJacredUnavailableBanner = showJacredUnavailableBanner;
-function searchTorrents(_x24) {
+function searchTorrents(_x26) {
   return _searchTorrents.apply(this, arguments);
 }
 function _searchTorrents() {
@@ -4746,7 +4765,7 @@ function signJacredSearchUrl(url, host, query) {
   });
 }
 window.signJacredSearchUrl = signJacredSearchUrl;
-function searchTorrentsLegacy(_x25) {
+function searchTorrentsLegacy(_x27) {
   return _searchTorrentsLegacy.apply(this, arguments);
 }
 function _searchTorrentsLegacy() {
@@ -5306,7 +5325,7 @@ function resetFilters() {
   });
   applyFiltersAndSort();
 }
-function dropTorrentToServer(_x26) {
+function dropTorrentToServer(_x28) {
   return _dropTorrentToServer.apply(this, arguments);
 }
 function _dropTorrentToServer() {
@@ -5372,7 +5391,7 @@ function markTorrentStopped(hash) {
     playing.parentNode.replaceChild(size, playing);
   }
 }
-function addTorrentToServer(_x27, _x28, _x29) {
+function addTorrentToServer(_x29, _x30, _x31) {
   return _addTorrentToServer.apply(this, arguments);
 }
 function _addTorrentToServer() {
@@ -5564,7 +5583,7 @@ function _ensureTorrserverOnline() {
   return _ensureTorrserverOnline.apply(this, arguments);
 }
 window.ensureTorrserverOnline = ensureTorrserverOnline;
-function playSeriesFromSearch(_x30, _x31, _x32) {
+function playSeriesFromSearch(_x32, _x33, _x34) {
   return _playSeriesFromSearch.apply(this, arguments);
 }
 function _playSeriesFromSearch() {
@@ -5607,7 +5626,7 @@ function markSearchResultPicked(hash) {
     return;
   }
 }
-function playSearchResultFile(_x33, _x34, _x35, _x36) {
+function playSearchResultFile(_x35, _x36, _x37, _x38) {
   return _playSearchResultFile.apply(this, arguments);
 }
 function _playSearchResultFile() {
@@ -5764,7 +5783,7 @@ function pauseFor(ms) {
   });
 }
 window.playSearchResultFile = playSearchResultFile;
-function playFromHash(_x37, _x38) {
+function playFromHash(_x39, _x40) {
   return _playFromHash.apply(this, arguments);
 }
 function _playFromHash() {
@@ -6103,7 +6122,7 @@ var SearchPicks = function () {
   };
 }();
 window.SearchPicks = SearchPicks;
-function addBestPickToServer(_x39, _x40, _x41) {
+function addBestPickToServer(_x41, _x42, _x43) {
   return _addBestPickToServer.apply(this, arguments);
 }
 function _addBestPickToServer() {
@@ -6290,7 +6309,7 @@ function getCurrentSearchMode() {
   if (modeSelect) currentSearchMode = modeSelect.value;
   return currentSearchMode;
 }
-function searchTMDB(_x42) {
+function searchTMDB(_x44) {
   return _searchTMDB.apply(this, arguments);
 }
 function _searchTMDB() {
@@ -6353,7 +6372,7 @@ function _searchTMDB() {
   return _searchTMDB.apply(this, arguments);
 }
 var smartSearchModuleMissing = false;
-function fetchSmartSearch(_x43, _x44) {
+function fetchSmartSearch(_x45, _x46) {
   return _fetchSmartSearch.apply(this, arguments);
 }
 function _fetchSmartSearch() {
@@ -6384,7 +6403,7 @@ function _fetchSmartSearch() {
   });
   return _fetchSmartSearch.apply(this, arguments);
 }
-function searchTMDBLegacy(_x45, _x46) {
+function searchTMDBLegacy(_x47, _x48) {
   return _searchTMDBLegacy.apply(this, arguments);
 }
 function _searchTMDBLegacy() {
@@ -6573,7 +6592,7 @@ function renderFilteredGlobalResults(results) {
     }
   };
 }
-function showGlobalSearchDetail(_x47) {
+function showGlobalSearchDetail(_x49) {
   return _showGlobalSearchDetail.apply(this, arguments);
 }
 function _showGlobalSearchDetail() {
