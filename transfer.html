@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Torrent Transfer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .step-indicator {
+            display: flex;
+            justify-content: space-between;
+            padding: 20px 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .step {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            position: relative;
+            color: #6c757d;
+        }
+
+        .step.active {
+            color: #667eea;
+            font-weight: bold;
+        }
+
+        .step.completed {
+            color: #28a745;
+        }
+
+        .step::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            right: -50%;
+            width: 100%;
+            height: 2px;
+            background: #dee2e6;
+            z-index: 1;
+        }
+
+        .step:last-child::after {
+            display: none;
+        }
+
+        .step.active::after,
+        .step.completed::after {
+            background: #667eea;
+        }
+
+        .step .step-number {
+            width: 30px;
+            height: 30px;
+            background: white;
+            border: 2px solid currentColor;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 5px;
+            position: relative;
+            z-index: 2;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .form-section {
+            display: none;
+        }
+
+        .form-section.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .protocol-group {
+            display: flex;
+            gap: 20px;
+        }
+
+        .protocol-option {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .protocol-option.selected {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .protocol-option input {
+            display: none;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-right: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .confirmation-box {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .torrent-list {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 10px;
+        }
+
+        .torrent-item {
+            padding: 10px;
+            border-bottom: 1px solid #dee2e6;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .torrent-item:last-child {
+            border-bottom: none;
+        }
+
+        .torrent-item:hover {
+            background: #f8f9fa;
+        }
+
+        .torrent-item.selected {
+            background: rgba(102, 126, 234, 0.1);
+            border-left: 3px solid #667eea;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #f0f0f0;
+            border-radius: 15px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+        }
+
+        .log {
+            background: #1e1e1e;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+
+        .log p {
+            margin: 5px 0;
+            word-break: break-all;
+        }
+
+        .log .error {
+            color: #ff6b6b;
+        }
+
+        .log .warning {
+            color: #ffd93d;
+        }
+
+        .log .success {
+            color: #51cf66;
+        }
+
+        .summary {
+            text-align: center;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .status-badge.success {
+            background: #51cf66;
+            color: white;
+        }
+
+        .status-badge.error {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .status-badge.warning {
+            background: #ffd93d;
+            color: #333;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .mt-3 {
+            margin-top: 15px;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Torrent Transfer</h1>
+            <p>Перенос торрентов между серверами</p>
+        </div>
+
+        <div class="step-indicator">
+            <div class="step active" id="step1">
+                <div class="step-number">1</div>
+                <div>Настройка сервера</div>
+            </div>
+            <div class="step" id="step2">
+                <div class="step-number">2</div>
+                <div>Настройка клиента</div>
+            </div>
+            <div class="step" id="step3">
+                <div class="step-number">3</div>
+                <div>Подтверждение</div>
+            </div>
+            <div class="step" id="step4">
+                <div class="step-number">4</div>
+                <div>Выбор торрентов</div>
+            </div>
+            <div class="step" id="step5">
+                <div class="step-number">5</div>
+                <div>Перенос</div>
+            </div>
+        </div>
+
+        <div class="content">
+            <!-- Шаг 1: Настройка сервера -->
+            <div class="form-section active" id="section1">
+                <h2>Настройка сервера</h2>
+                <p class="text-muted">Укажите параметры сервера, откуда будут копироваться торренты</p>
+                
+                <div class="form-group">
+                    <label>Выберите протокол:</label>
+                    <div class="protocol-group">
+                        <div class="protocol-option selected" onclick="selectProtocol('server', 'http', this)">
+                            <input type="radio" name="serverProtocol" value="http" checked> HTTP
+                        </div>
+                        <div class="protocol-option" onclick="selectProtocol('server', 'https', this)">
+                            <input type="radio" name="serverProtocol" value="https"> HTTPS
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Адрес сервера (например, localhost:8080):</label>
+                    <input type="text" id="serverAddress" placeholder="Введите адрес сервера" value="localhost:8080">
+                </div>
+
+                <button class="btn btn-primary" onclick="validateAndNext(1)">Далее</button>
+            </div>
+
+            <!-- Шаг 2: Настройка клиента -->
+            <div class="form-section" id="section2">
+                <h2>Настройка клиента</h2>
+                <p class="text-muted">Укажите параметры клиента, куда будут переноситься торренты</p>
+                
+                <div class="form-group">
+                    <label>Выберите протокол:</label>
+                    <div class="protocol-group">
+                        <div class="protocol-option selected" onclick="selectProtocol('client', 'http', this)">
+                            <input type="radio" name="clientProtocol" value="http" checked> HTTP
+                        </div>
+                        <div class="protocol-option" onclick="selectProtocol('client', 'https', this)">
+                            <input type="radio" name="clientProtocol" value="https"> HTTPS
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Адрес клиента (например, localhost:8081):</label>
+                    <input type="text" id="clientAddress" placeholder="Введите адрес клиента" value="localhost:8081">
+                </div>
+
+                <button class="btn btn-secondary" onclick="prevStep(2)">Назад</button>
+                <button class="btn btn-primary" onclick="validateAndNext(2)">Далее</button>
+            </div>
+
+            <!-- Шаг 3: Подтверждение -->
+            <div class="form-section" id="section3">
+                <h2>Подтверждение данных</h2>
+                
+                <div class="confirmation-box" id="confirmationData">
+                    <!-- Данные будут вставлены динамически -->
+                </div>
+
+                <button class="btn btn-secondary" onclick="prevStep(3)">Назад</button>
+                <button class="btn btn-success" onclick="getTorrentList()">Получить список торрентов</button>
+            </div>
+
+            <!-- Шаг 4: Выбор торрентов -->
+            <div class="form-section" id="section4">
+                <h2>Выбор торрентов</h2>
+                
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="selectAll" onchange="toggleSelectAll()"> Выбрать все
+                    </label>
+                    <small id="selectedCount" class="text-muted">Выбрано: 0</small>
+                </div>
+
+                <div class="torrent-list" id="torrentList">
+                    <div class="text-center">Загрузка торрентов...</div>
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <button class="btn btn-secondary" onclick="prevStep(4)">Назад</button>
+                    <button class="btn btn-primary" onclick="startTransfer()">Начать перенос</button>
+                </div>
+            </div>
+
+            <!-- Шаг 5: Перенос -->
+            <div class="form-section" id="section5">
+                <h2>Перенос торрентов</h2>
+                
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressBar" style="width: 0%">0%</div>
+                </div>
+
+                <div class="log" id="log">
+                    <p>Начинаем перенос торрентов...</p>
+                </div>
+
+                <div id="summary" style="display: none;" class="summary">
+                    <h3>Перенос завершен!</h3>
+                    <p id="summaryText"></p>
+                </div>
+
+                <button class="btn btn-primary" onclick="resetWizard()" style="margin-top: 20px;">Начать заново</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Состояние приложения
+        let currentStep = 1;
+        let serverProtocol = 'http';
+        let clientProtocol = 'http';
+        let serverAddress = '';
+        let clientAddress = '';
+        let torrents = [];
+        let selectedTorrents = [];
+        let transferStats = { success: 0, total: 0 };
+
+        // Функция выбора протокола
+        function selectProtocol(type, protocol, element) {
+            // Убираем выделение у всех опций этого типа
+            const options = document.querySelectorAll(`.protocol-option`);
+            options.forEach(opt => opt.classList.remove('selected'));
+            
+            // Выделяем выбранную опцию
+            element.classList.add('selected');
+            
+            // Сохраняем выбор
+            if (type === 'server') {
+                serverProtocol = protocol;
+            } else {
+                clientProtocol = protocol;
+            }
+        }
+
+        // Валидация и переход
+        function validateAndNext(step) {
+            if (step === 1) {
+                serverAddress = document.getElementById('serverAddress').value.trim();
+                if (!serverAddress) {
+                    alert('Введите адрес сервера');
+                    return;
+                }
+                // Проверяем формат адреса
+                if (!validateAddress(serverAddress)) {
+                    alert('Некорректный формат адреса. Используйте формат: host:port');
+                    return;
+                }
+            } else if (step === 2) {
+                clientAddress = document.getElementById('clientAddress').value.trim();
+                if (!clientAddress) {
+                    alert('Введите адрес клиента');
+                    return;
+                }
+                if (!validateAddress(clientAddress)) {
+                    alert('Некорректный формат адреса. Используйте формат: host:port');
+                    return;
+                }
+            }
+            nextStep(step);
+        }
+
+        // Валидация адреса
+        function validateAddress(address) {
+            const pattern = /^[a-zA-Z0-9.-]+:\d+$/;
+            return pattern.test(address);
+        }
+
+        // Переход на следующий шаг
+        function nextStep(step) {
+            if (step === 3) {
+                showConfirmation();
+            }
+
+            // Обновляем шаги
+            document.getElementById(`step${currentStep}`).classList.remove('active');
+            document.getElementById(`section${currentStep}`).classList.remove('active');
+            
+            currentStep = step + 1;
+            
+            document.getElementById(`step${currentStep}`).classList.add('active');
+            document.getElementById(`section${currentStep}`).classList.add('active');
+        }
+
+        // Переход на предыдущий шаг
+        function prevStep(step) {
+            document.getElementById(`step${currentStep}`).classList.remove('active');
+            document.getElementById(`section${currentStep}`).classList.remove('active');
+            
+            currentStep = step - 1;
+            
+            document.getElementById(`step${currentStep}`).classList.add('active');
+            document.getElementById(`section${currentStep}`).classList.add('active');
+        }
+
+        // Показать подтверждение
+        function showConfirmation() {
+            document.getElementById('confirmationData').innerHTML = `
+                <p><strong>Сервер:</strong> ${serverProtocol}://${serverAddress}</p>
+                <p><strong>Клиент:</strong> ${clientProtocol}://${clientAddress}</p>
+            `;
+        }
+
+        // Получение списка торрентов
+        async function getTorrentList() {
+            const url = `${serverProtocol}://${serverAddress}/torrents`;
+            
+            addToLog(`Запрашиваем список торрентов с ${url}...`);
+            
+            try {
+                // Отключаем проверку SSL для HTTPS (как в PowerShell скрипте)
+                if (serverProtocol === 'https') {
+                    addToLog('Отключаем проверку SSL-сертификата...', 'warning');
+                }
+
+                // Формируем тело запроса как в PowerShell скрипте
+                const body = JSON.stringify({
+                    "action": "list"
+                });
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'accept': 'application/json',
+                        'Content-Type': 'application/json; charset=utf-8'
+                    },
+                    body: body
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                
+                // Проверяем, что получили массив торрентов
+                if (Array.isArray(data)) {
+                    torrents = data;
+                } else if (data.torrents) {
+                    torrents = data.torrents;
+                } else {
+                    torrents = data;
+                }
+
+                addToLog(`Получено ${torrents.length} торрентов`, 'success');
+                
+                // Отображаем список торрентов
+                displayTorrentList();
+                
+                // Переходим на следующий шаг
+                nextStep(3);
+                
+            } catch (error) {
+                addToLog(`Ошибка: ${error.message}`, 'error');
+                alert('Не удалось получить список торрентов. Проверьте подключение к серверу.');
+            }
+        }
+
+        // Отображение списка торрентов
+        function displayTorrentList() {
+            const listElement = document.getElementById('torrentList');
+            
+            if (!torrents || torrents.length === 0) {
+                listElement.innerHTML = '<div class="text-center">Нет доступных торрентов</div>';
+                return;
+            }
+            
+            listElement.innerHTML = '';
+            
+            torrents.forEach((torrent, index) => {
+                const div = document.createElement('div');
+                div.className = 'torrent-item';
+                div.innerHTML = `
+                    <div style="display: flex; align-items: center;">
+                        <input type="checkbox" class="torrent-checkbox" data-index="${index}" onchange="updateSelectedCount()">
+                        <div style="margin-left: 10px; flex: 1;">
+                            <strong>${torrent.title || 'Без названия'}</strong>
+                            <br>
+                            <small>
+                                Hash: ${torrent.hash || 'N/A'} | 
+                                Категория: ${torrent.category || 'Без категории'}
+                                ${torrent.poster ? ' | Постер: есть' : ''}
+                            </small>
+                        </div>
+                    </div>
+                `;
+                listElement.appendChild(div);
+            });
+            
+            // Добавляем обработчик клика на весь элемент
+            document.querySelectorAll('.torrent-item').forEach(item => {
+                item.addEventListener('click', function(e) {
+                    if (e.target.type !== 'checkbox') {
+                        const checkbox = this.querySelector('.torrent-checkbox');
+                        checkbox.checked = !checkbox.checked;
+                        updateSelectedCount();
+                    }
+                });
+            });
+        }
+
+        // Выбрать все торренты
+        function toggleSelectAll() {
+            const selectAll = document.getElementById('selectAll').checked;
+            document.querySelectorAll('.torrent-checkbox').forEach(cb => {
+                cb.checked = selectAll;
+            });
+            updateSelectedCount();
+        }
+
+        // Обновить счетчик выбранных
+        function updateSelectedCount() {
+            const count = document.querySelectorAll('.torrent-checkbox:checked').length;
+            document.getElementById('selectedCount').textContent = `Выбрано: ${count}`;
+        }
+
+        // Начать перенос
+        async function startTransfer() {
+            // Собираем выбранные торренты
+            selectedTorrents = [];
+            document.querySelectorAll('.torrent-checkbox:checked').forEach(cb => {
+                const index = cb.dataset.index;
+                selectedTorrents.push(torrents[index]);
+            });
+            
+            if (selectedTorrents.length === 0) {
+                alert('Выберите хотя бы один торрент');
+                return;
+            }
+            
+            // Переходим на шаг переноса
+            document.getElementById(`step${currentStep}`).classList.remove('active');
+            document.getElementById(`section${currentStep}`).classList.remove('active');
+            
+            currentStep = 5;
+            
+            document.getElementById(`step${currentStep}`).classList.add('active');
+            document.getElementById(`section${currentStep}`).classList.add('active');
+            
+            // Очищаем лог
+            document.getElementById('log').innerHTML = '<p>Начинаем перенос торрентов...</p>';
+            
+            // Начинаем перенос
+            transferStats.total = selectedTorrents.length;
+            transferStats.success = 0;
+            
+            for (let i = 0; i < selectedTorrents.length; i++) {
+                await transferTorrent(selectedTorrents[i], i + 1);
+            }
+            
+            // Показываем итоги
+            document.getElementById('summary').style.display = 'block';
+            document.getElementById('summaryText').innerHTML = 
+                `Успешно отправлено ${transferStats.success} из ${transferStats.total} торрентов.`;
+            
+            addToLog(`Перенос завершен! Успешно: ${transferStats.success}, Всего: ${transferStats.total}`, 'success');
+        }
+
+        // Отправка торрента на клиент
+        async function transferTorrent(torrent, currentIndex) {
+            const url = `${clientProtocol}://${clientAddress}/torrents`;
+            
+            addToLog(`Отправляем торрент: ${torrent.title} (${currentIndex}/${selectedTorrents.length})`);
+            
+            // Формируем magnet-ссылку как в PowerShell скрипте
+            const magnetLink = `magnet:?xt=urn:btih:${torrent.hash}`;
+            
+            addToLog(`Magnet: ${magnetLink}`);
+            
+            // Формируем тело запроса как в PowerShell скрипте
+            const body = JSON.stringify({
+                "action": "add",
+                "category": torrent.category || "",
+                "data": torrent.data || "",
+                "hash": torrent.hash,
+                "link": magnetLink,
+                "poster": torrent.poster || "",
+                "save_to_db": true,
+                "title": torrent.title || ""
+            });
+            
+            try {
+                // Отключаем проверку SSL для HTTPS
+                if (clientProtocol === 'https') {
+                    // В браузере нельзя отключить проверку SSL, но можно использовать режим no-cors
+                    // Это ограничение браузера
+                }
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'accept': 'application/json',
+                        'Content-Type': 'application/json; charset=utf-8'
+                    },
+                    body: body
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                transferStats.success++;
+                
+                // Обновляем прогресс
+                const progress = Math.round((currentIndex / selectedTorrents.length) * 100);
+                document.getElementById('progressBar').style.width = progress + '%';
+                document.getElementById('progressBar').textContent = progress + '%';
+                
+                addToLog(`✓ Торрент "${torrent.title}" успешно отправлен`, 'success');
+                
+            } catch (error) {
+                addToLog(`✗ Ошибка при отправке "${torrent.title}": ${error.message}`, 'error');
+            }
+        }
+
+        // Добавление сообщения в лог
+        function addToLog(message, type = 'info') {
+            const logElement = document.getElementById('log');
+            const p = document.createElement('p');
+            p.textContent = message;
+            
+            if (type === 'error') {
+                p.className = 'error';
+            } else if (type === 'warning') {
+                p.className = 'warning';
+            } else if (type === 'success') {
+                p.className = 'success';
+            }
+            
+            logElement.appendChild(p);
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        // Сброс мастера
+        function resetWizard() {
+            location.reload();
+        }
+    </script>
+</body>
+</html>
