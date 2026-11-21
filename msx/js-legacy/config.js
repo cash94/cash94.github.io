@@ -205,7 +205,6 @@ function loadSkipApiBase() {
 }
 var SERVER_HLS_OFF_TEXT = 'На этом сервере транскодирование отключено — видео идёт напрямую с TorrServer';
 function applyServerHlsOff() {
-  var first = !AppState.serverHlsOff;
   AppState.serverHlsOff = true;
   AppState.transcodingFullOnOff = true;
   var box = document.getElementById('transcoding-on-off');
@@ -220,7 +219,6 @@ function applyServerHlsOff() {
       label.appendChild(note);
     }
   }
-  if (first && typeof window.showToast === 'function') window.showToast(SERVER_HLS_OFF_TEXT, 6000);
 }
 function loadHlsOffStatus() {
   return bgFetch(SERVER_URL + '/api/hls-off/status').then(function (r) {

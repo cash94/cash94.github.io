@@ -357,7 +357,6 @@ function loadSkipApiBase() {
 var SERVER_HLS_OFF_TEXT = 'На этом сервере транскодирование отключено — видео идёт напрямую с TorrServer';
 
 function applyServerHlsOff() {
-  var first = !AppState.serverHlsOff;
   AppState.serverHlsOff = true;
   AppState.transcodingFullOnOff = true;
   var box = document.getElementById('transcoding-on-off');
@@ -373,8 +372,6 @@ function applyServerHlsOff() {
       label.appendChild(note);
     }
   }
-  // Один раз за запуск — чтобы человек знал заранее, а не по ошибке плеера
-  if (first && typeof window.showToast === 'function') window.showToast(SERVER_HLS_OFF_TEXT, 6000);
 }
 
 /** Отключён ли HLS на сервере (модуль hls-off). Нет модуля — 404, всё как было. */
