@@ -3660,8 +3660,45 @@ function isFlipInFlight(el) {
  * его, пока часы те же. flipApply и снятие сдвига память сбрасывают. */
 var flipYMemo = { el: null, at: -1, y: 0 };
 
+/* Сетку двигает Web Animations (element.animate), если он есть: тогда сдвиг
+ * на ходу считается по currentTime анимации и известной кривой — без
+ * getComputedStyle, то есть без пересчёта стилей посреди нажатия. Заодно
+ * переходу не нужен принудительный пересчёт стилей на старте (у CSS-перехода
+ * начальный сдвиг приходилось «закреплять» чтением стиля, см. flipApply).
+ * Профиль на TCL/RTD288O: оба чтения вместе — ~5 мс на шаг сетки. */
+var FLIP_WAAPI = typeof Element !== 'undefined' && !!Element.prototype &&
+    typeof Element.prototype.animate === 'function';
+
+/** Сдвиг по записи анимации flipApply (WAAPI): px, 0 — доехал или снят */
+function flipAnimY(el) {
+    var a = el._flipAnim, r = el._flipRec;
+    if (!a || !r) return 0;
+    var ps = a.playState;
+    if (ps === 'finished' || ps === 'idle') return 0;
+    // Пока анимация ждёт старта, currentTime — 0 (или null в старых движках)
+    var ct = typeof a.currentTime === 'number' ? a.currentTime : 0;
+    var p = r.dur > 0 ? (ct - r.delay) / r.dur : 1;
+    if (p <= 0) return r.offset;
+    if (p >= 1) return 0;
+    var y = (r.m0 === null) ? p : flipHermiteY(r.m0, p);
+    return r.offset * (1 - y);
+}
+
+/** Снять анимации сдвига контейнера (WAAPI) */
+function cancelFlipAnims(sc) {
+    var list = sc._flipAnims;
+    sc._flipAnims = null;
+    sc._flipAnim = null;
+    sc._flipRec = null;
+    if (!list) return;
+    for (var i = 0; i < list.length; i++) {
+        try { list[i].cancel(); } catch (e) { }
+    }
+}
+
 /** Текущий сдвиг содержимого посреди перехода (px) */
 function flipCurrentY(el) {
+    if (el._flipAnim) return flipAnimY(el);
     var at = (document.timeline && typeof document.timeline.currentTime === 'number') ? document.timeline.currentTime : -1;
     if (at >= 0 && flipYMemo.el === el && flipYMemo.at === at) return flipYMemo.y;
     var t = window.getComputedStyle(el._flipEl).transform || '';
@@ -3767,6 +3804,8 @@ function flipApply(el, top, duration, ease) {
     // Контейнер тот же, а сдвигаемое содержимое другое (сменился экран в
     // #main-container) — прежнее отпускаем, иначе его сдвиг так и остался бы
     if (el._flipEl && el._flipEl !== lead) releaseFlipEls(el);
+    // Прежнюю анимацию снимаем после замера curY: новая стартует с того же места
+    if (FLIP_WAAPI) cancelFlipAnims(el);
     flipYMemo.el = null;                        // сдвиг сейчас поменяется
     el._flipEl = lead;
     el._flipEls = list;
@@ -3775,7 +3814,9 @@ function flipApply(el, top, duration, ease) {
         // Слой у содержимого постоянный, а не на время движения: появление и
         // снятие слоя на каждом шаге — растеризация всей сетки заново
         if (!list[i].classList.contains('grid-tx')) list[i].classList.add('grid-tx');
-        list[i].style.transition = 'none';
+        // Запись того же значения — тоже мутация инлайн-стиля, а с ней
+        // инвалидация стилей элемента; пишем только когда меняется
+        if (list[i].style.transition !== 'none') list[i].style.transition = 'none';
     }
 
     var prevOffset = el._flipOffset || 0;
@@ -3783,7 +3824,7 @@ function flipApply(el, top, duration, ease) {
     var rest = el.scrollTop;                     // у краёв браузер обрежет сам
     var offset = Math.round(rest - visual);
     if (!(duration > 0) || Math.abs(offset) < 1) {
-        for (i = 0; i < list.length; i++) list[i].style.transform = '';
+        for (i = 0; i < list.length; i++) if (list[i].style.transform) list[i].style.transform = '';
         el._flipUntil = 0;
         el._flipOffset = 0;
         el._flipCurve = null;
@@ -3806,6 +3847,11 @@ function flipApply(el, top, duration, ease) {
         timing = 'cubic-bezier(0.3333,' + (m0 / 3).toFixed(4) + ',0.6667,1)';
     }
 
+    if (FLIP_WAAPI) {
+        flipAnimate(el, list, offset, duration, curY !== 0, timing, curve);
+        return;
+    }
+
     for (i = 0; i < list.length; i++) list[i].style.transform = 'translate3d(0,' + offset + 'px,0)';
     // Начальный сдвиг должен примениться до перехода, иначе браузер склеит
     // обе записи стиля и поедет из нуля в ноль. Читаем стиль, не геометрию —
@@ -3821,9 +3867,42 @@ function flipApply(el, top, duration, ease) {
     el._flipUntil = Date.now() + Math.round(duration * 1000) + 50;
 }
 
+/**
+ * Переход сдвига через Web Animations: из translate(offset) в покой. Ключевые
+ * кадры заданы явно, поэтому начальный сдвиг не нужно «закреплять» чтением
+ * стиля, как у CSS-перехода. Задержка и кривая — те же, что дал бы
+ * txTransition: отрицательная задержка при перехвате на ходу, линейно или
+ * Эрмита (cubic-bezier(1/3, m0/3, 2/3, 1)). Анимация идёт на композиторе;
+ * по её окончании остаётся базовый стиль — тот же translate3d(0,0,0), что
+ * оставлял переход.
+ */
+function flipAnimate(el, list, offset, duration, moving, timing, curve) {
+    var dur = duration * 1000;
+    var lead = moving ? Math.min(el._txLag || 0, dur / 2) : 0;
+    if (lead < 1) lead = 0;
+    el._txRun = { at: animClockNow(), dur: dur, delay: -lead };
+    var opts = { duration: dur, delay: -lead, easing: timing || 'linear', fill: 'none' };
+    var frames = [
+        { transform: 'translate3d(0,' + offset + 'px,0)' },
+        { transform: 'translate3d(0,0,0)' }
+    ];
+    var anims = [];
+    for (var i = 0; i < list.length; i++) {
+        if (list[i].style.transform !== 'translate3d(0px, 0px, 0px)') list[i].style.transform = 'translate3d(0,0,0)';
+        try { anims.push(list[i].animate(frames, opts)); } catch (e) { }
+    }
+    el._flipAnims = anims;
+    el._flipAnim = anims[0] || null;
+    el._flipRec = { offset: offset, dur: dur, delay: -lead, m0: curve ? curve.m0 : null };
+    el._flipOffset = offset;
+    el._flipCurve = curve;
+    el._flipUntil = Date.now() + Math.round(dur) + 50;
+}
+
 /** Снять сдвиг со всех сдвигаемых элементов контейнера */
 function releaseFlipEls(sc) {
     flipYMemo.el = null;
+    if (FLIP_WAAPI) cancelFlipAnims(sc);
     var list = sc._flipEls || (sc._flipEl ? [sc._flipEl] : []);
     for (var i = 0; i < list.length; i++) {
         list[i].style.transition = 'none';

@@ -142,8 +142,15 @@
         RING_TICK_MS: 250,
         // Как часто проверять, что играющий трейлер всё ещё «свой» и на экране
         WATCHDOG_MS: 1000,
+        // Трейлер стоит на паузе, пока листают главную, и продолжается через
+        // столько после последнего нажатия стрелки (pauseTrailerForNav)
+        NAV_PAUSE_RESUME_MS: 1200,
         // Постеры соседних рядов подтягиваем заранее, но не мешая текущему
         PREFETCH_DELAY_MS: 700,
+        // Прогрев соседних рядов (scheduleWarm): после кадра со сменой ряда, в
+        // простой — но не позже срока, иначе при листании не успевает вовсе
+        WARM_DELAY_MS: 120,
+        WARM_IDLE_TIMEOUT_MS: 300,
 
         // --- плитки категорий (ряд «Категории», см. раздел «БАННЕР: КАТЕГОРИЯ») ---
         // Фильмы категории на баннере сменяются по концу трейлера, а если
@@ -251,6 +258,7 @@
         posterQueue: [],
         activePosterLoads: 0,
         prefetchTimer: null,
+        warmTimer: null,
         resizeTimer: null,
         cardWidth: 0,            // текущая ширина плитки ряда (её же держит <style>)
         cardCssKey: null,        // размеры, под которые написан <style> (applyCardCss)
@@ -2176,8 +2184,50 @@
             try { video.muted = true; video.pause(); } catch (e) { }
             if (video.parentNode) video.parentNode.removeChild(video);
         }
+        if (navPause.video && navPause.video === video) navPause.video = null;
         if (hls || video) queueHeroTeardown(video, hls);
         if (now) flushHeroTeardown();
+    }
+
+    // ==================== ТРЕЙЛЕР НА ПАУЗЕ, ПОКА ЛИСТАЮТ ====================
+
+    /**
+     * Пока пульт листает главную, трейлер стоит на паузе. Играющее видео в
+     * WebView — это декодер и перерисовка всего экрана 30 раз в секунду: на
+     * слабом ТВ (TCL, RTD288O + Mali-G31) около полутора ядер и заметная доля
+     * видеоядра, и ровно их не хватало навигации. Смена фокуса трейлер и так
+     * снимает (applyHero), но только через HERO_DEBOUNCE_MS, а пока стрелку
+     * держат, дебаунс не истекает вовсе — ролик играл до сторожа (WATCHDOG_MS).
+     * Если же фокус ходит по кнопкам баннера или по шапке, баннер не меняется,
+     * и через NAV_PAUSE_RESUME_MS после последнего нажатия ролик продолжается
+     * с того же места.
+     */
+    var navPause = { video: null, timer: null };
+
+    function pauseTrailerForNav() {
+        var v = homeState.hero.video;
+        if (!v) return;
+        if (navPause.video !== v) {
+            // Стоит сам (ещё грузится, кончился) — не наша пауза, не трогаем
+            if (v.paused) return;
+            navPause.video = v;
+            try { v.pause(); } catch (e) { }
+        }
+        if (navPause.timer) clearTimeout(navPause.timer);
+        navPause.timer = setTimeout(resumeTrailerAfterNav, HOME.NAV_PAUSE_RESUME_MS);
+    }
+
+    function resumeTrailerAfterNav() {
+        navPause.timer = null;
+        var v = navPause.video;
+        navPause.video = null;
+        // Ролик успели сменить или снять — продолжать нечего
+        if (!v || homeState.hero.video !== v) return;
+        if (!isHomeVisible() || playerBusy()) return;
+        try {
+            var p = v.play();
+            if (p && p.catch) p.catch(function () { });
+        } catch (e) { }
     }
 
     /**
@@ -2761,8 +2811,7 @@
         homeState.prefetchTimer = setTimeout(function () {
             homeState.prefetchTimer = null;
             if (homeState.activeRow !== index) return;
-            warmRow(index + 1);
-            warmRow(index - 1);
+            warmNeighbours(index);
             loadRowPosters(index + 1);
             loadRowPosters(index - 1);
             prefetchHomeWindow();
@@ -2772,6 +2821,38 @@
     function warmRow(i) {
         var row = homeState.rowEls[i];
         if (row && i !== homeState.activeRow) row.classList.add(HOME.WARM_ROW_CLASS);
+    }
+
+    /** Прогреть соседей index, остудить (display:none) всех дальше одного шага */
+    function warmNeighbours(index) {
+        if (homeState.activeRow !== index) return;
+        for (var i = 0; i < homeState.rowEls.length; i++) {
+            if (Math.abs(i - index) > 1) homeState.rowEls[i].classList.remove(HOME.WARM_ROW_CLASS);
+        }
+        warmRow(index + 1);
+        warmRow(index - 1);
+    }
+
+    /**
+     * Прогрев соседей — вскоре после смены ряда, а не по паузе постеров
+     * (PREFETCH_DELAY_MS): таймер постеров сбрасывается каждым нажатием, и при
+     * обычном темпе листания следующий ряд приходил холодным — из display:none,
+     * с расчётом стилей всего ряда прямо в обработчике стрелки. Здесь же
+     * остываем дальние ряды: раньше это делал setActiveRow, тоже в обработчике.
+     * Сам прогрев — пересчёт стилей одного ряда; уводим его в простой, после
+     * кадра со сменой ряда.
+     */
+    function scheduleWarm(index) {
+        if (homeState.warmTimer) clearTimeout(homeState.warmTimer);
+        homeState.warmTimer = setTimeout(function () {
+            homeState.warmTimer = null;
+            if (homeState.activeRow !== index) return;
+            if (typeof window.requestIdleCallback === 'function') {
+                window.requestIdleCallback(function () { warmNeighbours(index); }, { timeout: HOME.WARM_IDLE_TIMEOUT_MS });
+            } else {
+                warmNeighbours(index);
+            }
+        }, HOME.WARM_DELAY_MS);
     }
 
     function resetPosterQueue() {
@@ -2798,22 +2879,30 @@
      */
     function setActiveRow(index) {
         if (index < 0 || index >= homeState.rowEls.length) return false;
-        var changed = homeState.activeRow !== index;
+        var prev = homeState.activeRow;
+        var changed = prev !== index;
         homeState.activeRow = index;
         for (var i = 0; i < homeState.rowEls.length; i++) {
             var cl = homeState.rowEls[i].classList;
-            if (i === index) cl.remove(HOME.HIDDEN_ROW_CLASS);
-            else cl.add(HOME.HIDDEN_ROW_CLASS);
-            // Прогрев — только у соседей нового ряда, и заводит его
-            // prefetchNeighbourPosters по паузе. Прогретые соседи прежнего ряда
-            // возвращаются в display:none, кроме тех, кто и новому сосед:
-            // гасить и тут же разогревать их заново незачем.
-            if (i === index || Math.abs(i - index) > 1) cl.remove(HOME.WARM_ROW_CLASS);
+            if (i === index) {
+                cl.remove(HOME.HIDDEN_ROW_CLASS);
+                cl.remove(HOME.WARM_ROW_CLASS);
+            } else if (i === prev) {
+                // Только что показанный ряд не гасим в display:none, а оставляем
+                // прогретым: он почти всегда сосед нового, и обратный шаг тогда
+                // тоже без расчёта стилей. Дальние ряды остужает scheduleWarm —
+                // в простое, а не здесь, в обработчике стрелки.
+                cl.add(HOME.HIDDEN_ROW_CLASS);
+                cl.add(HOME.WARM_ROW_CLASS);
+            } else {
+                cl.add(HOME.HIDDEN_ROW_CLASS);
+            }
         }
         homeState.lastRowKey = homeState.rowKeys[index];
         if (changed) invalidateFocus();
         layoutHome();
         loadRowPosters(index);
+        scheduleWarm(index);
         prefetchNeighbourPosters(index);
         return true;
     }
@@ -4777,6 +4866,13 @@
         var backdrop = el('home-nav-backdrop');
         if (backdrop) backdrop.addEventListener('click', function () { setMobileNav(false); });
 
+        // Стрелки на главной — трейлер на паузу до конца листания
+        // (pauseTrailerForNav). На перехвате: control.js гасит всплытие.
+        window.addEventListener('keydown', function (e) {
+            if (e.keyCode < 37 || e.keyCode > 40) return;
+            if (homeState.hero.video && isHomeVisible()) pauseTrailerForNav();
+        }, true);
+
         // «Назад» закрывает меню и дальше не идёт: иначе control.js ещё и увёл бы
         // с экрана. Перехват на window раньше всех; popstate-обработчик
         // приложения тоже приходит сюда синтетическим Escape.
@@ -4803,7 +4899,22 @@
         initSettingsNav();
     }
 
+    /**
+     * ★ и ▶ — в отдельном файле семейства Inter (css/inter.css), и браузер
+     * качает его, только встретив символ. До загрузки (font-display: swap) он
+     * всё равно рисовал бы их системным запасным шрифтом — с тем самым поиском,
+     * ради которого файл заведён. Просим загрузку заранее, на старте.
+     */
+    function preloadSymbolGlyphs() {
+        try {
+            if (document.fonts && typeof document.fonts.load === 'function') {
+                document.fonts.load('16px Inter', '\u2605\u25B6').catch(function () { });
+            }
+        } catch (e) { }
+    }
+
     function initHome() {
+        preloadSymbolGlyphs();
         var screen = el('content-home');
         if (!screen) {
             console.warn('🏠 #content-home не найден — главная не запускается');

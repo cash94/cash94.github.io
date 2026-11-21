@@ -1348,6 +1348,7 @@ var catalogState = {
     // Оконная видимость (см. initRowVisibilityWindow / initGridVisibilityWindow)
     rowVisibilityObserver: null,
     gridVisibilityObserver: null,
+    gridVisCols: 0,             // колонки, по которым наблюдатель выбрал первые карточки строк
     // Чанковая виртуализация сетки категории (см. блок перед renderCatalogGrid)
     chunks: [],
     chunkSize: 0,
@@ -2909,9 +2910,21 @@ function revealCatalogRowsView() {
  * распорка во всю ширину встала бы посреди строки и разъехалась бы вёрстка.
  */
 var CHUNK_ROWS = 5;              // строк сетки в одном чанке
-var CHUNK_HYDRATED_MAX = 4;      // сверх этого начинаем сворачивать
-var CHUNK_HYDRATED_KEEP = 3;     // до скольких сворачиваем: предыдущий, текущий, следующий
-var CHUNK_FOCUS_GUARD = 1;       // чанков по обе стороны от фокуса не трогаем
+var CHUNK_HYDRATED_MAX = 6;      // сверх этого начинаем сворачивать
+var CHUNK_HYDRATED_KEEP = 5;     // до скольких сворачиваем: по два с каждой стороны и текущий
+var CHUNK_FOCUS_GUARD = 2;       // чанков по обе стороны от фокуса не трогаем
+
+/* Почему GUARD = 2 (было 1, KEEP 3, MAX 4).
+ *
+ * Свёрнутый чанк при развороте получает НОВЫЕ карточки, а с ними — заново
+ * загрузку и декод постеров (на TCL/RTD288O 20–90 мс на постер, в одном потоке
+ * растра), и всё время декода основной поток ждёт растр на коммите кадра. При
+ * GUARD = 1 хватало уйти на десять строк вниз и вернуться, чтобы верхний чанк
+ * свернулся и развернулся снова. С двумя чанками запаса туда-обратно в пределах
+ * десяти строк сетка не пересобирается вовсе. Цена — до 30 живых карточек
+ * больше; дальние из них погашены окном видимости (catalog-offscreen) и не
+ * рисуются, а наблюдатель окна смотрит только на первые карточки строк.
+ * Ниже рассуждение про KEEP = 2·GUARD + 1 и MAX = KEEP + 1 остаётся верным. */
 
 /* Почему именно 4 и 3.
  *
@@ -3197,9 +3210,17 @@ function dehydrateChunk(ch, gapHint) {
     if (!grid) return false;
     grid.insertBefore(spacer, first);
 
+    // Свёрнутые карточки снимаем и с наблюдателей: обратно в сетку они не
+    // вернутся (разворот создаёт новые), а наблюдатель держал бы их до
+    // пересборки каталога и считал бы пересечения отсоединённых карточек на
+    // каждом кадре прокрутки — чем дальше листали, тем больше
+    var vo = catalogState.gridVisibilityObserver;
+    var po = catalogState.posterObserver;
     for (var i = ch.start; i < ch.end; i++) {
         var card = catalogState.cardElements[i];
         if (card) {
+            if (vo) { try { vo.unobserve(card); } catch (e) { } }
+            if (po) { try { po.unobserve(card); } catch (e) { } }
             releaseCardPoster(card);
             if (card.parentNode === grid) grid.removeChild(card);
         }
@@ -3337,7 +3358,9 @@ function observeNewGridCards(cards) {
         }
         if (vo) {
             card.classList.remove(OFFSCREEN_CLASS);
-            try { vo.observe(card); } catch (e) { }
+            if (gridRowLeader(card, catalogState.gridVisCols || 1)) {
+                try { vo.observe(card); } catch (e) { }
+            }
         }
     }
 }
@@ -3537,7 +3560,9 @@ function trimGridChunks() {
     if (live.length - removed > CHUNK_HYDRATED_KEEP) scheduleChunkTrim();
 
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
-    updateGridVisibilityWindow();
+    // Обрезка карточек не добавляет — обходить сетку ради наблюдателя незачем,
+    // свёрнутые он отпустил в dehydrateChunk. Нужен только сам наблюдатель
+    if (!catalogState.gridVisibilityObserver) updateGridVisibilityWindow();
 
     // Самовосстановление фокуса. Экран без фокуса на телевизоре — это
     // намертво: пульт перестаёт что-либо делать, пока не сработает
@@ -8448,7 +8473,12 @@ function dropPendingVisibilityToggles() {
     visibilityPending.length = 0;
 }
 
-function createVisibilityObserver(marginPx) {
+/**
+ * @param {Function} [expand] цель наблюдения → элементы, которые она
+ *        представляет (сетка: первая карточка строки → вся строка). Без него
+ *        переключается сама цель.
+ */
+function createVisibilityObserver(marginPx, expand) {
     return new IntersectionObserver(function (entries) {
         for (var i = 0; i < entries.length; i++) {
             var el = entries[i].target;
@@ -8458,7 +8488,13 @@ function createVisibilityObserver(marginPx) {
             // такому сообщению нельзя, иначе при возврате увидим пустой экран
             // до следующего пересчёта. Классы не трогаем.
             if (!entries[i].boundingClientRect.height) continue;
-            queueVisibilityToggle(el, entries[i].isIntersecting);
+            var show = entries[i].isIntersecting;
+            if (expand) {
+                var group = expand(el);
+                for (var g = 0; g < group.length; g++) queueVisibilityToggle(group[g], show);
+            } else {
+                queueVisibilityToggle(el, show);
+            }
         }
         flushVisibilityToggles();
     }, {
@@ -8530,25 +8566,66 @@ function resetRowVisibilityWindow() {
     dropPendingVisibilityToggles();
 }
 
-/** Сетка категории: гасим отдельные карточки, строк как элементов там нет */
+/**
+ * Сетка категории: гасим отдельные карточки, строк как элементов там нет.
+ *
+ * Наблюдаем только первую карточку каждой строки (gridRowLeader), а решение
+ * распространяем на всю строку (gridRowGroup): запас окна — только по
+ * вертикали, и карточки одной строки входят в него и выходят вместе. Целей
+ * у наблюдателя тогда вчетверо-впятеро меньше, а пересечения он считает на
+ * каждом кадре прокрутки (на TCL/RTD288O — ~1–2 мс на кадр перехода).
+ * Строку задаёт то же getColumns(), по которому нарезаны чанки.
+ */
+function gridVisCols() {
+    var cols = (typeof getColumns === 'function' && getColumns()) || 0;
+    return cols > 1 ? cols : 1;
+}
+
+function gridRowLeader(card, cols) {
+    if (cols <= 1) return true;
+    var idx = parseInt(card.dataset.catalogIndex, 10);
+    return isNaN(idx) || idx % cols === 0;
+}
+
+function gridRowGroup(leader) {
+    var cols = catalogState.gridVisCols || 1;
+    var idx = parseInt(leader.dataset.catalogIndex, 10);
+    if (cols <= 1 || isNaN(idx)) return [leader];
+    var out = [];
+    for (var k = 0; k < cols; k++) {
+        var c = catalogState.cardElements[idx + k];
+        if (c && c.isConnected) out.push(c);
+    }
+    if (!out.length) out.push(leader);
+    return out;
+}
+
 function initGridVisibilityWindow() {
     if (catalogState.gridVisibilityObserver) catalogState.gridVisibilityObserver.disconnect();
 
     var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card');
     if (!cards.length) { catalogState.gridVisibilityObserver = null; return; }
 
-    catalogState.gridVisibilityObserver = createVisibilityObserver(measureVisibilityMargin(cards[0]));
+    var cols = gridVisCols();
+    catalogState.gridVisCols = cols;
+    catalogState.gridVisibilityObserver = createVisibilityObserver(measureVisibilityMargin(cards[0]), gridRowGroup);
     for (var i = 0; i < cards.length; i++) {
         cards[i].classList.remove(OFFSCREEN_CLASS);
-        catalogState.gridVisibilityObserver.observe(cards[i]);
+        if (gridRowLeader(cards[i], cols)) catalogState.gridVisibilityObserver.observe(cards[i]);
     }
 }
 
 /** Догрузка страницы: новые карточки надо взять под наблюдение */
 function updateGridVisibilityWindow() {
-    if (!catalogState.gridVisibilityObserver) { initGridVisibilityWindow(); return; }
+    // Сменилось число колонок — сменились и первые карточки строк
+    if (!catalogState.gridVisibilityObserver || catalogState.gridVisCols !== gridVisCols()) {
+        initGridVisibilityWindow();
+        return;
+    }
+    var cols = catalogState.gridVisCols;
     var cards = document.querySelectorAll('#catalog-grid .torrent-card.catalog-card');
     for (var i = 0; i < cards.length; i++) {
+        if (!gridRowLeader(cards[i], cols)) continue;
         try { catalogState.gridVisibilityObserver.observe(cards[i]); } catch (e) { }
     }
 }

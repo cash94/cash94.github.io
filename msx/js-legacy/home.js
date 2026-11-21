@@ -42,7 +42,10 @@
     RING_LEN: 119.4,
     RING_TICK_MS: 250,
     WATCHDOG_MS: 1000,
+    NAV_PAUSE_RESUME_MS: 1200,
     PREFETCH_DELAY_MS: 700,
+    WARM_DELAY_MS: 120,
+    WARM_IDLE_TIMEOUT_MS: 300,
     CATEGORY_ROTATE_MS: 20000,
     CATEGORY_FADE_MS: 350,
     CATEGORY_REVEAL_MAX_MS: 1500,
@@ -147,6 +150,7 @@
     posterQueue: [],
     activePosterLoads: 0,
     prefetchTimer: null,
+    warmTimer: null,
     resizeTimer: null,
     cardWidth: 0,
     cardCssKey: null,
@@ -1659,8 +1663,37 @@
       } catch (e) {}
       if (video.parentNode) video.parentNode.removeChild(video);
     }
+    if (navPause.video && navPause.video === video) navPause.video = null;
     if (hls || video) queueHeroTeardown(video, hls);
     if (now) flushHeroTeardown();
+  }
+  var navPause = {
+    video: null,
+    timer: null
+  };
+  function pauseTrailerForNav() {
+    var v = homeState.hero.video;
+    if (!v) return;
+    if (navPause.video !== v) {
+      if (v.paused) return;
+      navPause.video = v;
+      try {
+        v.pause();
+      } catch (e) {}
+    }
+    if (navPause.timer) clearTimeout(navPause.timer);
+    navPause.timer = setTimeout(resumeTrailerAfterNav, HOME.NAV_PAUSE_RESUME_MS);
+  }
+  function resumeTrailerAfterNav() {
+    navPause.timer = null;
+    var v = navPause.video;
+    navPause.video = null;
+    if (!v || homeState.hero.video !== v) return;
+    if (!isHomeVisible() || playerBusy()) return;
+    try {
+      var p = v.play();
+      if (p && p.catch) p.catch(function () {});
+    } catch (e) {}
   }
   function pauseHeroForExit() {
     homeState.hero.gen++;
@@ -2102,8 +2135,7 @@
     homeState.prefetchTimer = setTimeout(function () {
       homeState.prefetchTimer = null;
       if (homeState.activeRow !== index) return;
-      warmRow(index + 1);
-      warmRow(index - 1);
+      warmNeighbours(index);
       loadRowPosters(index + 1);
       loadRowPosters(index - 1);
       prefetchHomeWindow();
@@ -2112,6 +2144,30 @@
   function warmRow(i) {
     var row = homeState.rowEls[i];
     if (row && i !== homeState.activeRow) row.classList.add(HOME.WARM_ROW_CLASS);
+  }
+  function warmNeighbours(index) {
+    if (homeState.activeRow !== index) return;
+    for (var i = 0; i < homeState.rowEls.length; i++) {
+      if (Math.abs(i - index) > 1) homeState.rowEls[i].classList.remove(HOME.WARM_ROW_CLASS);
+    }
+    warmRow(index + 1);
+    warmRow(index - 1);
+  }
+  function scheduleWarm(index) {
+    if (homeState.warmTimer) clearTimeout(homeState.warmTimer);
+    homeState.warmTimer = setTimeout(function () {
+      homeState.warmTimer = null;
+      if (homeState.activeRow !== index) return;
+      if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(function () {
+          warmNeighbours(index);
+        }, {
+          timeout: HOME.WARM_IDLE_TIMEOUT_MS
+        });
+      } else {
+        warmNeighbours(index);
+      }
+    }, HOME.WARM_DELAY_MS);
   }
   function resetPosterQueue() {
     for (var i = 0; i < homeState.posterQueue.length; i++) {
@@ -2127,17 +2183,26 @@
   }
   function setActiveRow(index) {
     if (index < 0 || index >= homeState.rowEls.length) return false;
-    var changed = homeState.activeRow !== index;
+    var prev = homeState.activeRow;
+    var changed = prev !== index;
     homeState.activeRow = index;
     for (var i = 0; i < homeState.rowEls.length; i++) {
       var cl = homeState.rowEls[i].classList;
-      if (i === index) cl.remove(HOME.HIDDEN_ROW_CLASS);else cl.add(HOME.HIDDEN_ROW_CLASS);
-      if (i === index || Math.abs(i - index) > 1) cl.remove(HOME.WARM_ROW_CLASS);
+      if (i === index) {
+        cl.remove(HOME.HIDDEN_ROW_CLASS);
+        cl.remove(HOME.WARM_ROW_CLASS);
+      } else if (i === prev) {
+        cl.add(HOME.HIDDEN_ROW_CLASS);
+        cl.add(HOME.WARM_ROW_CLASS);
+      } else {
+        cl.add(HOME.HIDDEN_ROW_CLASS);
+      }
     }
     homeState.lastRowKey = homeState.rowKeys[index];
     if (changed) invalidateFocus();
     layoutHome();
     loadRowPosters(index);
+    scheduleWarm(index);
     prefetchNeighbourPosters(index);
     return true;
   }
@@ -3604,6 +3669,10 @@
       setMobileNav(false);
     });
     window.addEventListener('keydown', function (e) {
+      if (e.keyCode < 37 || e.keyCode > 40) return;
+      if (homeState.hero.video && isHomeVisible()) pauseTrailerForNav();
+    }, true);
+    window.addEventListener('keydown', function (e) {
       if (!mobileNavOpen() && !settingsNavOpen()) return;
       if (!BACK_KEYS[e.keyCode] && e.key !== 'Escape' && e.key !== 'GoBack') return;
       e.preventDefault();
@@ -3622,7 +3691,15 @@
     }
     initSettingsNav();
   }
+  function preloadSymbolGlyphs() {
+    try {
+      if (document.fonts && typeof document.fonts.load === 'function') {
+        document.fonts.load('16px Inter', '\u2605\u25B6').catch(function () {});
+      }
+    } catch (e) {}
+  }
   function initHome() {
+    preloadSymbolGlyphs();
     var screen = el('content-home');
     if (!screen) {
       console.warn('🏠 #content-home не найден — главная не запускается');

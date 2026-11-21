@@ -3378,7 +3378,34 @@ var flipYMemo = {
   at: -1,
   y: 0
 };
+var FLIP_WAAPI = typeof Element !== 'undefined' && !!Element.prototype && typeof Element.prototype.animate === 'function';
+function flipAnimY(el) {
+  var a = el._flipAnim,
+    r = el._flipRec;
+  if (!a || !r) return 0;
+  var ps = a.playState;
+  if (ps === 'finished' || ps === 'idle') return 0;
+  var ct = typeof a.currentTime === 'number' ? a.currentTime : 0;
+  var p = r.dur > 0 ? (ct - r.delay) / r.dur : 1;
+  if (p <= 0) return r.offset;
+  if (p >= 1) return 0;
+  var y = r.m0 === null ? p : flipHermiteY(r.m0, p);
+  return r.offset * (1 - y);
+}
+function cancelFlipAnims(sc) {
+  var list = sc._flipAnims;
+  sc._flipAnims = null;
+  sc._flipAnim = null;
+  sc._flipRec = null;
+  if (!list) return;
+  for (var i = 0; i < list.length; i++) {
+    try {
+      list[i].cancel();
+    } catch (e) {}
+  }
+}
 function flipCurrentY(el) {
+  if (el._flipAnim) return flipAnimY(el);
   var at = document.timeline && typeof document.timeline.currentTime === 'number' ? document.timeline.currentTime : -1;
   if (at >= 0 && flipYMemo.el === el && flipYMemo.at === at) return flipYMemo.y;
   var t = window.getComputedStyle(el._flipEl).transform || '';
@@ -3435,20 +3462,21 @@ function flipApply(el, top, duration, ease) {
   var timeDone = prev ? flipHermiteTimeAt(prev.m0, pathDone) : pathDone;
   if (curY && el._flipOffset) noteTxLag(el, timeDone);
   if (el._flipEl && el._flipEl !== lead) releaseFlipEls(el);
+  if (FLIP_WAAPI) cancelFlipAnims(el);
   flipYMemo.el = null;
   el._flipEl = lead;
   el._flipEls = list;
   var i;
   for (i = 0; i < list.length; i++) {
     if (!list[i].classList.contains('grid-tx')) list[i].classList.add('grid-tx');
-    list[i].style.transition = 'none';
+    if (list[i].style.transition !== 'none') list[i].style.transition = 'none';
   }
   var prevOffset = el._flipOffset || 0;
   el.scrollTop = top;
   var rest = el.scrollTop;
   var offset = Math.round(rest - visual);
   if (!(duration > 0) || Math.abs(offset) < 1) {
-    for (i = 0; i < list.length; i++) list[i].style.transform = '';
+    for (i = 0; i < list.length; i++) if (list[i].style.transform) list[i].style.transform = '';
     el._flipUntil = 0;
     el._flipOffset = 0;
     el._flipCurve = null;
@@ -3472,6 +3500,10 @@ function flipApply(el, top, duration, ease) {
     };
     timing = 'cubic-bezier(0.3333,' + (m0 / 3).toFixed(4) + ',0.6667,1)';
   }
+  if (FLIP_WAAPI) {
+    flipAnimate(el, list, offset, duration, curY !== 0, timing, curve);
+    return;
+  }
   for (i = 0; i < list.length; i++) list[i].style.transform = 'translate3d(0,' + offset + 'px,0)';
   for (i = 0; i < list.length; i++) window.getComputedStyle(list[i]).transform;
   el._flipOffset = offset;
@@ -3483,8 +3515,48 @@ function flipApply(el, top, duration, ease) {
   }
   el._flipUntil = Date.now() + Math.round(duration * 1000) + 50;
 }
+function flipAnimate(el, list, offset, duration, moving, timing, curve) {
+  var dur = duration * 1000;
+  var lead = moving ? Math.min(el._txLag || 0, dur / 2) : 0;
+  if (lead < 1) lead = 0;
+  el._txRun = {
+    at: animClockNow(),
+    dur: dur,
+    delay: -lead
+  };
+  var opts = {
+    duration: dur,
+    delay: -lead,
+    easing: timing || 'linear',
+    fill: 'none'
+  };
+  var frames = [{
+    transform: 'translate3d(0,' + offset + 'px,0)'
+  }, {
+    transform: 'translate3d(0,0,0)'
+  }];
+  var anims = [];
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].style.transform !== 'translate3d(0px, 0px, 0px)') list[i].style.transform = 'translate3d(0,0,0)';
+    try {
+      anims.push(list[i].animate(frames, opts));
+    } catch (e) {}
+  }
+  el._flipAnims = anims;
+  el._flipAnim = anims[0] || null;
+  el._flipRec = {
+    offset: offset,
+    dur: dur,
+    delay: -lead,
+    m0: curve ? curve.m0 : null
+  };
+  el._flipOffset = offset;
+  el._flipCurve = curve;
+  el._flipUntil = Date.now() + Math.round(dur) + 50;
+}
 function releaseFlipEls(sc) {
   flipYMemo.el = null;
+  if (FLIP_WAAPI) cancelFlipAnims(sc);
   var list = sc._flipEls || (sc._flipEl ? [sc._flipEl] : []);
   for (var i = 0; i < list.length; i++) {
     list[i].style.transition = 'none';
