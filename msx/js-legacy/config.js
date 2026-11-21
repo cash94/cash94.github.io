@@ -203,12 +203,32 @@ function loadSkipApiBase() {
     console.log('🎬 Заставки через модуль сервера: ' + data.primary + ' → ' + data.fallback);
   })['catch'](function () {});
 }
+function applyServerHlsOff() {
+  AppState.serverHlsOff = true;
+  AppState.transcodingFullOnOff = true;
+  var box = document.getElementById('transcoding-on-off');
+  if (box) {
+    box.checked = true;
+    box.disabled = true;
+  }
+}
+function loadHlsOffStatus() {
+  return bgFetch(SERVER_URL + '/api/hls-off/status').then(function (r) {
+    return r.ok ? r.json() : null;
+  }).then(function (data) {
+    if (!data || !data.hlsDisabled) return;
+    applyServerHlsOff();
+    console.log('⛔ Сервер отключил воспроизведение через себя (HLS) — видео напрямую с TorrServer');
+  })['catch'](function () {});
+}
 window.getPrimaryImageHost = getPrimaryImageHost;
 window.getPrimaryImageBase = getPrimaryImageBase;
 window.getSkipApiBase = getSkipApiBase;
 window.loadClientConfig = loadClientConfig;
+window.applyServerHlsOff = applyServerHlsOff;
 loadClientConfig();
 loadSkipApiBase();
+loadHlsOffStatus();
 var noCacheElements = ['load-more-trigger', 'detail-progress'];
 var domCache = {};
 function getEl(id) {

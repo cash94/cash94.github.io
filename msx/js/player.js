@@ -4503,6 +4503,9 @@ async function initServerProxyPlayback(metadata, initialSeek, signal) {
   }
   if (!response.ok) throw new Error('HTTP ' + response.status);
   var data = await response.json();
+  // Модуль hls-off на сервере: дальше — напрямую с TorrServer, а текст
+  // ответа («включите … прямой режим») покажет баннер
+  if (data && data.code === 'hls_disabled' && window.applyServerHlsOff) applyServerHlsOff();
   if (!data.success) throw new Error(data.error || 'Ошибка создания потока');
   AppState.currentStreamId = data.streamId; AppState.expectedDuration = data.duration; AppState.originalDuration = data.originalDuration || data.duration;
   AppState.seekOffset = data.seekOffset || initialSeek || 0; AppState.lastSuccessfulSeek = AppState.seekOffset;

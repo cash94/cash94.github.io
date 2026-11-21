@@ -712,18 +712,22 @@ function normalizeProtocol(protocol) {
 // сервера из apiproxy.json. До сообщения — прежние значения. Как и на главном
 // потоке в местах без перехода на запасное зеркало, берём ОСНОВНОЕ, первое:
 // балансировка без такого перехода уронила бы постеры с мёртвого хоста.
-var IMAGE_MIRRORS = ['tsimg.hnar.online', 'nl.imagetmdb.com', 'mocha.stull.xyz', 'proxy.vokino.pro/image', 'nmtmdb.duckdns.org'];
+var IMAGE_MIRRORS = ['tsimg.torrstream.online', 'nl.imagetmdb.com', 'mocha.stull.xyz', 'proxy.vokino.pro/image', 'nmtmdb.duckdns.org'];
 
 function primaryImageHost() {
-  return IMAGE_MIRRORS[0] || 'tsimg.hnar.online';
+  return IMAGE_MIRRORS[0] || 'tsimg.torrstream.online';
 }
 
-// URL картинки на любом из известных зеркал (и прежнем tsimg — такие адреса
-// лежат в старых кэшах): «https://хост/t/p/w342/путь» → совпадение
+// Прежний адрес tsimg: домен hnar.online переехал на torrstream.online и не
+// резолвится, а такие адреса ещё лежат в старых кэшах
+var LEGACY_IMAGE_HOST = 'tsimg.hnar.online';
+
+// URL картинки на любом из известных зеркал (и прежнем tsimg):
+// «https://хост/t/p/w342/путь» → совпадение
 function matchMirrorImageUrl(url) {
   var m = String(url).match(/^(https?:)\/\/(.+?)(\/t\/p\/[^/]+)(\/.+)$/i);
   if (!m) return null;
-  if (m[2] !== 'tsimg.hnar.online' && IMAGE_MIRRORS.indexOf(m[2]) === -1) return null;
+  if (m[2] !== LEGACY_IMAGE_HOST && IMAGE_MIRRORS.indexOf(m[2]) === -1) return null;
   return { host: m[2], path: m[4] };
 }
 
@@ -754,7 +758,10 @@ function normalizePosterUrl(url, protocol, size) {
     WORKER_CONSTANTS.IMG_SIZES.POSTER_MEDIUM ||
     'w185';
 
-  if (matchMirrorImageUrl(url)) {
+  var mm = matchMirrorImageUrl(url);
+  if (mm) {
+    // С мёртвого прежнего хоста — на текущее основное зеркало
+    if (mm.host === LEGACY_IMAGE_HOST) return proto + '//' + primaryImageHost() + '/t/p/' + finalSize + mm.path;
     url = url.replace(/^https?:/, proto);
     url = url.replace(/\/t\/p\/[^/]+\//, '/t/p/' + finalSize + '/');
   }

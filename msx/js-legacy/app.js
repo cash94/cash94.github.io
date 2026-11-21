@@ -1995,6 +1995,7 @@ function setupCheckboxes() {
     if (typeof AppState !== 'undefined') {
       AppState.transcodingFullOnOff = transcodingFullOnOff;
     }
+    if (AppState.serverHlsOff && window.applyServerHlsOff) applyServerHlsOff();
     transcodingCheckboxOnOff.addEventListener('change', function (e) {
       transcodingFullOnOff = e.target.checked;
       localStorage.setItem('transcodingFullOnOff', transcodingFullOnOff);

@@ -347,12 +347,43 @@ function loadSkipApiBase() {
     ['catch'](function () { });
 }
 
+/**
+ * Модуль hls-off на сервере: администратор отключил воспроизведение через
+ * сервер (HLS). Тогда играем как с «Полностью отключить транскодирование
+ * видео» — файл напрямую с TorrServer, — а переключатель фиксируем.
+ * В localStorage не пишем: модуль выключат — при следующем запуске вернётся
+ * выбор зрителя. Вызывается и из плеера, если сервер отказал в потоке.
+ */
+function applyServerHlsOff() {
+  AppState.serverHlsOff = true;
+  AppState.transcodingFullOnOff = true;
+  var box = document.getElementById('transcoding-on-off');
+  if (box) {
+    box.checked = true;
+    box.disabled = true;
+  }
+}
+
+/** Отключён ли HLS на сервере (модуль hls-off). Нет модуля — 404, всё как было. */
+function loadHlsOffStatus() {
+  return bgFetch(SERVER_URL + '/api/hls-off/status')
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (data) {
+      if (!data || !data.hlsDisabled) return;
+      applyServerHlsOff();
+      console.log('⛔ Сервер отключил воспроизведение через себя (HLS) — видео напрямую с TorrServer');
+    })
+    ['catch'](function () { });
+}
+
 window.getPrimaryImageHost = getPrimaryImageHost;
 window.getPrimaryImageBase = getPrimaryImageBase;
 window.getSkipApiBase = getSkipApiBase;
 window.loadClientConfig = loadClientConfig;
+window.applyServerHlsOff = applyServerHlsOff;
 loadClientConfig();
 loadSkipApiBase();
+loadHlsOffStatus();
 
 var noCacheElements = ['load-more-trigger', 'detail-progress'];
 var domCache = {};

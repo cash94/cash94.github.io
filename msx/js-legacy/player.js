@@ -3990,6 +3990,7 @@ function _initServerProxyPlayback() {
     }
     if (!response.ok) throw new Error('HTTP ' + response.status);
     var data = yield response.json();
+    if (data && data.code === 'hls_disabled' && window.applyServerHlsOff) applyServerHlsOff();
     if (!data.success) throw new Error(data.error || 'Ошибка создания потока');
     AppState.currentStreamId = data.streamId;
     AppState.expectedDuration = data.duration;
