@@ -3943,7 +3943,7 @@ function _initTranscodingOffPlayback() {
       if (signal.aborted || AppState.currentScreen !== 'player') return;
       hidePlayerLoading();
       if (typeof window.showErrorBanner === 'function') {
-        window.showErrorBanner('Файл не воспроизводится напрямую', 'TorrServer не отдал поток либо кодек/контейнер не поддерживается устройством. ' + 'Попробуйте перезапустить контент, выбрать другую раздачу или включить перекодирование.');
+        window.showErrorBanner('Файл не воспроизводится напрямую', AppState.serverHlsOff ? 'На этом сервере транскодирование отключено, поэтому видео идёт напрямую с TorrServer. ' + 'TorrServer не отдал поток либо кодек/контейнер не поддерживается устройством. ' + 'Попробуйте перезапустить контент или выбрать другую раздачу.' : 'TorrServer не отдал поток либо кодек/контейнер не поддерживается устройством. ' + 'Попробуйте перезапустить контент, выбрать другую раздачу или включить перекодирование.');
       } else alert('Файл не воспроизводится напрямую: кодек/контейнер не поддерживается устройством');
     };
     videoPlayer.addEventListener('loadedmetadata', onLoadedMetadata);
@@ -3990,7 +3990,12 @@ function _initServerProxyPlayback() {
     }
     if (!response.ok) throw new Error('HTTP ' + response.status);
     var data = yield response.json();
-    if (data && data.code === 'hls_disabled' && window.applyServerHlsOff) applyServerHlsOff();
+    if (data && data.code === 'hls_disabled') {
+      if (window.applyServerHlsOff) applyServerHlsOff();
+      var offError = new Error(data.error || window.SERVER_HLS_OFF_TEXT || 'Транскодирование на сервере отключено');
+      offError.hlsDisabled = true;
+      throw offError;
+    }
     if (!data.success) throw new Error(data.error || 'Ошибка создания потока');
     AppState.currentStreamId = data.streamId;
     AppState.expectedDuration = data.duration;
@@ -4380,12 +4385,16 @@ function _startHLSPlayback() {
       } else {
         yield initServerProxyPlayback(metadata, initialSeek, signal);
       }
-      showPlayerHint();
+      if (AppState.serverHlsOff && window.SERVER_HLS_OFF_TEXT) showPlayerHint(window.SERVER_HLS_OFF_TEXT, 6000);else showPlayerHint();
       return true;
     } catch (error) {
       if (error.name === 'AbortError') return false;
       cancelCurrentPlayback();
       restorePreplaybackScreen(preplayback);
+      if (error && error.hlsDisabled && typeof window.showErrorBanner === 'function') {
+        window.showErrorBanner('Транскодирование на этом сервере отключено', 'Видео будет воспроизводиться напрямую с TorrServer — запустите его ещё раз.');
+        return false;
+      }
       showPlaybackUnavailableBanner(error && error.message);
       return false;
     }

@@ -203,14 +203,24 @@ function loadSkipApiBase() {
     console.log('🎬 Заставки через модуль сервера: ' + data.primary + ' → ' + data.fallback);
   })['catch'](function () {});
 }
+var SERVER_HLS_OFF_TEXT = 'На этом сервере транскодирование отключено — видео идёт напрямую с TorrServer';
 function applyServerHlsOff() {
+  var first = !AppState.serverHlsOff;
   AppState.serverHlsOff = true;
   AppState.transcodingFullOnOff = true;
   var box = document.getElementById('transcoding-on-off');
   if (box) {
     box.checked = true;
     box.disabled = true;
+    var label = box.parentNode && box.parentNode.querySelector('span');
+    if (label && !label.querySelector('.server-hls-off-note')) {
+      var note = document.createElement('small');
+      note.className = 'setting-desc server-hls-off-note';
+      note.textContent = 'На этом сервере транскодирование отключено администратором';
+      label.appendChild(note);
+    }
   }
+  if (first && typeof window.showToast === 'function') window.showToast(SERVER_HLS_OFF_TEXT, 6000);
 }
 function loadHlsOffStatus() {
   return bgFetch(SERVER_URL + '/api/hls-off/status').then(function (r) {
@@ -226,6 +236,7 @@ window.getPrimaryImageBase = getPrimaryImageBase;
 window.getSkipApiBase = getSkipApiBase;
 window.loadClientConfig = loadClientConfig;
 window.applyServerHlsOff = applyServerHlsOff;
+window.SERVER_HLS_OFF_TEXT = SERVER_HLS_OFF_TEXT;
 loadClientConfig();
 loadSkipApiBase();
 loadHlsOffStatus();

@@ -355,7 +355,8 @@ function setupVideoPlayerControls() {
   }
 }
 
-function showToast(message) {
+// durationMs — для подсказок длиннее зума (config.js: applyServerHlsOff)
+function showToast(message, durationMs) {
   var toast = document.createElement('div');
   toast.textContent = message;
   toast.style.cssText = 'position:fixed;bottom:20%;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.8);color:white;padding:8px 16px;border-radius:8px;z-index:9999;font-size:14px;pointer-events:none;';
@@ -365,7 +366,7 @@ function showToast(message) {
   setTimeout(function () {
     if (toast && toast.remove) toast.remove();
     else if (toast && toast.parentNode) toast.parentNode.removeChild(toast);
-  }, APP_CONSTANTS.ZOOM_TOAST_DURATION_MS);
+  }, durationMs || APP_CONSTANTS.ZOOM_TOAST_DURATION_MS);
 }
 
 /**

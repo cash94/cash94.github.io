@@ -4445,9 +4445,12 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
     // либо устройство не умеет этот кодек. Баннер называет обе — alert здесь
     // и вовсе не показывался
     if (typeof window.showErrorBanner === 'function') {
-      window.showErrorBanner('Файл не воспроизводится напрямую',
-        'TorrServer не отдал поток либо кодек/контейнер не поддерживается устройством. ' +
-        'Попробуйте перезапустить контент, выбрать другую раздачу или включить перекодирование.');
+      window.showErrorBanner('Файл не воспроизводится напрямую', AppState.serverHlsOff
+        ? 'На этом сервере транскодирование отключено, поэтому видео идёт напрямую с TorrServer. ' +
+          'TorrServer не отдал поток либо кодек/контейнер не поддерживается устройством. ' +
+          'Попробуйте перезапустить контент или выбрать другую раздачу.'
+        : 'TorrServer не отдал поток либо кодек/контейнер не поддерживается устройством. ' +
+          'Попробуйте перезапустить контент, выбрать другую раздачу или включить перекодирование.');
     } else alert('Файл не воспроизводится напрямую: кодек/контейнер не поддерживается устройством');
   };
 
@@ -4505,7 +4508,12 @@ async function initServerProxyPlayback(metadata, initialSeek, signal) {
   var data = await response.json();
   // Модуль hls-off на сервере: дальше — напрямую с TorrServer, а текст
   // ответа («включите … прямой режим») покажет баннер
-  if (data && data.code === 'hls_disabled' && window.applyServerHlsOff) applyServerHlsOff();
+  if (data && data.code === 'hls_disabled') {
+    if (window.applyServerHlsOff) applyServerHlsOff();
+    var offError = new Error(data.error || window.SERVER_HLS_OFF_TEXT || 'Транскодирование на сервере отключено');
+    offError.hlsDisabled = true;
+    throw offError;
+  }
   if (!data.success) throw new Error(data.error || 'Ошибка создания потока');
   AppState.currentStreamId = data.streamId; AppState.expectedDuration = data.duration; AppState.originalDuration = data.originalDuration || data.duration;
   AppState.seekOffset = data.seekOffset || initialSeek || 0; AppState.lastSuccessfulSeek = AppState.seekOffset;
@@ -4890,7 +4898,10 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     } else {
       await initServerProxyPlayback(metadata, initialSeek, signal);
     }
-    showPlayerHint(); return true;
+    // Прямой режим из-за сервера (модуль hls-off) — говорим об этом в плеере
+    if (AppState.serverHlsOff && window.SERVER_HLS_OFF_TEXT) showPlayerHint(window.SERVER_HLS_OFF_TEXT, 6000);
+    else showPlayerHint();
+    return true;
   } catch (error) {
     if (error.name === 'AbortError') return false;
     // Поток не поднялся: сервер не ответил, не создал поток или отдал не-200.
@@ -4898,6 +4909,13 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
     // а alert на телевизоре не виден. Возвращаем то, что было, и объясняем.
     cancelCurrentPlayback();
     restorePreplaybackScreen(preplayback);
+    // Сервер отказал в потоке (модуль hls-off): не «TorrServer недоступен», а
+    // прямо — транскодирование здесь отключено; следующий запуск пойдёт напрямую
+    if (error && error.hlsDisabled && typeof window.showErrorBanner === 'function') {
+      window.showErrorBanner('Транскодирование на этом сервере отключено',
+        'Видео будет воспроизводиться напрямую с TorrServer — запустите его ещё раз.');
+      return false;
+    }
     showPlaybackUnavailableBanner(error && error.message);
     return false;
   }
