@@ -1,12 +1,17 @@
 // Модуль: Skip Intro
-// version: '1.0.1'
-// Данные о заставках и титрах с запасным источником.
+// version: '1.0.2'
+// Данные о заставках и титрах из двух источников.
 //
-// Основной источник — tsskip.torrstream.online (зеркало api.theintrodb.org),
-// он отвечает по tmdb_id. Когда данных там нет (404), модуль спрашивает
-// api.introdb.app: тот знает только IMDB, поэтому id переводится через TMDB,
-// а ответ приводится к формату theintrodb — клиент (player.js, fetchSkipData)
-// и встроенный плеер Android разбирают именно его.
+// Основной источник — api.introdb.app: он знает только IMDB, поэтому id
+// переводится через TMDB. Запасной — tsskip.torrstream.online (зеркало
+// api.theintrodb.org), он отвечает по tmdb_id. Спрашиваем оба сразу и берём
+// каждый отрезок (заставку, титры) из introdb, а чего у него нет — из tsskip.
+// Ответ приводится к формату theintrodb — клиент (player.js, fetchSkipData) и
+// встроенный плеер Android разбирают именно его.
+//
+// До 1.0.2 основным был tsskip, а introdb спрашивали, только если у tsskip
+// не было ничего. Серия, где tsskip знал одни титры, оставалась без заставки,
+// хотя introdb её знал (например, «Басс из машины», TMDB 314271, S01E01).
 //
 // Эндпоинты:
 //   GET /api/skip/v2/media?tmdb_id=&season=&episode=  — данные для серии
@@ -18,7 +23,7 @@
 //     credits: [{ start_ms, end_ms }],
 //     source:  'theintrodb' | 'introdb' }
 
-var PRIMARY_HOST = 'tsskip.torrstream.online';
+var TSSKIP_HOST = 'tsskip.torrstream.online';
 var INTRODB_URL = 'https://api.introdb.app/segments';
 var APIPROXY_URL = 'https://cash94.github.io/apiproxy.json';
 
@@ -32,7 +37,7 @@ var FAILURE_TTL_MS = 2 * 60 * 1000;
 var CACHE_MAX = 500;
 
 // Запасные значения: те же, что зашиты в сервере (services/api-proxy.js)
-var FALLBACK_TMDB_API = 'http://tsapi.hnar.online';
+var FALLBACK_TMDB_API = 'http://tsapi.torrstream.online';   // hnar.online мёртв
 var FALLBACK_TMDB_KEY = '064ea5b59beec7eccb3fe99059d58a50';
 
 // ==================== КЭШ ====================
@@ -193,18 +198,42 @@ function segmentToList(seg) {
   return [{ start_ms: start, end_ms: end }];
 }
 
+// outro у introdb — это и есть титры (credits) клиента. post_credits (сцена
+// после титров) не переносим: клиент знает только intro и credits, а перемотка
+// на сцену после титров — это не пропуск.
+
+/** Отрезки одного типа из ответа theintrodb: только с началом */
+function theintrodbList(data, type) {
+  if (!data || !Array.isArray(data[type])) return [];
+  return data[type].filter(function (seg) {
+    return seg && seg.start_ms !== null && seg.start_ms !== undefined;
+  });
+}
+
 /**
- * Ответ introdb → формат theintrodb.
- *
- * outro у introdb — это и есть титры (credits) клиента. post_credits
- * (сцена после титров) не переносим: клиент знает только intro и credits,
- * а перемотка на сцену после титров — это не пропуск.
+ * Ответ клиенту: каждый отрезок — из introdb, а чего у него нет — из tsskip.
+ * Рекап introdb — заставкой, но только если заставки нет ни там, ни там.
+ * null — ни у кого ничего.
  */
-function convertIntrodb(data, tmdbId, season, episode) {
-  var intro = segmentToList(data.intro);
-  var credits = segmentToList(data.outro);
-  // Рекап показываем как заставку: для зрителя это тот же пропуск в начале
-  if (!intro.length) intro = segmentToList(data.recap);
+function mergeSources(introdb, theintrodb, tmdbId, season, episode) {
+  var intro = [], credits = [], used = {};
+  if (introdb) {
+    intro = segmentToList(introdb.intro);
+    credits = segmentToList(introdb.outro);
+    if (intro.length || credits.length) used.introdb = true;
+  }
+  if (!intro.length) {
+    intro = theintrodbList(theintrodb, 'intro');
+    if (intro.length) used.theintrodb = true;
+  }
+  if (!credits.length) {
+    credits = theintrodbList(theintrodb, 'credits');
+    if (credits.length) used.theintrodb = true;
+  }
+  if (!intro.length && introdb) {
+    intro = segmentToList(introdb.recap);
+    if (intro.length) used.introdb = true;
+  }
   if (!intro.length && !credits.length) return null;
   return {
     tmdb_id: Number(tmdbId),
@@ -213,20 +242,29 @@ function convertIntrodb(data, tmdbId, season, episode) {
     episode: Number(episode),
     intro: intro,
     credits: credits,
-    source: 'introdb'
+    source: Object.keys(used).join('+')
   };
 }
 
-function hasSegments(data) {
-  if (!data) return false;
-  var intro = Array.isArray(data.intro) ? data.intro.length : 0;
-  var credits = Array.isArray(data.credits) ? data.credits.length : 0;
-  return intro + credits > 0;
+/** introdb: { status, data } или { status: 0 }, если не нашёлся IMDB */
+function fetchIntrodb(tmdbId, season, episode, ctx) {
+  return resolveImdbId(tmdbId, ctx).then(function (imdbId) {
+    if (!imdbId) return { status: 0, data: null, noImdb: true };
+    var url = INTRODB_URL + '?imdb_id=' + encodeURIComponent(imdbId) +
+      '&season=' + season + '&episode=' + episode;
+    return fetchJson(url, ctx).then(function (r) {
+      if (r.status !== 200 && r.status !== 404) {
+        ctx.log.warn('introdb ответил ' + (r.status || 'нет ответа') + ' для ' + imdbId +
+          ' S' + season + 'E' + episode);
+      }
+      return r;
+    });
+  });
 }
 
 module.exports = {
   name: 'skip-intro',
-  version: '1.0.1',
+  version: '1.0.2',
 
   init: function (app, ctx) {
     ctx.log.log('Инициализация Skip Intro...');
@@ -250,46 +288,29 @@ module.exports = {
         return res.json(cached);
       }
 
-      var primary = 'https://' + PRIMARY_HOST + '/v2/media?tmdb_id=' + tmdbId +
+      var tsskipUrl = 'https://' + TSSKIP_HOST + '/v2/media?tmdb_id=' + tmdbId +
         '&season=' + season + '&episode=' + episode;
 
-      // Настоящее «данных нет» кэшируем на час, а сбой (не нашёлся IMDB, источник
-      // ответил ошибкой) — на пару минут: иначе один неудачный момент на
-      // сервере час выглядел бы как отсутствие заставок у серии
-      var notFound = function (isFailure) {
-        cacheSet(key, false, isFailure ? FAILURE_TTL_MS : NEGATIVE_TTL_MS);
-        res.status(404).json({ error: 'media not found' });
-      };
-
-      fetchJson(primary, ctx).then(function (r) {
-        if (r.status === 200 && hasSegments(r.data)) {
-          r.data.source = 'theintrodb';
-          cacheSet(key, r.data, CACHE_TTL_MS);
-          return res.json(r.data);
+      // Оба источника — сразу: ждать introdb, а потом tsskip, — это два таймаута подряд
+      Promise.all([
+        fetchIntrodb(tmdbId, season, episode, ctx),
+        fetchJson(tsskipUrl, ctx)
+      ]).then(function (results) {
+        var alt = results[0], ts = results[1];
+        var introdbData = alt.status === 200 ? alt.data : null;
+        var tsData = ts.status === 200 ? ts.data : null;
+        var merged = mergeSources(introdbData, tsData, tmdbId, season, episode);
+        if (merged) {
+          cacheSet(key, merged, CACHE_TTL_MS);
+          return res.json(merged);
         }
-        // Ни данных, ни ответа основного источника — пробуем запасной
-        return resolveImdbId(tmdbId, ctx).then(function (imdbId) {
-          if (!imdbId) {
-            ctx.log.log('IMDB для TMDB ' + tmdbId + ' не найден — запасной источник пропущен');
-            return notFound(true);
-          }
-          var url = INTRODB_URL + '?imdb_id=' + encodeURIComponent(imdbId) +
-            '&season=' + season + '&episode=' + episode;
-          return fetchJson(url, ctx).then(function (alt) {
-            if (alt.status === 404) return notFound(false);
-            if (alt.status !== 200 || !alt.data) {
-              ctx.log.warn('introdb ответил ' + (alt.status || 'нет ответа') + ' для ' + imdbId +
-                ' S' + season + 'E' + episode);
-              return notFound(true);
-            }
-            var converted = convertIntrodb(alt.data, tmdbId, season, episode);
-            if (!converted) return notFound();
-            ctx.log.log('Заставки из introdb: ' + imdbId + ' S' + season + 'E' + episode +
-              ' (intro ' + converted.intro.length + ', credits ' + converted.credits.length + ')');
-            cacheSet(key, converted, CACHE_TTL_MS);
-            res.json(converted);
-          });
-        });
+        // Настоящее «данных нет» (оба ответили 404 или пусто) кэшируем на час,
+        // а сбой (не нашёлся IMDB, источник ответил ошибкой) — на пару минут:
+        // иначе один неудачный момент на сервере час выглядел бы как
+        // отсутствие заставок у серии
+        var failed = function (r) { return r.status !== 200 && r.status !== 404; };
+        cacheSet(key, false, failed(alt) || failed(ts) ? FAILURE_TTL_MS : NEGATIVE_TTL_MS);
+        res.status(404).json({ error: 'media not found' });
       }).catch(function (e) {
         ctx.log.error('Ошибка получения заставок:', e.message);
         if (!res.headersSent) res.status(502).json({ error: 'skip lookup failed' });
@@ -300,17 +321,17 @@ module.exports = {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.json({
         module: 'skip-intro',
-        version: '1.0.1',
+        version: '1.0.2',
         ok: true,
-        primary: PRIMARY_HOST,
-        fallback: 'api.introdb.app',
+        primary: 'api.introdb.app',
+        fallback: TSSKIP_HOST,
         cached: cache.size
       });
     });
 
     ctx.onDestroy(function () { cache.clear(); imdbCache.clear(); });
 
-    ctx.log.log('Skip Intro зарегистрирован: /api/skip/v2/media (запасной источник api.introdb.app)');
+    ctx.log.log('Skip Intro зарегистрирован: /api/skip/v2/media (api.introdb.app, запасной ' + TSSKIP_HOST + ')');
     return { ready: true };
   },
 

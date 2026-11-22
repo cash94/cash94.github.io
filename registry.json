@@ -23,10 +23,10 @@
     },
     "skip-intro": {
       "name": "skip-intro",
-      "version": "1.0.1",
-      "description": "Заставки и титры: tsskip + запасной источник api.introdb.app",
+      "version": "1.0.2",
+      "description": "Заставки и титры: api.introdb.app, чего у него нет — из tsskip",
       "url": "https://cash94.github.io/torrstream-modules/skip-intro/module.js",
-      "sha256": "d51e6ec94058554a84558a5b402ee6ef5fdf5455e35c902feda61cda8752943a"
+      "sha256": "bfec2e34583ada7e6af2cb73993fb75a3f7147a6c943e5ff5f5c4294fc577b90"
     },
     "halloween-collection": {
       "name": "halloween-collection",
