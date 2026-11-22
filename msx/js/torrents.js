@@ -447,11 +447,13 @@ function getTorrentFiles(torrent) {
 // каждой папки BDMV/STREAM берётся самый большой файл — сам фильм или серия;
 // меню, заставки и BACKUP отбрасываются.
 var PLAYABLE_VIDEO_EXTS = ['.mkv', '.mp4', '.avi', '.mov', '.webm', '.m4v', '.m2ts', '.mts', '.ts',
-    '.wmv', '.flv', '.mpg', '.mpeg'];
+    '.wmv', '.flv', '.mpg', '.mpeg', '.vob'];
 
 function isPlayableVideoPath(path) {
     var name = String(path || '').toLowerCase();
     if (/(^|\/)bdmv\/backup\//.test(name)) return false;
+    // DVD: сам фильм — VTS_01_1.VOB…; VIDEO_TS.VOB и VTS_xx_0.VOB — меню
+    if (/\.vob$/.test(name)) return /(^|\/)vts_\d\d_[1-9]\.vob$/.test(name);
     for (var i = 0; i < PLAYABLE_VIDEO_EXTS.length; i++) {
         var ext = PLAYABLE_VIDEO_EXTS[i];
         if (name.length > ext.length && name.slice(-ext.length) === ext) return true;
@@ -510,6 +512,46 @@ function getPreferredPlaybackFile(torrent, searchResult = null) {
     var isSeries = inferSearchResultIsSeries(searchResult, torrent) || videoFiles.length > 1;
     return { fileId: videoFiles[0].id || 1, episodeIndex: isSeries ? 0 : null, isSeries: isSeries };
 }
+
+/**
+ * Раздача со списком файлов: только что добавленную TorrServer знает без него,
+ * пока не получит метаданные от пиров. Спрашиваем раз в 700 мс, не дольше
+ * timeoutMs; пришёл список — раздача обновляется и в AppState.torrents.
+ * null — список так и не пришёл (или TorrServer не ответил).
+ *
+ * Без этого фильм из поиска на Android запускался файлом № 1, а это часто не
+ * фильм: .srt, VIDEO_TS.BUP, BDMV/BACKUP/…, AUXDATA — 20 отчётов диагностики
+ * плеера с «контейнер не распознан» (1.1.31–1.1.38).
+ */
+async function waitTorrentFiles(hash, timeoutMs) {
+    if (!hash || typeof torrServerFetch !== 'function') return null;
+    var h = String(hash).toLowerCase();
+    var deadline = Date.now() + (timeoutMs || 15000);
+    while (true) {
+        try {
+            var r = await torrServerFetch('/torrents', { method: 'POST', body: JSON.stringify({ action: 'get', hash: h }) });
+            var got = r && r.ok ? await r.json() : null;
+            if (got && got.hash && getTorrentFiles(got).length) {
+                if (typeof normalizeServerTorrents === 'function') normalizeServerTorrents([got]);
+                if (!Array.isArray(AppState.torrents)) AppState.torrents = [];
+                var replaced = false;
+                for (var i = 0; i < AppState.torrents.length; i++) {
+                    var t = AppState.torrents[i];
+                    if (t && t.hash && String(t.hash).toLowerCase() === h) {
+                        // Поля, которые запуск уже дописал (постер, id TMDB, тип), — не терять
+                        ['poster', 'tmdbId', 'media_type'].forEach(function (k) { if (t[k] && !got[k]) got[k] = t[k]; });
+                        AppState.torrents[i] = got; replaced = true; break;
+                    }
+                }
+                if (!replaced) AppState.torrents.unshift(got);
+                return got;
+            }
+        } catch (e) { /* TorrServer не ответил — попробуем ещё, пока есть время */ }
+        if (Date.now() + 700 > deadline) return null;
+        await new Promise(function (resolve) { setTimeout(resolve, 700); });
+    }
+}
+window.waitTorrentFiles = waitTorrentFiles;
 
 window.setTorrentClickSuppressed = function (ms = 1200) { suppressTorrentClickUntil = Date.now() + ms; };
 
@@ -7285,6 +7327,29 @@ async function playFromHash(hash, magnet, searchResult = null) {
         if (!isSerial) {
             var fileId = 1;
             if (window.AndroidJS) {
+                // Какой файл раздачи — фильм. Только что добавленная раздача ещё без
+                // списка файлов: ждём его, иначе играл бы файл № 1 (субтитры,
+                // служебный файл DVD или Blu-ray, программа вместо фильма)
+                var withFiles = (addedTorrent && typeof addedTorrent === 'object' && getTorrentFiles(addedTorrent).length)
+                    ? addedTorrent : null;
+                if (!withFiles) {
+                    document.querySelector('.playback-text').textContent = 'Получение списка файлов...';
+                    withFiles = await waitTorrentFiles(hash, 15000);
+                    if (withFiles && addedTorrent && typeof addedTorrent === 'object') {
+                        addedTorrent.file_stats = withFiles.file_stats;
+                        if (withFiles.data && !addedTorrent.data) addedTorrent.data = withFiles.data;
+                    }
+                }
+                if (withFiles) {
+                    if (!getVideoFilesFromTorrent(withFiles).length) {
+                        getEl('playback-overlay').classList.remove('active');
+                        var unplayable = describeUnplayableTorrent(getTorrentFiles(withFiles));
+                        if (typeof window.showErrorBanner === 'function') window.showErrorBanner('Не удалось начать воспроизведение', unplayable);
+                        else if (typeof window.showToast === 'function') window.showToast(unplayable);
+                        return false;
+                    }
+                    fileId = getPreferredPlaybackFile(withFiles, searchResult).fileId || 1;
+                }
                 getEl('playback-overlay').classList.remove('active');
                 // Нативный плеер открывается мимо startHLSPlayback, поэтому окно
                 // предзагрузки (настройка «Предзагрузка») — здесь. Отменили —

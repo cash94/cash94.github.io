@@ -620,11 +620,13 @@ function getTorrentFiles(torrent) {
 // Те же правила, что pickPlayableVideoFiles в torrents.js (воркер их не видит):
 // видео — и .m2ts/.ts/.wmv…, из каждой папки BDMV/STREAM — самый большой файл
 var PLAYABLE_VIDEO_EXTS = ['.mkv', '.mp4', '.avi', '.mov', '.webm', '.m4v', '.m2ts', '.mts', '.ts',
-    '.wmv', '.flv', '.mpg', '.mpeg'];
+    '.wmv', '.flv', '.mpg', '.mpeg', '.vob'];
 
 function isPlayableVideoPath(path) {
     var name = String(path || '').toLowerCase();
     if (/(^|\/)bdmv\/backup\//.test(name)) return false;
+    // DVD: сам фильм — VTS_01_1.VOB…; VIDEO_TS.VOB и VTS_xx_0.VOB — меню
+    if (/\.vob$/.test(name)) return /(^|\/)vts_\d\d_[1-9]\.vob$/.test(name);
     for (var i = 0; i < PLAYABLE_VIDEO_EXTS.length; i++) {
         var ext = PLAYABLE_VIDEO_EXTS[i];
         if (name.length > ext.length && name.slice(-ext.length) === ext) return true;

@@ -559,6 +559,7 @@ function loadPlayerHeadingEntry(ref) {
       logo: logo || null,
       logoOk: false
     };
+    if (d && d.backdrop_path && window.getTmdbImageUrl) entry.backdrop = window.getTmdbImageUrl(d.backdrop_path, 'w1280');
     playerHeadingCache[key] = entry;
     return entry;
   });
@@ -659,7 +660,7 @@ function showPlayerHeading(hash, fileId, fallbackText, fileName) {
     if (mine === playerHeadingGen && titleElement) titleElement.style.visibility = '';
   });
 }
-var ANDROID_HEADING_WAIT_MS = 1500;
+var ANDROID_HEADING_WAIT_MS = 2500;
 function prefetchAndroidHeading(hash) {
   var ref = resolvePlayerTmdbRef(hash);
   if (!ref) return Promise.resolve(null);
@@ -678,7 +679,8 @@ function androidHeadingFields(hash) {
   if (!entry || entry.pending || !entry.name && !entry.logo) return null;
   return {
     title_logo: entry.logo || '',
-    title_name: entry.name || ''
+    title_name: entry.name || '',
+    background: entry.backdrop || ''
   };
 }
 function androidEpisodeLine(hash, file, ref) {
@@ -2728,6 +2730,10 @@ function buildEpisodesPlaylist(fromIndex, startSeekTime) {
     var saved = byFileId[String(file.id)];
     var itemTime = i === startIndex && startSeekTime > 0 ? Math.floor(startSeekTime) : saved && saved.timecode > 0 ? Math.floor(saved.timecode) : 0;
     var itemDuration = saved && saved.duration > 0 ? saved.duration : 0;
+    var epMeta = typeof window.getTorrentEpisodeMeta === 'function' ? window.getTorrentEpisodeMeta(currentTorrentHash, file.id) : null;
+    var epNumber = epMeta && parseInt(epMeta.episode, 10) > 0 ? parseInt(epMeta.episode, 10) : i + 1;
+    var epSeason = epMeta && epMeta.season !== undefined && epMeta.season !== null && epMeta.season !== '' && !isNaN(parseInt(epMeta.season, 10)) ? parseInt(epMeta.season, 10) : AppState.currentSeason || null;
+    var epThumb = epMeta && epMeta.stillPath && window.getTmdbImageUrl ? window.getTmdbImageUrl(epMeta.stillPath, 'w300') : '';
     playlist.push({
       url: itemUrl,
       title: file.name || file.path || 'Серия ' + (i + 1),
@@ -2740,8 +2746,10 @@ function buildEpisodesPlaylist(fromIndex, startSeekTime) {
         duration: itemDuration,
         percent: itemDuration > 0 ? Math.round(itemTime / itemDuration * 100) : 0
       },
-      episode: i + 1,
-      season: AppState.currentSeason || null,
+      episode: epNumber,
+      season: epSeason,
+      episode_name: epMeta && epMeta.name || '',
+      thumbnail: epThumb,
       online_subs: onlineSubsPayload(currentTorrentHash, file.id)
     });
   }
@@ -2796,13 +2804,6 @@ function openAndroidPlayer(playURL, playerData) {
     currentTimecodeData.hash = urlData.torrentHash;
     currentTimecodeData.fileId = urlData.fileId;
     currentTimecodeData.timecode = playerData && playerData.timecode || 0;
-    if (playerData && !playerData.title_logo && !playerData.title_name) {
-      var headingFields = androidHeadingFields(urlData.torrentHash);
-      if (headingFields) {
-        playerData.title_logo = headingFields.title_logo;
-        playerData.title_name = headingFields.title_name;
-      }
-    }
   }
   if (lastExternalOpen.url === playURL && Date.now() - lastExternalOpen.time < EXTERNAL_OPEN_DEDUP_MS) return false;
   lastExternalOpen.url = playURL;
@@ -2810,8 +2811,25 @@ function openAndroidPlayer(playURL, playerData) {
   if (playerData && !playerData.focus_color && window.UICustomizer && UICustomizer.getFocusColor) {
     playerData.focus_color = UICustomizer.getFocusColor();
   }
-  AndroidJS.openPlayer(playURL, JSON.stringify(playerData));
+  var launch = function () {
+    if (playerData && urlData) fillAndroidHeading(playerData, urlData.torrentHash);
+    AndroidJS.openPlayer(playURL, JSON.stringify(playerData));
+  };
+  if (playerData && urlData && !playerData.title_logo && !playerData.title_name && !androidHeadingFields(urlData.torrentHash) && resolvePlayerTmdbRef(urlData.torrentHash)) {
+    prefetchAndroidHeading(urlData.torrentHash).then(launch, launch);
+    return true;
+  }
+  launch();
   return true;
+}
+function fillAndroidHeading(playerData, hash) {
+  var headingFields = androidHeadingFields(hash);
+  if (!headingFields) return;
+  if (!playerData.title_logo && !playerData.title_name) {
+    playerData.title_logo = headingFields.title_logo;
+    playerData.title_name = headingFields.title_name;
+  }
+  if (!playerData.background && headingFields.background) playerData.background = headingFields.background;
 }
 window.openAndroidPlayer = openAndroidPlayer;
 window.prefetchAndroidHeading = prefetchAndroidHeading;
@@ -2836,6 +2854,7 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       timecode: seekTime,
       title_logo: headingFields ? headingFields.title_logo : '',
       title_name: headingFields ? headingFields.title_name : '',
+      background: headingFields ? headingFields.background : '',
       title_base: buildBasePlayerTitle(),
       skip_api: getSkipApiBase() + '/v2/media',
       tmdb_id: getTorrentTmdbId(skipTorrent) || AppState.currentTMDB || null,

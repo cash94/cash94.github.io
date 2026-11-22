@@ -1743,7 +1743,16 @@ mod.init({ get: (p, h) => routes[p] = h, post: (p, h) => routes[p] = h },
             safe_audio_fallback: '🔊 Звук: безопасный режим',
             playback_failed: '❌ Не воспроизвелось',
             stream_restart: '🔄 Порченые данные — продолжил с того же места',
-            format_unsupported: '🚫 Устройство не тянет формат'
+            format_unsupported: '🚫 Устройство не тянет формат',
+            container_retry: '🔁 Контейнер не распознан — открыл заново',
+            user_report: '🙋 Сообщение зрителя'
+        };
+        // Что зритель выбрал в «Диагностике» плеера (код — вместо кода ошибки)
+        const DIAG_PROBLEMS = {
+            no_audio: 'нет звука',
+            no_video: 'нет изображения',
+            stutter: 'тормозит или зависает',
+            other: 'другая проблема'
         };
         let diagSignatures = [];
         let diagSelected = null;
@@ -1751,7 +1760,8 @@ mod.init({ get: (p, h) => routes[p] = h, post: (p, h) => routes[p] = h },
         function diagKind(kind) { return DIAG_KINDS[kind] || escapeHtml(kind || '—'); }
         function diagSplit(sig) {
             const p = String(sig || '').split('|');
-            return { kind: p[0] || '', code: (p[1] || '').replace(/^ERROR_CODE_/, ''), what: p.slice(2).join('|') };
+            const code = (p[1] || '').replace(/^ERROR_CODE_/, '');
+            return { kind: p[0] || '', code: p[0] === 'user_report' ? (DIAG_PROBLEMS[code] || code) : code, what: p.slice(2).join('|') };
         }
         function diagFail(el, e) {
             const old = /404/.test(e.message) ? ' Нужен сервер 1.0.60 или новее.' : '';
@@ -1883,18 +1893,47 @@ mod.init({ get: (p, h) => routes[p] = h, post: (p, h) => routes[p] = h },
                 const causes = e.causes || [];
                 const decoder = causes.map((c) => c.decoder).filter(Boolean)[0];
                 const diag = causes.map((c) => c.diagnostic).filter(Boolean)[0];
+                const pb = r.playback || null, head = m.head || null;
 
                 let html = `<div class="config-block"><h4>Что произошло</h4>
                     ${diagRow('Вид:', diagKind(data.kind))}
                     ${diagRow('Причина:', esc(r.reason))}
                     ${diagRow('Получен:', formatDate(data.receivedAt))}
-                    ${diagRow('Ошибка:', e.codeName ? '<span class="mono">' + esc(e.codeName) + '</span>' + (e.code ? ' (' + esc(e.code) + ')' : '') : '')}
+                    ${diagRow('Проблема:', data.kind === 'user_report' ? '<b>' + esc(DIAG_PROBLEMS[e.codeName] || e.codeName) + '</b>' : '')}
+                    ${diagRow('Ошибка:', e.codeName && data.kind !== 'user_report' ? '<span class="mono">' + esc(e.codeName) + '</span>' + (e.code ? ' (' + esc(e.code) + ')' : '') : '')}
                     ${diagRow('Сообщение:', esc(e.message))}
                     ${diagRow('Кодек:', e.mime ? '<span class="mono">' + esc(e.mime) + '</span>' : '')}
                     ${diagRow('Декодер:', decoder ? '<span class="mono">' + esc(decoder) + '</span>' : '')}
                     ${diagRow('MediaCodec:', diag ? '<span class="mono">' + esc(diag) + '</span>' : '')}
                     ${diagRow('Шаги откатов:', (pl.steps || []).map((s) => diagKind(s.kind) + ' <span style="color:#5a6c7d;">' + Math.round((s.atMs || 0) / 1000) + ' с</span>').join(' → '))}
                 </div>`;
+
+                // Что выбрал плеер (PlaybackInfo, с 1.1.39): декодеры, что открыто на выходе
+                // звука и пошёл ли звук — для «нет звука» без всякой ошибки
+                if (pb) {
+                    const out = pb.audioOutput;
+                    const vol = pb.systemVolume !== undefined ? pb.systemVolume + ' из ' + pb.systemVolumeMax + (pb.systemVolume === 0 ? ' — <b style="color:#e0245e;">звук выключен</b>' : '') : '';
+                    html += `<div class="config-block"><h4>Что играло</h4>
+                        ${diagRow('Видео:', pb.videoFormat ? '<span class="mono">' + esc(pb.videoFormat) + '</span>' : '')}
+                        ${diagRow('Декодер видео:', pb.videoDecoder ? '<span class="mono">' + esc(pb.videoDecoder) + '</span>' : '')}
+                        ${diagRow('Потеряно кадров:', pb.droppedFrames ? esc(pb.droppedFrames) : '')}
+                        ${diagRow('Звук:', pb.audioFormat ? '<span class="mono">' + esc(pb.audioFormat) + '</span>' : '')}
+                        ${diagRow('Декодер звука:', pb.audioDecoder ? '<span class="mono">' + esc(pb.audioDecoder) + '</span>' : (pb.audioFormat ? 'не выбран' : ''))}
+                        ${diagRow('Выход звука:', out ? '<span class="mono">' + esc(out.encoding + ' · ' + out.channels + ' кан · ' + out.sampleRate + ' Гц' + (out.tunneling ? ' · tunneling' : '') + (out.offload ? ' · offload' : '')) + '</span>' : (pb.audioFormat ? '<b style="color:#e0245e;">не открыт</b>' : ''))}
+                        ${diagRow('Звук пошёл:', out ? (pb.audioPlaying ? 'да' : '<b style="color:#e0245e;">нет</b>') : '')}
+                        ${diagRow('Обрывы звука:', pb.audioUnderruns ? esc(pb.audioUnderruns) : '')}
+                        ${diagRow('Громкость:', vol)}
+                        ${diagRow('Декодер звука в настройках:', pl.audioDecoder === 'ffmpeg' ? 'FFmpeg' : '')}
+                        ${(pb.events || []).length ? '<details style="margin-top:8px;"><summary style="cursor:pointer; color:#1da1f2;">События плеера (' + pb.events.length + ')</summary><pre class="mono" style="white-space:pre-wrap; font-size:12px;">' + esc(pb.events.join('\n')) + '</pre></details>' : ''}
+                    </div>`;
+                }
+                if (head) {
+                    html += `<div class="config-block"><h4>Начало потока</h4>
+                        ${diagRow('Ответ:', head.probeError ? esc(head.probeError) : esc('HTTP ' + head.http + (head.contentType ? ' · ' + head.contentType : '') + (head.contentRange ? ' · ' + head.contentRange : '') + (head.contentLength ? ' · ' + head.contentLength + ' байт' : '')))}
+                        ${diagRow('Байты:', head.hex !== undefined ? '<span class="mono">' + esc(head.hex || '(пусто)') + '</span>' : '')}
+                        ${diagRow('Текст:', head.text ? '<span class="mono">' + esc(head.text) + '</span>' : '')}
+                    </div>`;
+                }
 
                 html += `<div class="config-block"><h4>Устройство</h4>
                     ${diagRow('Модель:', esc([d.manufacturer, d.model].filter(Boolean).join(' ')) + (d.tv ? ' <span class="badge badge-info">ТВ</span>' : ''))}
