@@ -1733,11 +1733,11 @@ function _loadEpisodesInfo() {
             renderEpisodesList();
             refreshEpisodePlayerTitle();
             var playing = currentEpisodeFiles[currentEpisodeIndex];
-            if (AppState.isSerials && playing) fetchSkipData(torrent, playing.id, true);
+            if (playing && isSeriesTorrent(torrent, currentEpisodeFiles)) fetchSkipData(torrent, playing.id, true);
           });
         }
         refreshEpisodePlayerTitle();
-        if (AppState.isSerials) fetchSkipData(torrent, videoFiles[currentEpisodeIndex].id);
+        if (isSeriesTorrent(torrent, videoFiles)) fetchSkipData(torrent, videoFiles[currentEpisodeIndex].id);
         var episodesBtn = getEl('episodes-btn');
         if (episodesBtn) episodesBtn.style.display = videoFiles.length > 1 ? 'flex' : 'none';
         updateEpisodeButtons();
@@ -1753,6 +1753,22 @@ function _loadEpisodesInfo() {
     }
   });
   return _loadEpisodesInfo.apply(this, arguments);
+}
+function isSeriesTorrent(torrent, videoFiles) {
+  if (AppState.isSerials) return true;
+  if (!torrent) return false;
+  if (torrent.media_type === 'tv' || torrent.category === 'tv') return true;
+  var hash = torrent.hash ? String(torrent.hash).toLowerCase() : '';
+  var known = hash && typeof knownTorrentMeta !== 'undefined' && knownTorrentMeta ? knownTorrentMeta.get(hash) : null;
+  if (known && known.mediaType === 'tv') return true;
+  if (typeof window.getTorrentSeasons === 'function' && window.getTorrentSeasons(torrent).length) return true;
+  var files = videoFiles || [];
+  if (files.length > 1 && typeof parseEpisodeRef === 'function') {
+    for (var i = 0; i < files.length; i++) {
+      if (parseEpisodeRef(files[i].path || files[i].name)) return true;
+    }
+  }
+  return false;
 }
 function fetchSkipData(_x12, _x13, _x14) {
   return _fetchSkipData.apply(this, arguments);
@@ -2846,6 +2862,7 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
     var playURL = AppState.currentTorrserverUrl + "/stream?link=" + torrentHash + "&index=" + fileId + "&play=play";
     var item = AppState.currentDetailItem;
     var skipTorrent = findLoadedTorrent(torrentHash) || item;
+    var skipTarget = resolveSkipTarget(skipTorrent, fileId);
     var headingFields = androidHeadingFields(torrentHash);
     var playerData = {
       url: playURL,
@@ -2857,8 +2874,8 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       background: headingFields ? headingFields.background : '',
       title_base: buildBasePlayerTitle(),
       skip_api: getSkipApiBase() + '/v2/media',
-      tmdb_id: getTorrentTmdbId(skipTorrent) || AppState.currentTMDB || null,
-      season: getTorrentSingleSeason(skipTorrent) || AppState.currentSeason || null,
+      tmdb_id: skipTarget ? skipTarget.tmdbId : getTorrentTmdbId(skipTorrent) || AppState.currentTMDB || null,
+      season: skipTarget ? skipTarget.season : getTorrentSingleSeason(skipTorrent) || AppState.currentSeason || null,
       timecode_api: SERVER_URL + '/api/timecode/save',
       client_id: localStorage.getItem('clientId') || null,
       timeline: {

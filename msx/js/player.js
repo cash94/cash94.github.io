@@ -1930,13 +1930,13 @@ async function loadEpisodesInfo(hash, currentFileId) {
           // Серии сопоставлены с TMDB — сезон и номер могли уточниться
           // (раздача из нескольких сезонов без S01E05 в именах файлов)
           var playing = currentEpisodeFiles[currentEpisodeIndex];
-          if (AppState.isSerials && playing) fetchSkipData(torrent, playing.id, true);
+          if (playing && isSeriesTorrent(torrent, currentEpisodeFiles)) fetchSkipData(torrent, playing.id, true);
         });
       }
       // Сведения уже были (detail открывали) — заголовок на старте ставился
       // до появления списка серий и остался именем файла
       refreshEpisodePlayerTitle();
-      if (AppState.isSerials) fetchSkipData(torrent, videoFiles[currentEpisodeIndex].id);
+      if (isSeriesTorrent(torrent, videoFiles)) fetchSkipData(torrent, videoFiles[currentEpisodeIndex].id);
       var episodesBtn = getEl('episodes-btn');
       if (episodesBtn) episodesBtn.style.display = videoFiles.length > 1 ? 'flex' : 'none';
       updateEpisodeButtons();
@@ -1947,6 +1947,33 @@ async function loadEpisodesInfo(hash, currentFileId) {
       updateEpisodeButtons();
     }
   } catch (error) { console.error('Ошибка загрузки серий:', error); }
+}
+
+/**
+ * Сериал ли это — по самой раздаче, а не только по AppState.isSerials.
+ *
+ * Флаг ставит экран карточки раздачи (detail), а «Смотреть» в карточке TMDB,
+ * «Продолжить просмотр» на главной, список «Лучшие» и серия из поиска идут в
+ * плеер мимо неё. Флаг оставался от прошлой открытой карточки — чаще фильма, —
+ * и запроса заставок не было вовсе: кнопка «Пропустить» не появлялась.
+ * Ошибиться в сторону «сериал» не страшно: без сезона и серии
+ * resolveSkipTarget запрос не пустит.
+ */
+function isSeriesTorrent(torrent, videoFiles) {
+  if (AppState.isSerials) return true;
+  if (!torrent) return false;
+  if (torrent.media_type === 'tv' || torrent.category === 'tv') return true;
+  var hash = torrent.hash ? String(torrent.hash).toLowerCase() : '';
+  var known = hash && typeof knownTorrentMeta !== 'undefined' && knownTorrentMeta ? knownTorrentMeta.get(hash) : null;
+  if (known && known.mediaType === 'tv') return true;
+  if (typeof window.getTorrentSeasons === 'function' && window.getTorrentSeasons(torrent).length) return true;
+  var files = videoFiles || [];
+  if (files.length > 1 && typeof parseEpisodeRef === 'function') {
+    for (var i = 0; i < files.length; i++) {
+      if (parseEpisodeRef(files[i].path || files[i].name)) return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -3269,6 +3296,11 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
     var playURL = AppState.currentTorrserverUrl + "/stream?link=" + torrentHash + "&index=" + fileId + "&play=play";
     var item = AppState.currentDetailItem;
     var skipTorrent = findLoadedTorrent(torrentHash) || item;
+    // Id и сезон для заставок — как у веб-плеера (resolveSkipTarget): сезон из
+    // сведений TMDB о серии или из имени файла. Раньше — только одиночный сезон
+    // раздачи или AppState.currentSeason, а его ставит лишь карточка раздачи:
+    // запуск из «Смотреть», «Продолжить» и поиска уходил без сезона
+    var skipTarget = resolveSkipTarget(skipTorrent, fileId);
     var headingFields = androidHeadingFields(torrentHash);
     var playerData = {
       url: playURL, title: title || 'Видео', iptv: false, timecode: seekTime,
@@ -3285,8 +3317,8 @@ function playInExternalPlayer(url, title, timecode, fromSearch) {
       skip_api: getSkipApiBase() + '/v2/media',
       // id и сезон — с самой раздачи (у MonoServer они полями, сезонов бывает
       // несколько — тогда сезон из detail, если он есть)
-      tmdb_id: getTorrentTmdbId(skipTorrent) || AppState.currentTMDB || null,
-      season: getTorrentSingleSeason(skipTorrent) || AppState.currentSeason || null,
+      tmdb_id: skipTarget ? skipTarget.tmdbId : (getTorrentTmdbId(skipTorrent) || AppState.currentTMDB || null),
+      season: skipTarget ? skipTarget.season : (getTorrentSingleSeason(skipTorrent) || AppState.currentSeason || null),
       // Периодическое сохранение таймкода прямо из встроенного плеера. Веб-плеер
       // шлёт его раз в 10 секунд (startTimecodeSaving), а из нативного таймкод
       // приходил только при выходе — через updatePlayerTimeline. Если приложение
