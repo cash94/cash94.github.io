@@ -2913,6 +2913,17 @@ var CHUNK_ROWS = 5;              // строк сетки в одном чанк
 var CHUNK_HYDRATED_MAX = 6;      // сверх этого начинаем сворачивать
 var CHUNK_HYDRATED_KEEP = 5;     // до скольких сворачиваем: по два с каждой стороны и текущий
 var CHUNK_FOCUS_GUARD = 2;       // чанков по обе стороны от фокуса не трогаем
+// Лимиты выше подобраны под 5 колонок: 5 чанков × 5 строк × 5 = 125 живых карточек.
+// При 3–4 колонках карточек в чанке меньше, а сворачивалось столько же строк — уже
+// через десяток строк вернувшись назад, человек видел, как сетка рисуется заново.
+// Держим тот же запас карточек, а не строк
+var CHUNK_LIVE_CARDS = 125;
+
+function chunkHydratedKeep() {
+    var cols = (typeof getColumns === 'function' && getColumns()) || 5;
+    return Math.max(CHUNK_HYDRATED_KEEP, Math.floor(CHUNK_LIVE_CARDS / (cols * CHUNK_ROWS)));
+}
+function chunkHydratedMax() { return chunkHydratedKeep() + (CHUNK_HYDRATED_MAX - CHUNK_HYDRATED_KEEP); }
 
 /* Почему GUARD = 2 (было 1, KEEP 3, MAX 4).
  *
@@ -3510,11 +3521,11 @@ function scheduleChunkTrim() {
 function trimGridChunks() {
     realignChunksToColumns();
     var chunks = catalogState.chunks;
-    if (!chunks || chunks.length <= CHUNK_HYDRATED_MAX) return;
+    if (!chunks || chunks.length <= chunkHydratedMax()) return;
 
     var live = [];
     for (var i = 0; i < chunks.length; i++) if (!chunks[i].spacer) live.push(chunks[i]);
-    if (live.length <= CHUNK_HYDRATED_MAX) return;
+    if (live.length <= chunkHydratedMax()) return;
 
     // Пока кнопку держат, едет твин или палец тянет список — DOM не трогаем
     if (window.navHold || isCatalogScrollAnimating() || isGridScrolling()) {
@@ -3551,13 +3562,14 @@ function trimGridChunks() {
     // сотня с лишним карточек — отдельный рывок ровно в тот момент, когда
     // человек остановился и смотрит на экран.
     var removed = 0;
-    for (var j = 0; j < live.length && live.length - removed > CHUNK_HYDRATED_KEEP; j++) {
+    var keep = chunkHydratedKeep();
+    for (var j = 0; j < live.length && live.length - removed > keep; j++) {
         if (chunkDistanceToAnchors(live[j].index, anchors) <= CHUNK_FOCUS_GUARD) continue;
         if (dehydrateChunk(live[j], rowGap)) { removed++; break; }
     }
 
     if (!removed) return;
-    if (live.length - removed > CHUNK_HYDRATED_KEEP) scheduleChunkTrim();
+    if (live.length - removed > keep) scheduleChunkTrim();
 
     if (typeof invalidateFocusCache === 'function') invalidateFocusCache();
     // Обрезка карточек не добавляет — обходить сетку ради наблюдателя незачем,
@@ -3796,7 +3808,7 @@ function createCatalogCard(item, index) {
     var id = item.id;
     var rating = item.vote_average ? Math.round(item.vote_average * 10) / 10 : null;
     var cacheKey = id + '_' + mt;
-    var cached = catalogState.posterCache.get(cacheKey);
+    var cached = (catalogWideOn() && wideCache[cacheKey]) || catalogState.posterCache.get(cacheKey);
     var ratingColor = rating ? getRatingColor(rating) : '';
 
     // Адрес постера уже известен — рисуем картинку сразу, вместе с карточкой.
@@ -3863,6 +3875,9 @@ function createCatalogCard(item, index) {
     }
 
     catalogState.cardElements[index] = card;
+    // Пересозданная чанками карточка с постером из кэша мимо loadPosterDirect —
+    // кадр для неё просим здесь
+    if (cached && catalogWideOn() && !wideCache[cacheKey]) wantWideImage(index);
     return card;
 }
 
@@ -4189,6 +4204,7 @@ function resetDeferredPosters() {
     }
     catalogState.posterDeferredRaf = 0;
     catalogState.posterDeferred.length = 0;
+    resetWideQueue();
     dropGridPosterAhead();
     if (catalogState.posterBatchTimer) {
         clearTimeout(catalogState.posterBatchTimer);
@@ -4218,6 +4234,7 @@ function requestGridPoster(idx, card) {
     if (catalogState.posterObserver) {
         try { catalogState.posterObserver.unobserve(card); } catch (e) { }
     }
+    if (catalogWideOn()) wantWideImage(idx);
 
     // Всегда через отложенную очередь, даже когда навигация стоит: она отдаёт
     // постеры по POSTER_DEFERRED_PER_FRAME за кадр. Сюда приходят пачками —
@@ -4453,8 +4470,220 @@ function loadPosterDirect(idx, card) {
     catalogState.posterCache.set(item.id + '_' + (item.media_type || 'movie'), url);
     card.dataset.posterRequested = '1';   // как в addToPosterQueue: карточка обработана
     updatePosterDOM(div, card.dataset.rating, url);
+    // Первый экран сетки ставит постеры сразу сюда, мимо requestGridPoster
+    if (catalogWideOn()) wantWideImage(idx);
     return true;
 }
+
+// ==================== ШИРОКИЕ КАРТОЧКИ ====================
+// «Внешний вид» → «Широкие карточки»: в карточке каталога кадр из фильма (backdrop)
+// вместо вертикального постера. В элементах каталога кадра нет — берём его из
+// деталей (fetchCatalogItemDetails: кэш в IndexedDB, у сервера свой). Просим кадр,
+// когда карточка подходит к экрану (requestGridPoster) или пересоздаётся чанком
+// рядом с ним. Постер стоит, пока кадр не пришёл; пришёл — кладём вместо него и
+// запоминаем (wideCache), чтобы пересозданная карточка сразу родилась с кадром.
+var WIDE_PARALLEL = 3;
+var WIDE_CACHE_MAX = 800;         // столько кадров помним за сеанс, старые забываем
+var WIDE_QUEUE_MAX = 60;          // очередь длиннее — дальние от фокуса выкидываем
+var WIDE_NEAR_ROWS = 6;           // дальше стольких строк от фокуса кадр не просим
+var WIDE_SLOT_MS = 15000;         // запрос или картинка молчат дольше — место в очереди свободно
+var wideQueue = [];
+var wideBusy = 0;
+// Кадр уже есть (адрес) или его точно нет (null) — по ключу «id_тип»
+var wideDone = {};
+var wideOrder = [];
+// Адреса кадров — отдельно от posterCache: тот берёт и карточка фильма как постер
+var wideCache = {};
+
+/** Размер кадра TMDB под ширину колонки: w300 на мелких карточках, иначе w780 */
+function wideSize() {
+    var cols = (typeof getColumns === 'function' && getColumns()) || 5;
+    var px = (window.innerWidth || 1280) / cols * (window.devicePixelRatio || 1);
+    return px <= 330 ? 'w300' : 'w780';
+}
+
+function rememberWide(key, url) {
+    if (!wideDone.hasOwnProperty(key)) {
+        wideOrder.push(key);
+        if (wideOrder.length > WIDE_CACHE_MAX) {
+            var old = wideOrder.shift();
+            delete wideDone[old];
+            delete wideCache[old];
+        }
+    }
+    wideDone[key] = true;
+    if (url) wideCache[key] = url;
+}
+
+function catalogWideOn() {
+    return !!(window.UICustomizer && typeof UICustomizer.getCatalogWide === 'function' && UICustomizer.getCatalogWide());
+}
+
+function wantWideImage(idx) {
+    var item = catalogState.items[idx];
+    if (!item || item.id == null) return;
+    var key = item.id + '_' + (item.media_type || 'movie');
+    if (wideDone[key] === true) {
+        // Кадр уже знаем (или знаем, что его нет) — сразу в карточку, без запросов
+        var card = catalogState.cardElements[idx];
+        var div = card && wideCache[key] ? card.querySelector('.torrent-poster') : null;
+        if (div) setWideImg(div, wideCache[key]);
+        return;
+    }
+    if (wideQueue.indexOf(idx) === -1) wideQueue.push(idx);
+    pumpWideQueue();
+}
+
+function focusedCatalogIndex() {
+    var focused = document.querySelector('#catalog-grid .torrent-card.focused');
+    return focused ? parseInt(focused.dataset.catalogIndex, 10) : NaN;
+}
+
+/** Карточка в DOM и недалеко от фокуса — кадр ей ещё нужен */
+function wideCardNear(idx, center) {
+    var card = catalogState.cardElements[idx];
+    if (!card || !card.isConnected) return false;
+    if (isNaN(center)) return true;
+    var cols = (typeof getColumns === 'function' && getColumns()) || 5;
+    return Math.abs(idx - center) <= WIDE_NEAR_ROWS * cols;
+}
+
+function pumpWideQueue() {
+    if (!wideQueue.length || wideBusy >= WIDE_PARALLEL) return;
+    // Ближние к фокусу — первыми, как у постеров; лишний хвост очереди — вон
+    var center = focusedCatalogIndex();
+    if (!isNaN(center)) wideQueue.sort(function (a, b) { return Math.abs(a - center) - Math.abs(b - center); });
+    if (wideQueue.length > WIDE_QUEUE_MAX) wideQueue.length = WIDE_QUEUE_MAX;
+    while (wideBusy < WIDE_PARALLEL && wideQueue.length) {
+        var idx = wideQueue.shift();
+        // Пролистали мимо — не спрашиваем; вернутся — карточка попросит снова
+        if (wideCardNear(idx, center)) loadWideImage(idx);
+    }
+}
+
+function loadWideImage(idx) {
+    var item = catalogState.items[idx];
+    if (!item) return;
+    var catalog = catalogState.currentCatalog;
+    var key = item.id + '_' + (item.media_type || 'movie');
+    wideBusy++;
+    var finished = false;
+    var slotTimer = null;
+    var finish = function () {
+        if (finished) return;
+        finished = true;
+        if (slotTimer) clearTimeout(slotTimer);
+        wideBusy--;
+        pumpWideQueue();
+    };
+    // Молчащий сервер или зеркало не держат место в очереди вечно
+    slotTimer = setTimeout(finish, WIDE_SLOT_MS);
+    // Всё ещё та же сетка, галка включена — тогда и кладём кадр
+    var stillWanted = function () { return catalog === catalogState.currentCatalog && catalogWideOn(); };
+    // Детали — через fetchTmdbDetails (свой кэш): он отвечает null, если сеть не
+    // ответила, — тогда «кадра нет» не запоминаем, следующий показ спросит снова
+    var path = item.backdrop_path ? Promise.resolve(item.backdrop_path) :
+        Promise.resolve(fetchTmdbDetails(item)).then(function (d) {
+            if (!d) return undefined;
+            var bp = d.backdrop_path ||
+                (Array.isArray(d.backdrops) && d.backdrops[0] && d.backdrops[0].file_path) || null;
+            if (bp) item.backdrop_path = bp;
+            return bp;
+        });
+    path.then(function (bp) {
+        try {
+            if (bp === undefined) { finish(); return; }
+            // Кадра у фильма нет — запоминаем и больше не спрашиваем
+            if (!bp) { rememberWide(key, null); finish(); return; }
+            // Сетку сменили или галку сняли, пока ждали, — попробуем при следующем показе
+            if (!stillWanted()) { finish(); return; }
+            var url = getTmdbImageUrl(bp, wideSize());
+            var img = new Image();
+            img.onload = function () {
+                // Раскладываем растр до вставки (img.decode, Chromium 64+): иначе он
+                // разворачивался бы в кадре вставки, посреди прокрутки
+                var show = function () {
+                    try {
+                        rememberWide(key, url);
+                        if (!stillWanted()) return;
+                        // Карточку берём заново: за время загрузки чанки могли её пересоздать
+                        var card = catalogState.items[idx] === item ? catalogState.cardElements[idx] : null;
+                        var div = card && card.isConnected && card.querySelector('.torrent-poster');
+                        if (div) setWideImg(div, url, img);
+                    } finally {
+                        finish();
+                    }
+                };
+                if (typeof img.decode === 'function') img.decode().then(show, show);
+                else show();
+            };
+            // Зеркало не отдало кадр — останется постер; следующий показ попробует снова
+            img.onerror = finish;
+            img.src = url;
+        } catch (e) {
+            finish();
+        }
+    }, function () {
+        // Детали не пришли — карточка остаётся с постером, попробуем при следующем показе
+        finish();
+    });
+}
+
+function wideKeyOf(div) {
+    var card = div.closest ? div.closest('.catalog-card') : null;
+    return card && card.dataset.tmdbId ? card.dataset.tmdbId + '_' + (card.dataset.mediaType || 'movie') : '';
+}
+
+/**
+ * Картинка карточки — кадр (или обратно постер, когда галку сняли). Новую кладём
+ * поверх прежней и снимаем прежнюю, когда новая загрузилась: пустой карточки в
+ * промежутке нет. decoded — уже разложенная картинка (loadWideImage), её и вставляем.
+ * Не загрузилась — остаётся прежняя, а адрес кадра забываем
+ */
+function setWideImg(div, url, decoded) {
+    var old = div.querySelector('img.catalog-poster-img');
+    if (old && old.src === url) return;
+    var img = decoded && decoded.src === url ? decoded : new Image();
+    img.className = 'catalog-poster-img loaded poster-instant';
+    img.alt = '';
+    var done = function () {
+        if (old && old !== img && old.parentNode) old.remove();
+        var ph = div.querySelector('.no-poster');
+        if (ph) ph.remove();
+    };
+    img.onload = done;
+    img.onerror = function () {
+        if (img.parentNode) img.remove();
+        var key = wideKeyOf(div);
+        if (key && wideCache[key] === url) { delete wideCache[key]; delete wideDone[key]; }
+    };
+    if (img.src !== url) img.src = url;
+    div.appendChild(img);
+    if (img.complete && img.naturalWidth > 0) done();
+}
+
+/** Новый каталог — прежние индексы очереди недействительны */
+function resetWideQueue() { wideQueue.length = 0; }
+
+/**
+ * Галку «Широкие карточки» переключили при открытой сетке: включили — просим кадры
+ * для уже нарисованных карточек, выключили — возвращаем им постеры
+ */
+function onCatalogWideChanged(on) {
+    var cards = catalogState.cardElements || {};   // объект «индекс → карточка»
+    if (!on) resetWideQueue();
+    for (var key in cards) {
+        if (!cards.hasOwnProperty(key)) continue;
+        var i = parseInt(key, 10);
+        var card = cards[key], item = catalogState.items[i];
+        if (!card || !card.isConnected || !item) continue;
+        if (on) { wantWideImage(i); continue; }
+        var poster = catalogState.posterCache.get(item.id + '_' + (item.media_type || 'movie'));
+        var div = card.querySelector('.torrent-poster');
+        if (poster && div) setWideImg(div, poster);
+    }
+}
+window.onCatalogWideChanged = onCatalogWideChanged;
 
 function addToPosterQueue(idx) {
     var card = catalogState.cardElements[idx];
@@ -4649,6 +4878,13 @@ function updatePosterDOM(div, rating, url) {
     if (!div || !url) {
         if (div) div.innerHTML = '<div class="no-poster">Нет постера</div>';
         return;
+    }
+
+    // Широкие карточки: кадр этой карточки уже знаем — постер его не перекрывает
+    // (медленный путь постера приходит позже кадра)
+    if (catalogWideOn()) {
+        var wideKey = wideKeyOf(div);
+        if (wideKey && wideCache[wideKey]) { setWideImg(div, wideCache[wideKey]); return; }
     }
 
     // URL уже собран нами под нужный размер (быстрый путь, posterCache,
@@ -8523,6 +8759,7 @@ function revealCatalogElement(el) {
         // карточку, а не подождать её. А вот запас постеров вперёд — чистая
         // предзагрузка, в этой задаче она не нужна; см. scheduleGridPosterAhead.
         ensureChunksAroundFocus(el);
+        revealGridRowsAround(el);
         prefetchGridPosters(el);
         scheduleGridPosterAhead(el);
         scheduleDetailArtPrefetch(el);
@@ -8533,6 +8770,31 @@ function revealCatalogElement(el) {
     if (row) row.classList.remove(OFFSCREEN_CLASS);
     ensureRowPosterNow(el);
     queueFocusedRowPosters(el);
+}
+
+// Сколько строк от строки фокуса открывать: в сторону, откуда въезжает список.
+// Строка фокуса внизу экрана (по умолчанию) — строки над ней, вверху — под ней
+var REVEAL_ROWS = 3;
+
+/**
+ * Строка фокуса и соседние — видимыми сразу. Наблюдатель показывает вошедшие в кадр
+ * строки только когда движение стихло (flushVisibilityToggles), а при быстрой
+ * прокрутке — и тем более со строкой фокуса, прижатой к верху, где список за шаг
+ * проезжает целую строку — въезжала одна карточка под фокусом, а её соседи по строке
+ * оставались пустыми, пока не отпустишь кнопку.
+ */
+function revealGridRowsAround(el) {
+    var idx = parseInt(el.dataset && el.dataset.catalogIndex, 10);
+    if (isNaN(idx)) return;
+    var cols = (typeof getColumns === 'function' && getColumns()) || 5;
+    var pinTop = window.UICustomizer && typeof UICustomizer.getCatalogPin === 'function' && UICustomizer.getCatalogPin() === 'top';
+    var rowStart = idx - (idx % cols);
+    var from = Math.max(0, rowStart - (pinTop ? 0 : REVEAL_ROWS) * cols);
+    var to = rowStart + ((pinTop ? REVEAL_ROWS : 0) + 1) * cols;
+    for (var i = from; i < to; i++) {
+        var c = catalogState.cardElements[i];
+        if (c && c.classList.contains(OFFSCREEN_CLASS)) c.classList.remove(OFFSCREEN_CLASS);
+    }
 }
 
 /** Ряды-карусели: гасим ряд целиком вместе с заголовком */

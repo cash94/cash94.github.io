@@ -28,6 +28,7 @@
         settingsScale: 100,          // размер экрана «Настройки», % от базового
         searchScale: 100,            // список результатов поиска по трекерам, % от базового
         catalogColumns: 'auto',      // auto | 3..8  (auto = число колонок считается из cardSize)
+        torrentsColumns: 'same',     // same | 3..8 — «Мои торренты» отдельно от каталога (same — как он)
         // Размеры подписей карточки — в пикселях, ползунками (см. SLIDERS).
         // Прежний пресет fontSize (small/medium/large) остался только для
         // переноса ранее сохранённых настроек, см. normalizeSettings.
@@ -50,7 +51,13 @@
         showYear: true,
         // Баннер главной сам включает трейлер, когда фокус постоял на карточке
         // (home.js спрашивает getHeroTrailers перед каждым отсчётом)
-        heroTrailers: true
+        heroTrailers: true,
+        // Каталог: широкий кадр (backdrop) в карточке вместо вертикального постера
+        // (catalog.js спрашивает getCatalogWide)
+        catalogWide: false,
+        // Каталог: строка под фокусом прижата к низу экрана (bottom) или к верху (top) —
+        // control.js спрашивает getCatalogPin
+        catalogPin: 'bottom'
     };
 
     // ==================== ТАБЛИЦЫ ЗНАЧЕНИЙ ====================
@@ -138,6 +145,55 @@
     };
 
     var BRIGHTNESS = { dim: '0.8', normal: '1', bright: '1.15' };
+
+    // Что расширение может рекомендовать (extensions.js: TS.app.recommend) и в каком
+    // виде: значение приводим к тому, что хранится в настройках, недопустимое — undefined.
+    // Значения сверяются с теми же таблицами, по которым настройки применяются
+    function hasOwn(obj, key) { return Object.prototype.hasOwnProperty.call(obj, key); }
+    function recBool(v) { return v === true || v === 'true' ? true : (v === false || v === 'false' ? false : undefined); }
+    function recEnum(table) { return function (v) { v = String(v); return hasOwn(table, v) ? v : undefined; }; }
+    function recMatch(re) { return function (v) { v = String(v); return re.test(v) ? v : undefined; }; }
+    var RECOMMENDABLE = {
+        catalogColumns: recMatch(/^(auto|[3-8])$/),
+        torrentsColumns: recMatch(/^(same|[3-8])$/),
+        cardSize: function (v) {
+            var n = Number(v);
+            return typeof v !== 'boolean' && v !== '' && isFinite(n) ? clampStep(n, SLIDERS.cardSize) : undefined;
+        },
+        catalogWide: recBool,
+        catalogPin: recEnum({ top: 1, bottom: 1 }),
+        heroTrailers: recBool,
+        showRatings: recBool,
+        showYear: recBool,
+        density: recEnum(DENSITIES),
+        borderRadius: recEnum(RADII),
+        animations: recEnum({ none: 1, reduced: 1, normal: 1 }),
+        posterBrightness: recEnum(BRIGHTNESS)
+    };
+
+    function recommendValue(key, value) {
+        return hasOwn(RECOMMENDABLE, key) ? RECOMMENDABLE[key](value) : undefined;
+    }
+
+    // Подписи для меню расширения: что именно поменяет «Применить рекомендуемые настройки»
+    var RECOMMEND_LABELS = {
+        catalogColumns: 'Колонки каталога', torrentsColumns: 'Колонки «Моих торрентов»',
+        cardSize: 'Размер карточек', catalogWide: 'Широкие карточки',
+        catalogPin: 'Строка под фокусом', heroTrailers: 'Трейлеры на главной',
+        showRatings: 'Оценки', showYear: 'Год', density: 'Плотность',
+        borderRadius: 'Скругление', animations: 'Анимации', posterBrightness: 'Яркость постеров'
+    };
+    var RECOMMEND_VALUES = {
+        'true': 'вкл', 'false': 'выкл', auto: 'авто', same: 'как в каталоге', top: 'вверху', bottom: 'внизу',
+        compact: 'плотно', comfortable: 'обычно', spacious: 'свободно', none: 'нет', small: 'малое',
+        medium: 'среднее', large: 'большое', reduced: 'меньше', normal: 'обычно', dim: 'темнее', bright: 'ярче'
+    };
+
+    function recommendLabel(key, value) {
+        var v = String(value);
+        return (hasOwn(RECOMMEND_LABELS, key) ? RECOMMEND_LABELS[key] : key) + ': ' +
+            (hasOwn(RECOMMEND_VALUES, v) ? RECOMMEND_VALUES[v] : v);
+    }
 
     // Режимы анимации горизонтальной прокрутки (применяет control.js, CSS не порождают)
     var SCROLL_ANIMS = { none: 1, fast: 1, smooth: 1 };
@@ -311,6 +367,9 @@
         // Не !!: у тех, кто сохранял настройки до появления этой галки, ключа в
         // localStorage нет, и трейлеры выключились бы сами собой
         s.heroTrailers = s.heroTrailers !== false;
+        s.catalogWide = s.catalogWide === true;
+        s.torrentsColumns = /^[3-8]$/.test(String(s.torrentsColumns)) ? String(s.torrentsColumns) : 'same';
+        s.catalogPin = s.catalogPin === 'top' ? 'top' : 'bottom';
         return s;
     }
 
@@ -354,6 +413,23 @@
             if (!isNaN(n) && n > 0) return n;
         }
         return 0;
+    }
+
+    /**
+     * Колонки «Моих торрентов», если заданы отдельно; 0 — «как в каталоге» (тогда
+     * сетка и навигация живут по-прежнему, от числа колонок каталога)
+     */
+    var portraitPhone = null;   // MediaQueryList: создаём раз, .matches читается дёшево
+
+    function getTorrentsColumns() {
+        var n = parseInt(currentSettings.torrentsColumns, 10);
+        if (!(n >= 3 && n <= 8)) return 0;
+        // Телефон в книжной ориентации — две колонки, как и у каталога (getColumns)
+        if (portraitPhone === null) {
+            portraitPhone = window.matchMedia ? window.matchMedia('(max-width: 600px) and (orientation: portrait)') : false;
+        }
+        if (portraitPhone && portraitPhone.matches) return 2;
+        return n;
     }
 
     function densityGap() {
@@ -530,6 +606,8 @@
         return css;
     }
 
+    var appliedWide = null;     // catalogWide, уже применённый к открытой сетке
+
     function buildSettingsCss() {
         var w = cardWidth();
         var h = posterHeight(w);
@@ -559,10 +637,25 @@
             'grid-template-columns:repeat(' + cols + ',1fr)!important;' +
             'grid-gap:' + density.gap + '!important;' +
             'gap:' + density.gap + '!important;}');
+        // Широкие карточки каталога (catalogWide): картинка 16:9 вместо постера 2:3 —
+        // кадр ставит catalog.js (wantWideImage), до его прихода постер обрезается
+        // по высоте. Ряды-карусели не трогаем: у них своя геометрия
+        if (currentSettings.catalogWide === true) {
+            css.push('#catalog-grid .catalog-card .torrent-poster{aspect-ratio:16/9!important;}');
+            css.push('@supports not (aspect-ratio:16/9){#catalog-grid .catalog-card .torrent-poster{padding-bottom:56.25%!important;}}');
+        }
+        // «Мои торренты» — своё число колонок, если задано
+        var tcols = getTorrentsColumns() || cols;
+        if (tcols !== cols) css.push('#torrents-grid{grid-template-columns:repeat(' + tcols + ',1fr)!important;}');
         // Старые браузеры без CSS Grid (webOS 4 — Chrome 53): та же сетка на
         // flex с переносом, см. css/legacy.css. Остальным не нужно
         if (document.documentElement.className.indexOf('legacy-browser') !== -1) {
             css.push(legacyGridCss(cols, density.gap));
+            // Свои колонки «Моих торрентов» — после общего правила: у них та же
+            // специфичность и тоже !important, побеждает последнее
+            if (tcols !== cols) {
+                css.push('html.legacy-browser #torrents-grid>*{width:calc(100% / ' + tcols + ' - ' + density.gap + ' - 0.05px)!important;}');
+            }
         }
 
         // Подсказка для content-visibility, чтобы скролл не «прыгал».
@@ -785,6 +878,16 @@
         try {
             document.documentElement.classList.toggle('topbar-icons', currentSettings.topbarStyle === 'icons');
             topbarFitWidth = null;
+        } catch (e) { }
+        // Широкие карточки каталога (catalog.js): галку переключили — открытой сетке
+        // сразу кадры или обратно постеры. Первое применение (appliedWide === null) —
+        // запуск, сетки ещё нет
+        try {
+            var wideOn = currentSettings.catalogWide === true;
+            if (wideOn !== appliedWide) {
+                if (appliedWide !== null && typeof window.onCatalogWideChanged === 'function') window.onCatalogWideChanged(wideOn);
+                appliedWide = wideOn;
+            }
         } catch (e) { }
         try { fitTopbarScale(); } catch (e) { }
         // Размер карточки/шрифт/плотность изменились — прежний замер высоты ряда
@@ -1094,6 +1197,13 @@
             '</div>' +
             '</div>' +
 
+            '<div class="ui-customizer-group"><h3>Колонки в «Моих торрентах»</h3>' +
+            '<div class="ui-customizer-hint">Отдельно от каталога: постеры раздач вертикальные, их удобнее мельче.</div>' +
+            '<div class="ui-customizer-options">' +
+            optionRow('torrentsColumns', [['same', 'Как в каталоге'], ['3', '3'], ['4', '4'], ['5', '5'], ['6', '6'], ['7', '7'], ['8', '8']]) +
+            '</div>' +
+            '</div>' +
+
             '<div class="ui-customizer-group"><h3>Размер подписей карточки</h3>' +
             '<div class="ui-customizer-hint">Название под постером.</div>' +
             sliderRow('titleSize', SLIDERS.titleSize.min + ' px', SLIDERS.titleSize.max + ' px') +
@@ -1145,6 +1255,12 @@
             '<div class="ui-customizer-group"><h3>Трейлеры на главной</h3>' +
             '<div class="ui-customizer-hint">Постояв на карточке 5 секунд, баннер главной сам включает её трейлер вместо картинки. Выключите, если это мешает или тормозит на слабом устройстве.</div>' +
             '<label class="ui-checkbox" data-check="heroTrailers"><input type="checkbox" id="ui-hero-trailers"' + (currentSettings.heroTrailers ? ' checked' : '') + '><span>Автовоспроизведение трейлеров</span></label>' +
+            '</div>' +
+
+            '<div class="ui-customizer-group"><h3>Карточки каталога</h3>' +
+            '<div class="ui-customizer-hint">Вместо вертикального постера — широкий кадр из фильма. Кадр догружается для каждой карточки, пока его нет — виден постер.</div>' +
+            '<label class="ui-checkbox" data-check="catalogWide"><input type="checkbox" id="ui-catalog-wide"' + (currentSettings.catalogWide ? ' checked' : '') + '><span>Широкие карточки</span></label>' +
+            '<label class="ui-checkbox" data-check="catalogPin"><input type="checkbox" id="ui-catalog-pin"' + (currentSettings.catalogPin === 'top' ? ' checked' : '') + '><span>Строка под фокусом вверху — листается список, а не рамка</span></label>' +
             '</div>' +
             '</div>' +
             '<div class="ui-customizer-footer">' +
@@ -1357,6 +1473,10 @@
         if (r) r.checked = !!currentSettings.showRatings;
         if (y) y.checked = !!currentSettings.showYear;
         if (t) t.checked = currentSettings.heroTrailers !== false;
+        var cw = document.getElementById('ui-catalog-wide');
+        if (cw) cw.checked = currentSettings.catalogWide === true;
+        var cp = document.getElementById('ui-catalog-pin');
+        if (cp) cp.checked = currentSettings.catalogPin === 'top';
         updateSliders();
     }
 
@@ -1408,6 +1528,17 @@
         if (trailers) trailers.addEventListener('change', function () {
             currentSettings.heroTrailers = this.checked;
             applySettings();            // гасит играющий трейлер / заводит отсчёт заново
+            autoSave();
+        });
+        var wide = document.getElementById('ui-catalog-wide');
+        if (wide) wide.addEventListener('change', function () {
+            currentSettings.catalogWide = this.checked;
+            applySettings();            // кадры или постеры в открытой сетке
+            autoSave();
+        });
+        var pin = document.getElementById('ui-catalog-pin');
+        if (pin) pin.addEventListener('change', function () {
+            currentSettings.catalogPin = this.checked ? 'top' : 'bottom';
             autoSave();
         });
 
@@ -1999,12 +2130,19 @@
         apply: applySettings,
         isOpen: isOpen,
         getColumns: getColumns,          // используется control.js для навигации пультом
+        getTorrentsColumns: getTorrentsColumns,   // control.js: навигация по «Моим торрентам»
         getCardSize: function () { var w = cardWidth(); return { width: w, height: posterHeight(w) }; },
         getFocusColor: focusColor,
         getScrollAnim: scrollAnim,       // control.js: длительность твинов горизонтальной прокрутки
         getHeroTrailers: function () { return currentSettings.heroTrailers !== false; }, // home.js: заводить ли отсчёт трейлера
+        getCatalogWide: function () { return currentSettings.catalogWide === true; },   // catalog.js: кадр вместо постера
+        getCatalogPin: function () { return currentSettings.catalogPin === 'top' ? 'top' : 'bottom'; }, // control.js: куда прижимать строку
         enterEmbedded: enterEmbedded,   // control.js: OK на пункте меню «Внешний вид»
         get: function () { return Object.assign({}, currentSettings); },
+        // extensions.js: какие настройки расширение может рекомендовать и проверка значения
+        recommendKeys: function () { return Object.keys(RECOMMENDABLE); },
+        recommendValue: recommendValue,
+        recommendLabel: recommendLabel,
         set: function (partial) {
             if (partial && typeof partial === 'object') {
                 currentSettings = normalizeSettings(Object.assign({}, currentSettings, partial));

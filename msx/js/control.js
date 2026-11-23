@@ -591,7 +591,28 @@ function getColumns() {
     return _cachedColumns;
 }
 
+/**
+ * Колонки «Моих торрентов» для стрелок: своя настройка или, как раньше, кэш
+ * getColumns(). Без чтения стилей — это зовётся на каждое нажатие
+ */
+function torrentNavColumns() {
+    try {
+        if (window.UICustomizer && typeof window.UICustomizer.getTorrentsColumns === 'function') {
+            var n = window.UICustomizer.getTorrentsColumns();
+            if (n > 0) return n;
+        }
+    } catch (e) { }
+    return getColumns();
+}
+
 function getTorrentGridColumns() {
+    // Своя настройка «Моих торрентов» (ui-customizer: torrentsColumns)
+    try {
+        if (window.UICustomizer && typeof window.UICustomizer.getTorrentsColumns === 'function') {
+            var n = window.UICustomizer.getTorrentsColumns();
+            if (n > 0) return n;
+        }
+    } catch (e) { }
     return _readGridColumns('torrents-grid') || getColumns();
 }
 
@@ -1457,7 +1478,7 @@ function gridGestureScope(target) {
         grid = getEl('torrents-grid');
         view = getEl('main-container');
         if (!grid || !view || !view.contains(target)) return null;
-        cards = getTorrentCards(); cols = getColumns();
+        cards = getTorrentCards(); cols = torrentNavColumns();
     } else if (sc === 'search') {
         var cm = typeof window.getCurrentSearchMode === 'function' ? window.getCurrentSearchMode() : '';
         if (cm !== 'globalsearch') return null;
@@ -1765,7 +1786,7 @@ var ScreenStrategies = {
         },
         handleNavigation: function (dir) {
             var f = (belongsToScreen(document.querySelector('.focused'), 'torrents') ? document.querySelector('.focused') : null);
-            var c = getTorrentCards(), h = getTorrentHeader(), t = getTorrentTabs(), cols = getColumns();
+            var c = getTorrentCards(), h = getTorrentHeader(), t = getTorrentTabs(), cols = torrentNavColumns();
             if (!f) return this.ensureFocus(true);
             var ci = -1, hi = -1, ti = -1;
             for (var i = 0; i < c.length; i++) if (f === c[i]) { ci = i; break; }
@@ -3775,12 +3796,17 @@ function txTransition(el, duration, moving, timing) {
     return 'transform ' + duration + 's ' + (timing || 'linear') + (lead >= 1 ? ' ' + (-Math.round(lead)) + 'ms' : '');
 }
 
+// Кривая 'nav.out' (шаг сетки со строкой фокуса вверху, ui-customizer: catalogPin)
+var NAV_OUT_SLOPE = 2.2;      // во сколько раз старт быстрее средней скорости шага
+var NAV_OUT_STRETCH = 1.25;   // и насколько шаг длиннее линейного: торможение занимает время
+
 /**
  * Прокрутить el до top. duration в секундах; 0 — сразу. Новый шаг посреди
  * перехода продолжает с того места, которое сейчас ВИДНО, а не с начала.
  * ease 'sine.inOut' (сцена карточки) — мягкий разгон и торможение, перехват
- * на ходу — с текущей скоростью (кривая Эрмита, см. flipHermiteY); иначе
- * переход линейный, как у всей навигации.
+ * на ходу — с текущей скоростью (кривая Эрмита, см. flipHermiteY); 'nav.out' —
+ * та же кривая, но с места сразу быстро (NAV_OUT_SLOPE) и с мягким торможением;
+ * иначе переход линейный, как у всей навигации.
  */
 function flipApply(el, top, duration, ease) {
     var content = flipContentFor(el);
@@ -3832,14 +3858,17 @@ function flipApply(el, top, duration, ease) {
     }
 
     var timing = null, curve = null;
-    if (ease === 'sine.inOut') {
-        var m0 = 0;
+    // 'nav.out' — шаг сетки со строкой фокуса вверху: с места сразу полным ходом и
+    // мягкое торможение (кривая Эрмита с начальным наклоном NAV_OUT_SLOPE), при
+    // перехвате на ходу — с текущей скоростью, если она выше
+    if (ease === 'sine.inOut' || ease === 'nav.out') {
+        var m0 = ease === 'nav.out' ? NAV_OUT_SLOPE : 0;
         // Прежний ехал в ту же сторону — подхватываем его скорость; навстречу —
         // разворот, честнее с нуля (как у твина в animations.js)
         if (curY && prevOffset * offset > 0 && el._txRun) {
             var slope = prev ? flipHermiteSlope(prev.m0, timeDone) : 1;
             var v0 = Math.abs(prevOffset) * slope / el._txRun.dur;     // px/мс
-            m0 = v0 * duration * 1000 / Math.abs(offset);
+            m0 = Math.max(ease === 'nav.out' ? NAV_OUT_SLOPE : 0, v0 * duration * 1000 / Math.abs(offset));
             // Путь короткий для такой скорости: доезжаем быстрее, а не тормозим
             if (m0 > 3) { duration = duration * 3 / m0; m0 = 3; }
         }
@@ -4370,6 +4399,9 @@ function applyScroll(container, vars, smooth, duration, ease) {
                 vars.scrollTop - scrollRestTop(container),
                 SCROLL_SMOOTH.speedY),
             NAV_STEP_BASE_MS / 1000);
+        // Кривая с торможением: шаг чуть длиннее, иначе конец пути выходит резким.
+        // Только у FLIP-сетки: твин мимо неё кривой 'nav.out' не знает
+        if (ease === 'nav.out' && duration > 0 && isFlipScroller(container)) duration *= NAV_OUT_STRETCH;
     }
 
     var animated = smooth && !_instantScrollDepth && typeof duration === 'number' && duration > 0;
@@ -4532,9 +4564,33 @@ function catalogGridPinTarget(el, scrollContainer) {
     var restBottom = el.getBoundingClientRect().bottom - dy;
 
     var target = restTop + (restBottom - (viewBottom - CATALOG_GRID_BOTTOM_PAD));
+    // «Внешний вид» → прокрутка «Строка под фокусом вверху»: строка встаёт туда, где
+    // стоит первая строка сетки, а под ней едет список — рамка по экрану не ходит
+    if (window.UICustomizer && typeof UICustomizer.getCatalogPin === 'function' && UICustomizer.getCatalogPin() === 'top') {
+        var grid = el.closest ? el.closest('#catalog-grid') : null;
+        if (grid) target = catalogGridFirstRowOffset(el, grid);
+    }
     var maxTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
 
     return { rest: restTop, target: Math.max(0, Math.min(maxTop, target)) };
+}
+
+/**
+ * Прокрутка, при которой строка el встаёт на место первой строки сетки (там, где та
+ * стоит при нулевой прокрутке). Первой строке предшествует заголовок категории
+ * (.catalog-header, на всю ширину сетки): строка идёт за ним, его отступом и зазором
+ * строк. Обе точки меряются в одном кадре, так что идущий переход сдвига на
+ * разность не влияет; для первой строки выходит ноль.
+ */
+function catalogGridFirstRowOffset(el, grid) {
+    var top = el.getBoundingClientRect().top;
+    var head = grid.firstElementChild;
+    if (head && head.classList && head.classList.contains('catalog-header')) {
+        var hs = getComputedStyle(head), gs = getComputedStyle(grid);
+        var gap = parseFloat(gs.rowGap || gs.gridRowGap || '') || 0;
+        return top - head.getBoundingClientRect().bottom - (parseFloat(hs.marginBottom) || 0) - gap;
+    }
+    return top - grid.getBoundingClientRect().top - (parseFloat(getComputedStyle(grid).paddingTop) || 0);
 }
 
 function scrollCatalogGridCardIntoView(el, scrollContainer, smooth) {
@@ -4546,7 +4602,10 @@ function scrollCatalogGridCardIntoView(el, scrollContainer, smooth) {
     // не пересоздаём твин, иначе прокрутка каждый раз начинала разгон заново
     if (Math.abs(t.rest - t.target) < CATALOG_GRID_PIN_EPS) return;
 
-    applyScroll(scrollContainer, { scrollTop: t.target }, smooth);
+    // Строка фокуса вверху: список въезжает под неподвижную рамку — с места сразу и с
+    // мягким торможением, а не равномерно (тогда он резко трогался и резко вставал)
+    var pinTop = window.UICustomizer && typeof UICustomizer.getCatalogPin === 'function' && UICustomizer.getCatalogPin() === 'top';
+    applyScroll(scrollContainer, { scrollTop: t.target }, smooth, undefined, pinTop ? 'nav.out' : undefined);
     scheduleCatalogGridPinCheck(scrollContainer);
 }
 
@@ -4673,13 +4732,31 @@ function scrollCatalogRowIntoView(viewport, vertEl, dy, smooth) {
 }
 
 /**
+ * Строка фокуса вверху (ui-customizer: catalogPin): переход в шапку не трогает
+ * прокрутку сетки — ни в самый верх, ни «докрутить шапку в кадр»; вниз из шапки
+ * вернёшься туда же, где был. Только для сеток каталога и «Моих торрентов»: шапка
+ * липкая и лежит поверх них, а на первую строку сетки, откуда в шапку попадают
+ * стрелкой вверх, прокрутка и так встаёт в ноль (isTopAnchoredTarget). Не для
+ * рядов-каруселей и не на старых браузерах: там шапка не липкая (legacy.css), и
+ * без прокрутки фокус ушёл бы на кнопку за краем экрана.
+ */
+function keepScrollForTopbar(target) {
+    if (!target || !target.classList || !target.classList.contains('home-nav-btn')) return false;
+    if (!window.UICustomizer || typeof UICustomizer.getCatalogPin !== 'function' || UICustomizer.getCatalogPin() !== 'top') return false;
+    if (document.documentElement.classList.contains('legacy-browser')) return false;
+    var s = AppState.currentScreen;
+    if (s === 'catalog') return typeof isCatalogRowsMode !== 'function' || !isCatalogRowsMode();
+    return s === 'torrents';
+}
+
+/**
  * Элементы, при фокусе на которых страница обязана стоять в самом верху:
  * кнопки липкой шапки #home-topbar и всё, что лежит в первой строке контента.
  * Иначе шапка наполовину перекрыта предыдущим рядом, а под ней виден обрезок.
  */
 function isTopAnchoredTarget(target) {
     if (!target || !target.classList) return false;
-    if (target.classList.contains('home-nav-btn')) return true;
+    if (target.classList.contains('home-nav-btn')) return !keepScrollForTopbar(target);
     // Настройки: левое меню и первый пункт открытого раздела — экран в самый
     // верх, иначе после прокрутки вниз и обратно заголовки раздела оставались
     // срезанными сверху (пункт-то виден, прокручивать «незачем»). Проверка —
@@ -5169,7 +5246,7 @@ function focusEl(el, opts) {
     } else {
         needScroll = el.id === 'back-from-detail' || el.id === 'catalog-watch-btn' || el.id === 'catalog-resume-btn' ||
             isTopAnchoredTarget(el) || isCatalogGridCard(el) || isCatalogRowCard(el);
-        if (!needScroll && container) needScroll = !isElementFullyVisible(el, container);
+        if (!needScroll && container && !keepScrollForTopbar(el)) needScroll = !isElementFullyVisible(el, container);
     }
 
     if (needScroll) {

@@ -327,14 +327,28 @@
                 }
             },
             keys: {
-                // Пульт целиком плагину (стрелки, ОК → событие key), пока не
-                // вернёт или пока не нажмут «Назад» — тот возвращает всегда
-                capture: function (on) { send({ type: 'capture', on: !!on }); }
+                // Пульт плагину (стрелки, ОК → событие key), пока не вернёт или пока
+                // не нажмут «Назад» — тот возвращает всегда. opts.keys — только эти
+                // кнопки (['up','down','left','right','enter','back']), остальные
+                // работают в приложении как обычно: например, стрелки свои, а ОК —
+                // приложения, которое запускает серию или открывает карточку
+                capture: function (on, opts) {
+                    var keys = opts && opts.keys ? [].concat(opts.keys).map(String) : null;
+                    send({ type: 'capture', on: !!on, keys: keys });
+                }
             },
             app: {
                 home: function () { return call('home', {}); },
                 screen: function () { return call('screen', {}); },
-                item: function (node) { return call('item', { h: hid(node) }); }
+                item: function (node) { return call('item', { h: hid(node) }); },
+                // Ряд главной по номеру (из TS.app.home()) — с любого экрана, фокус на
+                // карточку, где в ряду стояли
+                openRow: function (index) { return call('openRow', { index: +index }); },
+                // Категория каталога по ключу плитки (data-home-cat: movie, tv, anime…)
+                openCategory: function (key) { return call('openCategory', { key: String(key) }); },
+                // Рекомендуемые настройки «Внешнего вида» — в меню расширения появится
+                // «Применить рекомендуемые настройки». Сами по себе не применяются
+                recommend: function (settings) { send({ type: 'recommend', settings: settings || {} }); }
             }
         };
         window.TS = TS;
@@ -466,7 +480,10 @@
             // Мост к DOM: номера элементов, делегированные обработчики, откат
             // правок элементов приложения (при выключении плагина)
             nodes: [null], ids: window.WeakMap ? new WeakMap() : null, listeners: [], undo: [],
-            wantsNav: false, wantsHome: false
+            wantsNav: false, wantsHome: false,
+            // Переходы openRow/openCategory: когда плагину последний раз пришла кнопка
+            // пульта (key или nav) и не потрачен ли разовый переход на старте
+            keyAt: 0, startedAt: Date.now(), startOpen: true
         };
         running[p.id] = st;
         p.error = '';
@@ -493,7 +510,7 @@
         if (st.saveTimer) { clearTimeout(st.saveTimer); dbPut(id, st.data); }
         if (st.frame && st.frame.parentNode) st.frame.parentNode.removeChild(st.frame);
         if (st.styleEl && st.styleEl.parentNode) st.styleEl.parentNode.removeChild(st.styleEl);
-        if (captureOwner === id) captureOwner = null;
+        if (captureOwner === id) releaseCapture();
         revertDom(st);
         delete running[id];
         renderDetailExtras();
@@ -512,7 +529,11 @@
         try { st.frame.contentWindow.postMessage(msg, '*'); } catch (e) { }
     }
 
-    function emitTo(st, name, data) { if (st.ready) post(st, { type: 'event', name: name, data: data }); }
+    function emitTo(st, name, data) {
+        if (!st.ready) return;
+        if (name === 'key' || name === 'nav') st.keyAt = Date.now();
+        post(st, { type: 'event', name: name, data: data });
+    }
 
     function emitAll(name, data) {
         for (var id in running) if (running.hasOwnProperty(id)) emitTo(running[id], name, data);
@@ -643,6 +664,13 @@
         '#catalog-detail-actions > button:not(#catalog-favorite-btn), .back-btn';
     var QUERY_LIMIT = 500;
     var captureOwner = null;   // id плагина, которому отдан пульт
+    var captureKeys = null;    // какие кнопки отданы (null — все)
+
+    function releaseCapture() { captureOwner = null; captureKeys = null; }
+    var CAPTURE_DIRS = ['up', 'down', 'left', 'right', 'enter', 'back'];
+    var CAPTURE_SCAN = 32;     // сколько элементов списка keys вообще разбираем
+    // Что умеет этот мост — плагин сверяется с TS.info().features
+    var FEATURES = ['capture-keys', 'focus-home-row', 'open-row', 'open-category', 'recommend'];
 
     function handleOf(st, el) {
         if (st.ids) {
@@ -814,6 +842,93 @@
         return null;
     }
 
+    // Откуда расширение может увести на ряд главной или в категорию: только из
+    // разделов главной, каталога и «Моих торрентов», и только когда поверх ничего нет —
+    // ни карточки фильма или раздачи, ни окна, ни клавиатуры. Из настроек, плеера и
+    // поиска переходов нет: расширение не уводит человека оттуда само
+    var OPEN_FROM = { home: 1, catalog: 1, torrents: 1 };
+    // И только в ответ на человека: в пределах OPEN_AFTER_KEY_MS после кнопки пульта,
+    // пришедшей плагину (key или nav), — иначе плагин мог бы по таймеру раз за разом
+    // уводить на свой ряд. Разово — в первые OPEN_ON_START_MS после запуска плагина:
+    // открыть главную на выбранном разделе
+    var OPEN_AFTER_KEY_MS = 2000;
+    var OPEN_ON_START_MS = 20000;
+
+    function openAllowed(st) {
+        if (!OPEN_FROM[currentScreen()] || modal || panelPlugin) return false;
+        if (window.OSK && OSK.isOpen && OSK.isOpen()) return false;
+        var dv = document.getElementById('detail-view');
+        if (dv && typeof _isScreenVisible === 'function' && _isScreenVisible(dv)) return false;
+        var now = Date.now();
+        if (now - st.keyAt < OPEN_AFTER_KEY_MS) return true;
+        if (st.startOpen && now - st.startedAt < OPEN_ON_START_MS) { st.startOpen = false; return true; }
+        return false;
+    }
+
+    /** TS.app.openRow: ряд главной по номеру */
+    function openHomeRow(st, index) {
+        var i = parseInt(index, 10);
+        if (isNaN(i) || i < 0 || !window.HomeScreen || typeof HomeScreen.openRow !== 'function') throw new Error('Ряд недоступен');
+        if (!openAllowed(st)) throw new Error('Сейчас переход недоступен');
+        if (!HomeScreen.openRow(i)) throw new Error('Нет такого ряда');
+        return true;
+    }
+
+    /** TS.app.openCategory: категория каталога по ключу плитки (movie, tv, anime…) */
+    function openHomeCategory(st, key) {
+        key = String(key || '');
+        if (!/^[\w-]{1,40}$/.test(key) || !window.HomeScreen || typeof HomeScreen.openCategory !== 'function') {
+            throw new Error('Категория недоступна');
+        }
+        if (!openAllowed(st)) throw new Error('Сейчас переход недоступен');
+        if (!HomeScreen.openCategory(key)) throw new Error('Нет такой категории');
+        return true;
+    }
+
+    /**
+     * Рекомендации плагина: только ключи, которые «Внешний вид» разрешает рекомендовать,
+     * и только допустимые значения — их проверяет и приводит к виду настроек он сам
+     * (UICustomizer.recommendValue). Остальное отбрасывается
+     */
+    function cleanRecommend(settings) {
+        if (!settings || typeof settings !== 'object' || !window.UICustomizer ||
+            typeof UICustomizer.recommendKeys !== 'function') return null;
+        var keys = UICustomizer.recommendKeys(), out = {}, any = false;
+        for (var i = 0; i < keys.length; i++) {
+            if (!Object.prototype.hasOwnProperty.call(settings, keys[i])) continue;
+            var v = UICustomizer.recommendValue(keys[i], settings[keys[i]]);
+            if (v === undefined) continue;
+            out[keys[i]] = v;
+            any = true;
+        }
+        return any ? out : null;
+    }
+
+    /**
+     * Что из рекомендаций отличается от текущих настроек: { settings, text } — сами
+     * значения (копия) и подпись для меню («Колонки каталога: 3, Широкие карточки: вкл»)
+     */
+    function recommendChanges(rec) {
+        var cur = UICustomizer.get(), settings = {}, parts = [];
+        for (var k in rec) {
+            if (!Object.prototype.hasOwnProperty.call(rec, k) || String(cur[k]) === String(rec[k])) continue;
+            settings[k] = rec[k];
+            parts.push(typeof UICustomizer.recommendLabel === 'function' ? UICustomizer.recommendLabel(k, rec[k]) : k + ': ' + rec[k]);
+        }
+        return parts.length ? { settings: settings, text: parts.join(', ') } : null;
+    }
+
+    /** Рекомендации ещё не совпадают с текущими настройками — есть что применять */
+    function recommendPending(st) {
+        var rec = st && st.recommend;
+        if (!rec || !window.UICustomizer || typeof UICustomizer.get !== 'function') return false;
+        var cur = UICustomizer.get();
+        for (var k in rec) {
+            if (Object.prototype.hasOwnProperty.call(rec, k) && String(cur[k]) !== String(rec[k])) return true;
+        }
+        return false;
+    }
+
     function homeData(st) {
         var hs = homeState();
         if (!hs) return { ready: false, rows: [] };
@@ -908,7 +1023,11 @@
             }
             case 'focus': {
                 var target = needNode(st, a.h);
-                if (target.offsetParent === null) throw new Error('Элемент не виден');
+                // Карточки рядов главной, кроме показанного, спрятаны (home-row-hidden):
+                // фокус на такую карточку — переход в её ряд, его делает стратегия главной
+                var homeCard = currentScreen() === 'home' && target.isConnected &&
+                    target.classList.contains('catalog-row-card') && !!target.closest('#home-rows');
+                if (target.offsetParent === null && !homeCard) throw new Error('Элемент не виден');
                 // Через стратегию экрана, как пульт: на главной ряд запомнит
                 // колонку и сменит баннер
                 var s = typeof ScreenStrategies !== 'undefined' && ScreenStrategies[currentScreen()];
@@ -918,6 +1037,10 @@
             }
             case 'home':
                 return homeData(st);
+            case 'openRow':
+                return openHomeRow(st, a.index);
+            case 'openCategory':
+                return openHomeCategory(st, a.key);
             case 'screen':
                 return currentScreen();
             case 'item': {
@@ -1103,7 +1226,7 @@
                     st.ready = true;
                     post(st, {
                         type: 'init', src: st.url.href, storage: st.data,
-                        info: { id: p.id, appVersion: 1, platform: platformName() },
+                        info: { id: p.id, appVersion: 2, platform: platformName(), features: FEATURES.slice() },
                         focusColor: focusColor()
                     });
                     // Карточка уже открыта — пусть плагин узнает о ней сразу
@@ -1132,10 +1255,30 @@
                 if (m.on) {
                     // Не посреди просмотра и не поверх окон расширений
                     if (currentScreen() === 'player' || modal || panelPlugin) return;
+                    // Список кнопок проверяем до того, как отдать пульт: пустой или
+                    // целиком из неизвестных кнопок — ничего не захватываем (и не
+                    // отбираем захват у другого плагина)
+                    var keys = null;
+                    if (m.keys != null) {
+                        if (!Array.isArray(m.keys)) return;
+                        keys = [];
+                        // Длину не доверяем: смотрим не больше CAPTURE_SCAN элементов
+                        for (var ck = 0; ck < m.keys.length && ck < CAPTURE_SCAN && keys.length < CAPTURE_DIRS.length; ck++) {
+                            var kd = String(m.keys[ck]);
+                            if (CAPTURE_DIRS.indexOf(kd) !== -1 && keys.indexOf(kd) === -1) keys.push(kd);
+                        }
+                        if (!keys.length) return;
+                    }
                     captureOwner = st.id;
+                    captureKeys = keys;
                 } else if (captureOwner === st.id) {
-                    captureOwner = null;
+                    releaseCapture();
                 }
+                break;
+            case 'recommend':
+                // Только на время работы плагина: он присылает их при каждом запуске,
+                // и устаревшие рекомендации прежней версии не переживут обновление
+                st.recommend = cleanRecommend(m.settings);
                 break;
             case 'register':
                 if (m.name) p.name = m.name;
@@ -1382,7 +1525,7 @@
             // Экран сменился — захват пульта снят, плагин закрывает своё меню
             if (captureOwner) {
                 var owner = running[captureOwner];
-                captureOwner = null;
+                releaseCapture();
                 if (owner) emitTo(owner, 'key', 'back');
             }
         }
@@ -1467,15 +1610,22 @@
         var screen = currentScreen();
         if (captureOwner) {
             var cst = running[captureOwner];
-            if (!cst || screen === 'player') { captureOwner = null; }
-            else {
+            var taken = !captureKeys || captureKeys.indexOf(dir) !== -1;
+            if (!cst || screen === 'player') { releaseCapture(); }
+            else if (taken) {
                 e.preventDefault();
                 e.stopImmediatePropagation();
                 // «Назад» возвращает пульт приложению всегда: плагин, забывший
                 // отпустить захват, не запрёт человека в своём меню
-                if (dir === 'back') captureOwner = null;
+                if (dir === 'back') releaseCapture();
                 emitTo(cst, 'key', dir);
                 return;
+            } else if (dir === 'back') {
+                // «Назад» не в списке кнопок — работает в приложении как обычно, но
+                // пульт возвращается и тут: иначе захват держался бы до смены экрана,
+                // а на главной «Назад» экран не меняет. Плагину — тот же «back»
+                releaseCapture();
+                emitTo(cst, 'key', 'back');
             }
         }
         if (dir === 'back' || screen === 'player' || screen === 'config') return;
@@ -1800,11 +1950,16 @@
         if (!p) return;
         var info = p.error ? '<p class="ext-modal-error">⚠ ' + esc(p.error) + '</p>' :
             (p.description ? '<p class="ext-modal-desc">' + esc(p.description) + '</p>' : '');
+        // Рекомендации — снимком на момент открытия меню: применится ровно то, что
+        // человек видит в списке, даже если плагин пришлёт новые, пока меню открыто
+        var rec = p.enabled && recommendPending(running[id]) ? recommendChanges(running[id].recommend) : null;
+        if (rec) info += '<p class="ext-modal-desc">Рекомендует: ' + esc(rec.text) + '</p>';
         var el = openModal(
             '<div class="ext-modal-head">' + tileIcon(pluginTitle(p)) + '<div><h3>' + esc(pluginTitle(p)) + '</h3>' +
             '<div class="ext-modal-url">' + esc(p.url) + (p.version ? ' · версия ' + esc(p.version) : '') + '</div></div></div>' + info +
             '<div class="ext-modal-actions">' +
             (p.enabled && p.settings && running[id] ? '<button class="ext-modal-btn primary" data-act="open">Открыть</button>' : '') +
+            (rec ? '<button class="ext-modal-btn primary" data-act="recommend">Применить рекомендуемые настройки</button>' : '') +
             '<button class="ext-modal-btn' + (p.enabled ? '' : ' primary') + '" data-act="toggle">' + (p.enabled ? 'Выключить' : 'Включить') + '</button>' +
             '<button class="ext-modal-btn danger" data-act="remove">Удалить</button>' +
             '<button class="ext-modal-btn" data-act="cancel">Отмена</button></div>', from);
@@ -1820,6 +1975,14 @@
                 closeModal(true); uninstall(id); focusTile('add'); return;
             }
             if (act === 'toggle') { closeModal(true); setEnabled(id, !p.enabled); focusTile(id); return; }
+            if (act === 'recommend') {
+                // Только по нажатию человека: плагин настройки сам не меняет
+                closeModal(true);
+                if (rec && window.UICustomizer && typeof UICustomizer.set === 'function') UICustomizer.set(rec.settings);
+                setStatus('Применены настройки, рекомендованные «' + pluginTitle(p) + '»');
+                focusTile(id);
+                return;
+            }
             if (act === 'open') { closeModal(true); focusTile(id); openPluginSettings(id, document.querySelector('.focused')); }
         });
     }

@@ -3460,6 +3460,92 @@
         return true;
     }
 
+    /** Главная не только видна, но и экраном числится она (не прикрыта карточкой, см. goHome) */
+    function isHomeScreenActive() {
+        return isHomeVisible() && (!window.AppState || AppState.currentScreen === 'home');
+    }
+
+    /**
+     * Категория каталога по ключу плитки — для расширений (TS.app.openCategory).
+     * На главной — как ОК на плитке. Из сетки другой категории — сразу новая сетка,
+     * без возврата на главную (openCategory работает только на ней, и главная
+     * мелькала бы между двумя сетками); прежняя категория в стеке «назад» заменяется,
+     * и «назад» ведёт туда же, куда вела она (на главную или в ряды каталога). С
+     * остальных экранов (extensions.js пускает ещё только «Мои торренты») стек
+     * начинается заново: главная → категория.
+     */
+    function openCategoryByKey(catKey) {
+        var tile = null;
+        var tiles = document.querySelectorAll('#home-rows .home-cat-tile');
+        for (var i = 0; i < tiles.length; i++) {
+            if (tiles[i].dataset.homeCat === catKey) { tile = tiles[i]; break; }
+        }
+        if (!tile) return false;
+        var key = tile.dataset.homeKey, index = parseInt(tile.dataset.itemIndex, 10) || 0;
+        if (isHomeScreenActive()) return openCategory(catKey, key, index);
+        if (typeof window.loadCatalog !== 'function') return false;
+        // Эта категория уже открыта — сетку не перезагружаем (прокрутка и фокус на месте)
+        if (window.AppState && AppState.currentScreen === 'catalog' &&
+            typeof catalogState !== 'undefined' && catalogState.currentCatalog === catKey) return true;
+        homeState.lastRowKey = key;
+        homeState.lastColIndex = index;
+        if (window.Nav) {
+            var t = Nav.top();
+            var fromGrid = window.AppState && AppState.currentScreen === 'catalog' &&
+                t && t.screen === 'grid' && /^cat:/.test(String(t.data && t.data.key));
+            if (fromGrid) {
+                // Под прежней сеткой — то, куда «назад» вёл и она (главная или ряды
+                // каталога). Push снимет с этой записи снимок экрана, а экран сейчас —
+                // сетка: сохранённое при входе возвращаем на место
+                var below = Nav.pop('grid');
+                var saved = below ? below.restore : null;
+                Nav.push('grid', { key: 'cat:' + catKey, label: catKey });
+                if (below) below.restore = saved;
+            } else {
+                Nav.reset('home');
+                Nav.push('grid', { key: 'cat:' + catKey, label: catKey });
+            }
+        }
+        if (window.AppState) AppState.inSearch = 'catalog';
+        if (typeof catalogState !== 'undefined') catalogState.favoritesFromTopbar = false;
+        try { localStorage.removeItem('lastCatalogCardIndex'); } catch (e) { }
+        if ((!window.AppState || AppState.currentScreen !== 'catalog') && typeof window.showContentScreen === 'function') {
+            window.showContentScreen('catalog');
+        }
+        Promise.resolve(window.loadCatalog(catKey)).then(function () {
+            setTimeout(function () {
+                if (!window.AppState || AppState.currentScreen !== 'catalog') return;
+                if (typeof catalogState !== 'undefined' && catalogState.currentCatalog !== catKey) return;
+                if (typeof window.ensureCatalogFocus === 'function') window.ensureCatalogFocus(true);
+            }, HOME.FOCUS_DELAY_MS);
+        }, function (e) {
+            // Ошибку загрузки показывает сам каталог; здесь — только не терять её молча
+            console.warn('🏠 Категория ' + catKey + ' не загрузилась:', e && e.message);
+        });
+        return true;
+    }
+
+    /**
+     * Ряд главной по номеру — для расширений (TS.app.openRow), фокус на карточку, где
+     * в ряду стояли. Ряд может быть спрятан — focusCard его покажет. Не с главной —
+     * как «Главная» в шапке (goHome: стек «назад» с начала, главная экраном), а
+     * вернуть фокус она сама вернёт на запомненную карточку (restoreHomeFocus).
+     */
+    function openRowByIndex(index) {
+        var cards = homeState.rows[index];
+        if (!cards || !cards.length) return false;
+        var col = Math.max(0, Math.min(cards.length - 1, homeState.rowCols[index] || 0));
+        homeState.lastRowKey = homeState.rowKeys[index];
+        homeState.lastColIndex = col;
+        if (isHomeScreenActive()) {
+            focusCard(index, col);
+            return true;
+        }
+        if (window.Nav) Nav.reset('home');
+        showHome({ restoreFocus: true });
+        return true;
+    }
+
     function openHomeItem(item, key, index) {
         if (item && item.catKey) return openCategory(item.catKey, key, index);
         homeState.lastRowKey = key;
@@ -4969,6 +5055,8 @@
 
     window.HomeScreen = {
         show: showHome,
+        openCategory: openCategoryByKey,   // extensions.js: TS.app.openCategory
+        openRow: openRowByIndex,           // extensions.js: TS.app.openRow
         isActive: isHomeVisible,
         isFocusable: isHomeFocusable,
         ensureFocus: ensureHomeFocus,
