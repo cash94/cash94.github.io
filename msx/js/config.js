@@ -206,6 +206,9 @@ var AppState = {
   vidaaOsVersion: '',
   vidaaFirmware: '',
   vidaaDirectPlay: false,
+  // Запущены внутри установленного приложения VIDAA (ipk), а не в браузере ТВ —
+  // по метке ?tsapp=vidaa от запускалки (detectVidaaApp); UA='vidaa' у обоих
+  vidaaApp: false,
   lastFocusedElement: null,
   isSearch: false,
   inSearch: 'torrents',
@@ -568,20 +571,49 @@ function detectPlatform() {
 var _tizenApp = null;
 function detectTizenApp() {
   if (_tizenApp !== null) return _tizenApp;
+  _tizenApp = typeof window.tizen !== 'undefined' || takeAppMark('tizen');
+  return _tizenApp;
+}
+
+// Метка запускалки ?tsapp=<name> (Tizen, VIDAA). Запоминаем в sessionStorage
+// под общим ключом tsApp: значение у каждой платформы своё и сверяется целиком,
+// а не как булев «приложение». Из адреса метку убираем — все копии (запускалка
+// могла дописать её к адресу, где она уже была): иначе она попадёт в ссылки
+// «поделиться». Query разбираем по параметрам, а не регэкспом по строке: так
+// не остаётся висячих «?»/«&», а tsapp=vidaa2 не считается меткой.
+function takeAppMark(name) {
   var mark = false;
   try {
-    if (/[?&]tsapp=tizen(?:&|$)/.test(location.search)) {
-      sessionStorage.setItem('tsApp', 'tizen');
-      // Метку из адреса убираем: иначе она попадёт в ссылки «поделиться»
-      if (window.history && history.replaceState) {
-        var q = location.search.replace(/([?&])tsapp=tizen(&|$)/, function (m, a, b) { return b ? a : ''; }).replace(/[?&]$/, '');
-        history.replaceState(history.state, '', location.pathname + q + location.hash);
+    var search = location.search;
+    if (search.length > 1) {
+      var parts = search.slice(1).split('&'), keep = [], found = false;
+      for (var i = 0; i < parts.length; i++) {
+        if (parts[i] === 'tsapp=' + name) found = true;
+        else if (parts[i]) keep.push(parts[i]);
+      }
+      if (found) {
+        sessionStorage.setItem('tsApp', name);
+        if (window.history && history.replaceState) {
+          history.replaceState(history.state, '', location.pathname + (keep.length ? '?' + keep.join('&') : '') + location.hash);
+        }
       }
     }
-    mark = sessionStorage.getItem('tsApp') === 'tizen';
+    mark = sessionStorage.getItem('tsApp') === name;
   } catch (e) { }
-  _tizenApp = typeof window.tizen !== 'undefined' || mark;
-  return _tizenApp;
+  return mark;
+}
+
+// Приложение TorrStream для Hisense VIDAA (ipk-запускалка) — как Tizen: UA
+// («VIDAA») одинаков у приложения и у браузера телевизора, а функции Hisense_*
+// прошивка кладёт в обе страницы. Единственный надёжный признак «я внутри
+// приложения» — метка ?tsapp=vidaa, её добавляет запускалка (TorrStream-Vidaa:
+// app/index.html). Помним в sessionStorage: переживёт перезагрузку страницы, а
+// в обычный браузер ТВ метка не попадёт (см. takeAppMark).
+var _vidaaApp = null;
+function detectVidaaApp() {
+  if (_vidaaApp !== null) return _vidaaApp;
+  _vidaaApp = takeAppMark('vidaa');
+  return _vidaaApp;
 }
 
 // Версия Tizen и модель телевизора — для «Об устройстве». Версию Samsung пишет
@@ -772,13 +804,15 @@ if (AppState.platform === 'tizen') {
 }
 (function () {
   var vidaa = detectVidaaInfo();
+  AppState.vidaaApp = detectVidaaApp();
   AppState.vidaaOsVersion = vidaa.os;
   AppState.vidaaFirmware = vidaa.firmware;
   // Прямой режим (как «Полностью отключить транскодирование») на VIDAA 9.5+
   // включает app.js (setupCheckboxes: directPlay)
   AppState.vidaaDirectPlay = vidaa.version >= VIDAA_DIRECT_PLAY_MIN;
-  if (vidaa.os || vidaa.firmware) {
+  if (vidaa.os || vidaa.firmware || AppState.vidaaApp) {
     console.log('📺 VIDAA ' + (vidaa.os || '?') + ', прошивка ' + (vidaa.firmware || '?') +
+      (AppState.vidaaApp ? ' — приложение' : '') +
       (AppState.vidaaDirectPlay ? ' — прямой режим плеера' : ''));
   }
 })();
@@ -943,7 +977,9 @@ window.addEventListener('keydown', function (e) {
 // ничего. Перед выходом встроенный TorrServer гасим сразу (галка «Выключать
 // TorrServer при выходе»), не дожидаясь сторожа watch.sh — тот ловит выход
 // только через 30–45 с. В приложении для Tizen — так же (выход через
-// tizen.application, см. exitApp).
+// tizen.application, см. exitApp). В приложении VIDAA (ipk-запускалка) — тоже:
+// «Назад» с главной там никуда не ведёт. В браузере VIDAA (без метки
+// ?tsapp=vidaa) удержание ничего не делает — закрывать там нечего.
 var BACK_HOLD_EXIT_MS = 1000;
 var backHoldTimer = null;
 var backHoldKey = 0;
@@ -953,7 +989,7 @@ function cancelBackHoldExit() {
 }
 
 function startBackHoldExit(kc) {
-  if ((AppState.platform !== 'webos' && !AppState.tizenApp) || backHoldTimer) return;
+  if ((AppState.platform !== 'webos' && !AppState.tizenApp && !AppState.vidaaApp) || backHoldTimer) return;
   // Удержание «⌫» на встроенной клавиатуре и в поле ввода — это стирание
   if (window.OSK && typeof OSK.isOpen === 'function' && OSK.isOpen()) return;
   if (isTextEntryElement(document.activeElement)) return;
@@ -986,6 +1022,9 @@ function exitApp() {
     try {
       if (window.tizen && tizen.application) { tizen.application.getCurrentApplication().exit(); return; }
     } catch (e) { }
+    // webOS и VIDAA: window.close() у веб-приложения — выход. На VIDAA страница
+    // сервера открыта в окне приложения через location.replace из запускалки
+    // (другого окна-родителя нет). На живом VIDAA не проверено
     try { window.close(); } catch (e) { }
   };
   // Ответа Homebrew Channel ждём не дольше 2,5 с — выход важнее

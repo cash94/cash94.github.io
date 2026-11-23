@@ -135,6 +135,7 @@ var AppState = {
   vidaaOsVersion: '',
   vidaaFirmware: '',
   vidaaDirectPlay: false,
+  vidaaApp: false,
   lastFocusedElement: null,
   isSearch: false,
   inSearch: 'torrents',
@@ -362,21 +363,36 @@ function detectPlatform() {
 var _tizenApp = null;
 function detectTizenApp() {
   if (_tizenApp !== null) return _tizenApp;
+  _tizenApp = typeof window.tizen !== 'undefined' || takeAppMark('tizen');
+  return _tizenApp;
+}
+function takeAppMark(name) {
   var mark = false;
   try {
-    if (/[?&]tsapp=tizen(?:&|$)/.test(location.search)) {
-      sessionStorage.setItem('tsApp', 'tizen');
-      if (window.history && history.replaceState) {
-        var q = location.search.replace(/([?&])tsapp=tizen(&|$)/, function (m, a, b) {
-          return b ? a : '';
-        }).replace(/[?&]$/, '');
-        history.replaceState(history.state, '', location.pathname + q + location.hash);
+    var search = location.search;
+    if (search.length > 1) {
+      var parts = search.slice(1).split('&'),
+        keep = [],
+        found = false;
+      for (var i = 0; i < parts.length; i++) {
+        if (parts[i] === 'tsapp=' + name) found = true;else if (parts[i]) keep.push(parts[i]);
+      }
+      if (found) {
+        sessionStorage.setItem('tsApp', name);
+        if (window.history && history.replaceState) {
+          history.replaceState(history.state, '', location.pathname + (keep.length ? '?' + keep.join('&') : '') + location.hash);
+        }
       }
     }
-    mark = sessionStorage.getItem('tsApp') === 'tizen';
+    mark = sessionStorage.getItem('tsApp') === name;
   } catch (e) {}
-  _tizenApp = typeof window.tizen !== 'undefined' || mark;
-  return _tizenApp;
+  return mark;
+}
+var _vidaaApp = null;
+function detectVidaaApp() {
+  if (_vidaaApp !== null) return _vidaaApp;
+  _vidaaApp = takeAppMark('vidaa');
+  return _vidaaApp;
 }
 function detectTizenInfo() {
   var info = {
@@ -503,11 +519,12 @@ if (AppState.platform === 'tizen') {
 }
 (function () {
   var vidaa = detectVidaaInfo();
+  AppState.vidaaApp = detectVidaaApp();
   AppState.vidaaOsVersion = vidaa.os;
   AppState.vidaaFirmware = vidaa.firmware;
   AppState.vidaaDirectPlay = vidaa.version >= VIDAA_DIRECT_PLAY_MIN;
-  if (vidaa.os || vidaa.firmware) {
-    console.log('📺 VIDAA ' + (vidaa.os || '?') + ', прошивка ' + (vidaa.firmware || '?') + (AppState.vidaaDirectPlay ? ' — прямой режим плеера' : ''));
+  if (vidaa.os || vidaa.firmware || AppState.vidaaApp) {
+    console.log('📺 VIDAA ' + (vidaa.os || '?') + ', прошивка ' + (vidaa.firmware || '?') + (AppState.vidaaApp ? ' — приложение' : '') + (AppState.vidaaDirectPlay ? ' — прямой режим плеера' : ''));
   }
 })();
 if (window.AndroidJS) document.documentElement.classList.add('android-app');
@@ -593,7 +610,7 @@ function cancelBackHoldExit() {
   }
 }
 function startBackHoldExit(kc) {
-  if (AppState.platform !== 'webos' && !AppState.tizenApp || backHoldTimer) return;
+  if (AppState.platform !== 'webos' && !AppState.tizenApp && !AppState.vidaaApp || backHoldTimer) return;
   if (window.OSK && typeof OSK.isOpen === 'function' && OSK.isOpen()) return;
   if (isTextEntryElement(document.activeElement)) return;
   backHoldKey = kc;

@@ -2887,6 +2887,7 @@ function deviceAppName() {
   if (window.AndroidJS) return 'Android-приложение TorrStream';
   if (AppState.platform === 'webos') return 'Приложение TorrStream для webOS';
   if (AppState.tizenApp) return 'Приложение TorrStream для Tizen';
+  if (AppState.vidaaApp) return 'Приложение TorrStream для VIDAA';
   return 'Браузер (web)';
 }
 
