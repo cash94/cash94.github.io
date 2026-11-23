@@ -127,14 +127,14 @@
       "css/flex-gap-fallback.css": "8acd2bbb",
       "css/inter.css": "4f905e88",
       "css/legacy.css": "100d5c5a",
-      "css/styles.css": "c4cf93e5",
+      "css/styles.css": "6859f751",
       "css/uicons-regular-rounded.css": "feee56fb",
       "css/uicons-thin-chubby.css": "1d6159cb",
       "css/uicons-thin-rounded.css": "365fbd61",
       "js-legacy/legacy-polyfills.js": "e0e9de38",
       "js/account.js": "65c22e09",
       "js/animations.js": "f5352ec9",
-      "js/app.js": "a11790a8",
+      "js/app.js": "3ed125df",
       "js/best-torrents-pick.js": "cd63487a",
       "js/best-torrents.js": "b0a98d04",
       "js/catalog-idb-patch.js": "72557f9c",
@@ -146,9 +146,10 @@
       "js/catalog.js": "3edef618",
       "js/category-banners.js": "46ea538e",
       "js/config.js": "b1ec03c7",
-      "js/control.js": "99289117",
+      "js/control.js": "de543f9e",
       "js/donate.js": "7d86fb27",
       "js/episode-picker.js": "a5064462",
+      "js/extensions.js": "e1077019",
       "js/favorites-db.js": "8772a3b7",
       "js/home.js": "acca39e4",
       "js/magnet-store.js": "773f87d4",
@@ -668,6 +669,9 @@
             <div class="menu-item" data-tab="sync-tab" id="sync-tab" hidden style="display: none;">
               <i class="fi fi-rr-refresh"></i><span>Синхронизация</span>
             </div>
+            <div class="menu-item" data-tab="extensions-tab" id="extensions-tab">
+              <i class="fi fi-rr-puzzle"></i><span>Расширения</span>
+            </div>
             <div class="menu-item" data-tab="other-tab" id="other-tab">
               <i class="fi fi-rr-settings-sliders"></i><span>Прочее</span>
             </div>
@@ -1048,6 +1052,43 @@
                 <button class="btn" id="clear-history-settings-btn">Очистить историю</button>
               </div>
               <div id="clear-history-status" class="settings-status-text" hidden></div>
+            </div>
+          </div>
+
+          <!-- Расширения (js/extensions.js): плагины в изолированной песочнице.
+               Список строит renderSettings, каталог — extensions/catalog.json зеркала -->
+          <div id="extensions-tab-content" class="tab-content" style="display: none;">
+            <div class="settings-section">
+              <h2>Расширения</h2>
+              <p class="settings-lead">Плагины добавляют кнопки в карточку, свои окна и оформление. Каждый работает в изолированной песочнице: не видит паролей, входа в учётку и адресов серверов, не может обращаться к серверу TorrStream, TorrServer и устройствам домашней сети.</p>
+              <!-- Как откатить — наверху, чтобы было видно на любом экране. В настройках
+                   расширения не действуют (extensions.js: suspendInSettings), поэтому
+                   выключить их отсюда можно всегда, в том числе в приложениях ТВ, где
+                   адресной строки для ?noext=1 нет -->
+              <div class="ext-safe-note">
+                <p><b>Что-то сломалось после установки?</b> В настройках расширения не действуют — выключите или удалите проблемное здесь. В браузере можно открыть TorrStream с <b>?noext=1</b> в адресе: расширения не запустятся вовсе.</p>
+                <div class="action-row">
+                  <button class="btn" id="extensions-disable-all">Выключить все расширения</button>
+                </div>
+              </div>
+              <!-- Ряды плиток прокручиваются как ряды главной: вьюпорт
+                   .catalog-row-viewport + scrollRowToCard (control.js). Плитки —
+                   .settings-chip в .settings-chips: пульт ходит по ним как по ряду
+                   вариантов (handleConfigNavigation, control.js) -->
+              <div class="catalog-row-viewport ext-row-viewport">
+                <div class="settings-chips ext-grid" id="extensions-installed"></div>
+              </div>
+              <div class="ext-hint">
+                <b>◄►▲▼</b> — перемещение · <b>OK</b> — открыть · <b>удержание OK</b> — удалить · <b>Назад</b> — отмена
+              </div>
+              <div id="extensions-status" class="settings-status-text" hidden></div>
+            </div>
+            <div class="settings-section settings-group">
+              <h2 class="settings-group-title">Каталог</h2>
+              <p class="settings-lead settings-group-description">Проверенные расширения — установка одним нажатием.</p>
+              <div class="catalog-row-viewport ext-row-viewport">
+                <div class="settings-chips ext-grid" id="extensions-catalog"></div>
+              </div>
             </div>
           </div>
 
@@ -1664,6 +1705,8 @@
     // Главная страница — последней: патчит showContentScreen / restoreFocusAfterNavigation
     // из app.js и closeDonateOverlay из donate.js, поэтому грузится после них
     document.write('<script src="https://cash94.github.io/msx/js/home.js?v=' + assetV('js/home.js') + '"><\/script>');
+    // Расширения — после главной: плагины стартуют, когда интерфейс уже собран
+    document.write('<script src="https://cash94.github.io/msx/js/extensions.js?v=' + assetV('js/extensions.js') + '"><\/script>');
     // Samsung Tizen: карточки Smart Hub Preview (как каналы Android TV) и
     // открытие карточки по нажатию на них. Только в приложении (есть Device API)
     if (window.tizen) document.write('<script src="https://cash94.github.io/msx/js/tizen-preview.js?v=' + assetV('js/tizen-preview.js') + '"><\/script>');

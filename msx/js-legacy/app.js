@@ -1800,10 +1800,6 @@ function setupCheckboxes() {
   var container = '';
   var autoSkipCheckbox = getEl('auto-skip-intro');
   if (autoSkipCheckbox) {
-    if (window.AndroidJS) {
-      var autoSkipContainer = autoSkipCheckbox.closest('.checkbox-container');
-      if (autoSkipContainer) autoSkipContainer.classList.add('hidden');
-    }
     AppState.autoSkipIntro = localStorage.getItem('autoSkipIntro') === 'true';
     autoSkipCheckbox.checked = AppState.autoSkipIntro;
     autoSkipCheckbox.addEventListener('change', function (e) {

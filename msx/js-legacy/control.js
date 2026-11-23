@@ -1073,7 +1073,7 @@ function getDetailFileEntry(fi) {
   return fi[0];
 }
 function getConfigMenuItems() {
-  var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'account-tab', 'sync-tab', 'other-tab', 'device-tab'];
+  var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'account-tab', 'sync-tab', 'extensions-tab', 'other-tab', 'device-tab'];
   var visibleItems = [];
   for (var i = 0; i < ids.length; i++) {
     var element = getEl(ids[i]);
@@ -2359,7 +2359,7 @@ function updateFocusableElements() {
     return;
   }
   if (screen === 'config') {
-    var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'account-tab', 'sync-tab', 'other-tab', 'device-tab'];
+    var ids = ['torrserver-tab', 'torrents-tab', 'player-tab', 'appearance-tab', 'account-tab', 'sync-tab', 'extensions-tab', 'other-tab', 'device-tab'];
     var cfg = document.querySelectorAll('.settings-btn');
     for (var i = 0; i < ids.length; i++) {
       var e = getEl(ids[i]);
@@ -2411,7 +2411,7 @@ function setFocus(index) {
     window.lastSelectedTorrentIndex = lastSelectedTorrentIndex;
   }
   if (document.activeElement && document.activeElement.tagName === 'INPUT') {
-    var allowed = ['search-query', 'torrserver-url', 'auth-login', 'auth-password', 'jacred-url', 'jacred-apikey'];
+    var allowed = ['search-query', 'torrserver-url', 'auth-login', 'auth-password', 'jacred-url', 'jacred-apikey', 'extensions-url'];
     if (allowed.indexOf(element.id) === -1) document.activeElement.blur();
   }
 }

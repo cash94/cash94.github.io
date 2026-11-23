@@ -2318,14 +2318,12 @@ function setupCheckboxes() {
   setupExternalPlayerCheckbox();
   var container = '';
 
-  // Автопропуск заставки и титров. В Android-приложении плеер внешний и кнопки
-  // пропуска там нет — настройку прячем, как и соседние плеерные.
+  // Автопропуск заставки и титров. В Android-приложении его выполняет
+  // встроенный плеер (auto_skip в openAndroidPlayer, с 1.1.31) — галку не
+  // прячем; переключённый в шестерёнке плеера, он возвращается сюда через
+  // setAutoSkip из MainActivity.
   var autoSkipCheckbox = getEl('auto-skip-intro');
   if (autoSkipCheckbox) {
-    if (window.AndroidJS) {
-      var autoSkipContainer = autoSkipCheckbox.closest('.checkbox-container');
-      if (autoSkipContainer) autoSkipContainer.classList.add('hidden');
-    }
     AppState.autoSkipIntro = localStorage.getItem('autoSkipIntro') === 'true';
     autoSkipCheckbox.checked = AppState.autoSkipIntro;
     autoSkipCheckbox.addEventListener('change', function (e) {

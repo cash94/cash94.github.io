@@ -15719,3 +15719,543 @@ html.apple-tv-ui #loading-player-overlay {
     margin-bottom: calc(var(--cs) * 0.5);
   }
 }
+
+/* ==================== РАСШИРЕНИЯ (js/extensions.js) ==================== */
+/* Песочницы плагинов живут невидимыми; открытое окно — во весь экран под
+   шапкой приложения. Iframe не переносим по DOM (перенос перезагружает его
+   документ) — только меняем класс. */
+#ext-host .ext-frame {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  border: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+#ext-host .ext-frame.open {
+  top: 64px;
+  width: 100%;
+  height: calc(100% - 64px);
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  z-index: 10001;
+  background: #141414;
+}
+
+.ext-panel-head {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 64px;
+  z-index: 10002;
+  box-sizing: border-box;
+  padding: 0 32px;
+  -webkit-align-items: center;
+  align-items: center;
+  background: #1f1f1f;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 20px;
+}
+
+.ext-panel-head.open {
+  display: -webkit-flex;
+  display: flex;
+}
+
+.ext-panel-title {
+  -webkit-flex: 1;
+  flex: 1;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ext-panel-hint {
+  margin: 0 24px;
+  opacity: 0.6;
+  font-size: 16px;
+}
+
+.ext-panel-close {
+  cursor: pointer;
+  font-size: 24px;
+  padding: 8px;
+}
+
+/* Кнопки расширений в «сцене» — круглые, как соседние (подпись под кнопкой в фокусе) */
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn {
+  width: calc(var(--cs) * 2.9);
+  padding: 0 !important;
+  font-size: 0 !important;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #fff !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn.focused {
+  background: #fff !important;
+  color: #000 !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn::before {
+  content: none !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn .ext-detail-icon {
+  font-size: calc(var(--cs) * 1.15);
+  line-height: 1;
+  vertical-align: middle;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn::after {
+  content: attr(data-label);
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  margin-top: calc(var(--cs) * 0.5);
+  -webkit-transform: translateX(-50%);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: calc(var(--cs) * 0.72);
+  font-weight: 600;
+  line-height: 1.2;
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+  opacity: 0;
+  pointer-events: none;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn.focused::after {
+  opacity: 1;
+}
+
+.ext-detail-btn .ext-detail-icon {
+  margin-right: 0.35em;
+  vertical-align: -0.12em;
+}
+
+#detail-view.detail-cinema .ext-detail-btn .ext-detail-icon {
+  margin-right: 0;
+}
+
+.ext-detail-block {
+  margin: 0 0 1em;
+  color: rgba(255, 255, 255, 0.9);
+  max-width: 60em;
+}
+
+/* «Сцена» — колонка flex с явным order (шапка 1, описание 2, оценки и
+   кнопки 3): блок расширения — под описанием, не выше трёх строк, чтобы
+   кнопки не уехали за низ экрана */
+#detail-view.catalog-detail-mode.detail-cinema .ext-detail-block {
+  -webkit-order: 2;
+  order: 2;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  max-height: calc(var(--cs) * 0.85 * 1.4 * 3);
+  margin: calc(var(--cs) * -0.6) 0 calc(var(--cs) * 1.2);
+  font-size: calc(var(--cs) * 0.85);
+  line-height: 1.4;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+/* Раздел настроек — плитки в стиле менеджера приложений red.app */
+/* Одна строка с прокруткой влево-вправо, как ряды главной: прокручивается
+   вьюпорт .catalog-row-viewport (общие стили рядов), его ведёт
+   scrollRowToCard из control.js. Отступы вьюпорта — место под увеличение
+   плитки в фокусе (scale), иначе её срежет overflow. */
+#config-screen .ext-row-viewport {
+  margin: 0 0 0 -8px;
+  padding: 12px 8px 4px;
+}
+
+#config-screen .ext-grid {
+  -webkit-flex-wrap: nowrap;
+  flex-wrap: nowrap;
+  margin: 0;
+}
+
+/* Распорка в конце ряда. Правый padding вьюпорта и margin последней плитки
+   Chrome в прокрутку не включает: прокрученный до упора ряд ставил крайнюю
+   плитку вплотную к краю, и рамку фокуса (scale) срезало справа */
+#config-screen .ext-grid::after {
+  content: '';
+  -webkit-flex: none;
+  flex: none;
+  width: 14px;
+  height: 1px;
+}
+
+/* Плитка — как карточка главной: рамка с значком сверху, название под ней
+   (marquee-text: длинное проезжает бегущей строкой у плитки в фокусе —
+   applyTitleMarquee в control.js, её зовёт focusEl) */
+#config-screen .settings-chip.ext-tile {
+  position: relative;
+  -webkit-flex: none;
+  flex: none;
+  width: 168px;
+  margin: 0 18px 8px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: #e8edf4;
+  font-weight: 400;
+  text-align: center;
+}
+
+/* Фокус — только рамкой самой плитки (.ext-tile-box), без общего кольца
+   .focused вокруг всей кнопки вместе с подписью */
+#config-screen .settings-chip.ext-tile:hover,
+#config-screen .settings-chip.ext-tile.focused {
+  background: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  transform: none !important;
+}
+
+.ext-tile-box {
+  position: relative;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-flex-direction: column;
+  flex-direction: column;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  height: 116px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border-radius: 16px;
+  border: 3px solid transparent;
+  background: #1d242f;
+  background: linear-gradient(160deg, #202836, #141a22);
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s, opacity 0.17s;
+}
+
+.ext-tile:hover .ext-tile-box {
+  border-color: #2b3543;
+}
+
+.ext-tile.focused .ext-tile-box {
+  border-color: var(--focus-color, #ff8c00);
+  transform: scale(1.06);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
+.ext-tile.add .ext-tile-box {
+  border: 3px dashed #2b3543;
+  background: #141922;
+}
+
+.ext-tile.add.focused .ext-tile-box {
+  border-color: var(--focus-color, #ff8c00);
+}
+
+#config-screen .ext-tile.is-off .ext-tile-box {
+  opacity: 0.55;
+}
+
+#config-screen .ext-tile.is-off.focused .ext-tile-box {
+  opacity: 1;
+}
+
+#config-screen .ext-tile.removing {
+  transform: scale(0.6);
+  opacity: 0;
+  transition: transform 0.17s, opacity 0.17s;
+}
+
+.ext-tile .ext-tile-name {
+  display: block;
+  margin-top: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #cfd4dc;
+}
+
+.ext-tile.focused .ext-tile-name {
+  color: #fff;
+}
+
+.ext-tile-icon {
+  display: block;
+  -webkit-flex: none;
+  flex: none;
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 8px;
+  border-radius: 14px;
+  line-height: 52px;
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+  text-align: center;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.ext-plus {
+  display: block;
+  -webkit-flex: none;
+  flex: none;
+  width: 52px;
+  height: 52px;
+  margin: 0 auto;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 3px dashed #8b98ab;
+  line-height: 44px;
+  font-size: 30px;
+  color: #8b98ab;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.ext-tile.add.focused .ext-plus {
+  border-color: var(--focus-color, #ff8c00);
+  color: var(--focus-color, #ff8c00);
+}
+
+.ext-tile-sub {
+  display: block;
+  max-width: 100%;
+  font-size: 12px;
+  color: #8b98ab;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ext-tile.has-error .ext-tile-sub {
+  color: #ff8a80;
+}
+
+.ext-tile.is-installed .ext-tile-sub {
+  color: #6fd39b;
+}
+
+/* Удержание ОК — полоска заполняется, по её концу плитка удаляется */
+.ext-holdbar {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: 8px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+  opacity: 0;
+}
+
+.ext-holdbar i {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: #ff4d5e;
+}
+
+.ext-tile.holding .ext-holdbar {
+  opacity: 1;
+}
+
+.ext-tile.holding .ext-holdbar i {
+  width: 100%;
+  transition: width 1.2s linear;
+}
+
+.ext-hint {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #8b98ab;
+}
+
+.ext-safe-note {
+  margin: 0 0 14px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: rgba(255, 196, 0, 0.08);
+  border: 1px solid rgba(255, 196, 0, 0.3);
+  color: #e8edf4;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.ext-safe-note p {
+  margin: 0 0 10px;
+}
+
+.ext-safe-note .action-row {
+  margin: 0;
+}
+
+.ext-hint b {
+  color: #e8edf4;
+}
+
+#extensions-status.is-error {
+  color: #ff8a80;
+}
+
+/* Модальное окно «Добавить» и меню расширения */
+.ext-modal {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 10, 14, 0.72);
+}
+
+.ext-modal-box {
+  width: 520px;
+  max-width: calc(100% - 32px);
+  box-sizing: border-box;
+  padding: 26px 24px 24px;
+  border-radius: 16px;
+  background: #161b23;
+  border: 1px solid #262e3a;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  color: #e8edf4;
+}
+
+.ext-modal-box h3 {
+  margin: 0 0 16px;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.ext-modal-label {
+  display: block;
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: #8b98ab;
+}
+
+.ext-modal-opt {
+  opacity: 0.7;
+}
+
+.ext-modal-box .ext-modal-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 2px solid #262e3a;
+  background: #10141a;
+  color: #e8edf4;
+  font-size: 16px;
+}
+
+.ext-modal-box .ext-modal-input.focused,
+.ext-modal-box .ext-modal-input:focus {
+  border-color: var(--focus-color, #ff8c00);
+  outline: none;
+}
+
+.ext-modal-error {
+  margin: 0 0 12px;
+  color: #ff8a80;
+  font-size: 14px;
+}
+
+.ext-modal-note,
+.ext-modal-desc {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #8b98ab;
+}
+
+.ext-modal-desc {
+  font-size: 15px;
+  color: #cfd4dc;
+}
+
+.ext-modal-head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.ext-modal-head .ext-tile-icon {
+  margin: 0 14px 0 0;
+  flex: none;
+}
+
+.ext-modal-head h3 {
+  margin: 0 0 2px;
+}
+
+.ext-modal-url {
+  font-size: 12px;
+  color: #8b98ab;
+  word-break: break-all;
+}
+
+.ext-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin: 4px -12px -12px 0;
+}
+
+.ext-modal-btn {
+  margin: 0 12px 12px 0;
+  padding: 10px 20px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: #222a36;
+  color: #e8edf4;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ext-modal-btn.primary {
+  background: var(--focus-color, #ff8c00);
+  color: #fff;
+}
+
+.ext-modal-btn.danger.armed {
+  background: #c62f3f;
+  color: #fff;
+}
+
+.ext-modal-btn.focused {
+  border-color: #fff;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.25);
+}
+
+/* Телефон: плитки поменьше, по три в ряд */
+@media (max-width: 600px) {
+  #config-screen .settings-chip.ext-tile {
+    width: 136px;
+    margin: 0 12px 8px 0;
+  }
+
+  .ext-tile-box {
+    height: 100px;
+  }
+}
