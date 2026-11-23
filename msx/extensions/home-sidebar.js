@@ -268,12 +268,22 @@ var scaled = false;
 
 function scaleCards() {
   if (scaled) return;
+  // Мерить — только когда главная на экране: под настройками или карточкой фильма
+  // её раскладка другая, и замер оттуда навсегда дал бы неверные размеры
+  TS.app.screen().then(function (s) { if (s === 'home') measureAndScale(); }).catch(function () { });
+}
+
+function measureAndScale() {
+  if (scaled) return;
   Promise.all([
     TS.dom.query('#home-hero', { limit: 1, rect: true, text: false }),
     TS.dom.query('#home-rows .catalog-row-card.home-card', { limit: 60, rect: true, text: false })
   ]).then(function (r) {
     var hero = r[0][0], card = null;
-    r[1].forEach(function (c) { if (!card && c.visible && c.rect && c.rect.w > 0 && c.rect.h > 0) card = c; });
+    // Карточку под фокусом не берём: её подрастание при фокусе (transform) попало бы в замер
+    r[1].forEach(function (c) {
+      if (!card && !c.focused && c.visible && c.rect && c.rect.w > 0 && c.rect.h > 0) card = c;
+    });
     if (scaled || !hero || !hero.visible || !hero.rect || !card) return;
     return TS.dom.query('.torrent-poster', { root: card.h, limit: 1, rect: true, text: false }).then(function (p) {
       var poster = p[0];
