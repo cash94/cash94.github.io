@@ -658,7 +658,11 @@ function holdPreloadScreen() {
  * раздачи или выдачу поиска. Держим экран, пока страница не уйдёт на задний
  * план (visibilitychange → hidden, pagehide), и снимаем мгновенно — вернувшись
  * из плеера, его уже не увидеть. Плеер так и не открылся (закрыли окно выбора
- * плеера) — экран уходит сам через PRELOAD_EXTERNAL_HOLD_MS.
+ * плеера) — экран уходит сам через PRELOAD_EXTERNAL_HOLD_MS. Отсчёт идёт от
+ * открытия плеера (armExternalPreloadHold из player.js), а не от конца
+ * предзагрузки: до плеера ещё собираются серии, позиция и заголовок, и при
+ * старте с таймкода это секунды — экран уходил раньше, чем открывался плеер.
+ * До того страхует PRELOAD_HOLD_MAX_MS.
  */
 var PRELOAD_EXTERNAL_HOLD_MS = 5000;
 
@@ -674,11 +678,19 @@ function holdPreloadUntilHidden() {
   };
   preloadHold = {
     onHide: onHide,
-    timer: setTimeout(function () { releasePreloadScreen(false); }, PRELOAD_EXTERNAL_HOLD_MS)
+    timer: setTimeout(function () { releasePreloadScreen(false); }, PRELOAD_HOLD_MAX_MS)
   };
   document.addEventListener('visibilitychange', onHide);
   window.addEventListener('pagehide', onHide);
 }
+
+/** Внешний плеер сейчас откроется — экран ждёт его не дольше PRELOAD_EXTERNAL_HOLD_MS */
+function armExternalPreloadHold() {
+  if (!preloadHold || !preloadHold.onHide) return;
+  clearTimeout(preloadHold.timer);
+  preloadHold.timer = setTimeout(function () { releasePreloadScreen(false); }, PRELOAD_EXTERNAL_HOLD_MS);
+}
+window.armExternalPreloadHold = armExternalPreloadHold;
 
 /** Видна ли чёрная прослойка плеера: «Воспроизведение…» или «Подготовка потока…» */
 function playerOverlaysBusy() {
@@ -719,8 +731,35 @@ function releasePreloadScreen(immediate) {
 }
 window.releasePreloadScreen = releasePreloadScreen;
 
+/**
+ * Экран держится до первого кадра (или до ухода под внешний плеер), а плеера
+ * ещё нет: запуск идёт — серии, позиция, метаданные потока. Пульт экрану под
+ * ним не отдаём: раньше, особенно при старте с таймкода, где прогрева нет и
+ * экран сразу переходит в это состояние, под ним можно было листать список и
+ * даже запустить другое. «Назад» — отмена запуска, как в самом окне.
+ */
+function preloadHoldBlocksKeys() {
+  return !!preloadHold && !preloadHold.seenPlayer && AppState.currentScreen !== 'player';
+}
+
+function onPreloadHoldKeyDown(e) {
+  var kc = e.keyCode || e.which;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  preloadSwallowKeyup = true;
+  var isBack = e.key === 'Escape' || (typeof isBackKey === 'function' ? isBackKey(kc) : kc === 27 || kc === 8);
+  if (!isBack) return;
+  console.log('⏹️ Запуск отменён');
+  releasePreloadScreen(true);
+  if (typeof cancelPlaybackLaunch === 'function') cancelPlaybackLaunch();
+  else if (typeof cancelCurrentPlayback === 'function') cancelCurrentPlayback();
+}
+
 function onPlaybackPreloadKeyDown(e) {
-  if (!activePlaybackPreload) return;
+  if (!activePlaybackPreload) {
+    if (preloadHoldBlocksKeys()) onPreloadHoldKeyDown(e);
+    return;
+  }
   var kc = e.keyCode || e.which;
   e.preventDefault();
   e.stopImmediatePropagation();

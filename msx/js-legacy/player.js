@@ -1572,7 +1572,7 @@ function _seekStream() {
                 throw error;
               }
             });
-            return function retrySeek(_x80, _x81) {
+            return function retrySeek(_x85, _x86) {
               return _ref2.apply(this, arguments);
             };
           }();
@@ -3387,7 +3387,7 @@ function _playOpenedTorrent() {
     if (window.AndroidJS) AppState.playFromHash = true;
     var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + videoFiles[idx].id;
     var overlay = getEl('playback-overlay');
-    if (overlay) overlay.classList.remove('active');
+    if (overlay && AppState.preloadBeforePlay) overlay.classList.remove('active');
     resumingFromHome = true;
     var started;
     try {
@@ -4273,11 +4273,33 @@ function resolvePlayableStream(url) {
   };
 }
 window.resolvePlayableStream = resolvePlayableStream;
+var playbackLaunchSeq = 0;
+function cancelPlaybackLaunch() {
+  playbackLaunchSeq++;
+  cancelCurrentPlayback();
+}
+window.cancelPlaybackLaunch = cancelPlaybackLaunch;
 function startHLSPlayback(_x55, _x56, _x57, _x58, _x59) {
   return _startHLSPlayback.apply(this, arguments);
 }
 function _startHLSPlayback() {
   _startHLSPlayback = _asyncToGenerator(function* (originalUrl, initialSeek, fromSearch, episodeIndex, audioTrack) {
+    var ok = false;
+    try {
+      ok = yield startHLSPlaybackNow(originalUrl, initialSeek, fromSearch, episodeIndex, audioTrack);
+      return ok;
+    } finally {
+      if (ok === false && typeof releasePreloadScreen === 'function') releasePreloadScreen(true);
+    }
+  });
+  return _startHLSPlayback.apply(this, arguments);
+}
+function startHLSPlaybackNow(_x60, _x61, _x62, _x63, _x64) {
+  return _startHLSPlaybackNow.apply(this, arguments);
+}
+function _startHLSPlaybackNow() {
+  _startHLSPlaybackNow = _asyncToGenerator(function* (originalUrl, initialSeek, fromSearch, episodeIndex, audioTrack) {
+    var launchSeq = playbackLaunchSeq;
     var playable = resolvePlayableStream(originalUrl);
     if (playable.error) {
       if (typeof showErrorBanner === 'function') showErrorBanner(playable.error);else if (typeof window.showToast === 'function') window.showToast(playable.error);
@@ -4303,6 +4325,7 @@ function _startHLSPlayback() {
         }
         if (resumeAt > 0) {
           console.log('⏭️ Предзагрузка пропущена: старт с ' + formatTime(resumeAt));
+          if (!isPlaybackPreloadActive()) runPlaybackPreload(preloadRef.hash, null, preloadTitle);
           skipPlaybackPreload(preloadRef.hash);
         } else if (!(yield runPlaybackPreload(preloadRef.hash, preloadRef.fileId, preloadTitle))) return false;
       }
@@ -4327,6 +4350,8 @@ function _startHLSPlayback() {
           if (appleSaved > 0) appleSeek = appleSaved;
         } catch (e) {}
       }
+      if (launchSeq !== playbackLaunchSeq) return false;
+      if (typeof armExternalPreloadHold === 'function') armExternalPreloadHold();
       if (openAppleExternalPlayer(originalUrl, buildExternalPlayerTitle(), appleSeek)) return;
     }
     if (window.AndroidJS) {
@@ -4354,6 +4379,8 @@ function _startHLSPlayback() {
         } catch (e) {}
       }
       if (androidRef) yield prefetchAndroidHeading(androidRef.hash);
+      if (launchSeq !== playbackLaunchSeq) return false;
+      if (typeof armExternalPreloadHold === 'function') armExternalPreloadHold();
       if (playInExternalPlayer(originalUrl, buildExternalPlayerTitle(), androidSeek, fromSearch)) {
         getEl('config-screen').style.display = 'none';
         if (!androidReturnHome) getEl('torrserver-section').style.display = 'none';
@@ -4377,7 +4404,7 @@ function _startHLSPlayback() {
     lastPlaybackFromSearch = fromSearch;
     var metadata = yield preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal);
     if (metadata) metadata.audioChosen = audioExplicit || metadata.savedAudioTrack !== null;
-    if (!metadata || signal.aborted) return false;
+    if (!metadata || signal.aborted || launchSeq !== playbackLaunchSeq) return false;
     var {
       fileInfo,
       savedAudioTrack,
@@ -4435,7 +4462,7 @@ function _startHLSPlayback() {
       return false;
     }
   });
-  return _startHLSPlayback.apply(this, arguments);
+  return _startHLSPlaybackNow.apply(this, arguments);
 }
 function cancelCurrentPlayback() {
   if (seriesStartCancel) seriesStartCancel();
@@ -4654,7 +4681,7 @@ function showDetailView(field = null) {
     }, 250);
   }
 }
-function updateDetailProgress(_x60) {
+function updateDetailProgress(_x65) {
   return _updateDetailProgress.apply(this, arguments);
 }
 function _updateDetailProgress() {
@@ -4757,7 +4784,7 @@ function updateCurrentFileProgress(hash, fileId, timecode, duration) {
     if (progressPercent > 5) targetItem.classList.add('has-progress');
   }
 }
-function loadFileInfo(_x61, _x62) {
+function loadFileInfo(_x66, _x67) {
   return _loadFileInfo.apply(this, arguments);
 }
 function _loadFileInfo() {
@@ -4822,7 +4849,7 @@ function applyNativeAudioPref(videoPlayer) {
   for (var i = 0; i < list.length; i++) list[i].enabled = i === index;
   return index;
 }
-function switchAudioTrack(_x63) {
+function switchAudioTrack(_x68) {
   return _switchAudioTrack.apply(this, arguments);
 }
 function _switchAudioTrack() {
@@ -5884,7 +5911,7 @@ function setupAudioButton() {
   });
   setupPlayerPanelsOutsideClick();
 }
-function saveAudioPreference(_x64, _x65, _x66) {
+function saveAudioPreference(_x69, _x70, _x71) {
   return _saveAudioPreference.apply(this, arguments);
 }
 function _saveAudioPreference() {
@@ -5907,7 +5934,7 @@ function _saveAudioPreference() {
   });
   return _saveAudioPreference.apply(this, arguments);
 }
-function loadMediaPreferences(_x67, _x68) {
+function loadMediaPreferences(_x72, _x73) {
   return _loadMediaPreferences.apply(this, arguments);
 }
 function _loadMediaPreferences() {
@@ -5934,7 +5961,7 @@ function _loadMediaPreferences() {
   });
   return _loadMediaPreferences.apply(this, arguments);
 }
-function loadPlaybackPrepare(_x69, _x70, _x71) {
+function loadPlaybackPrepare(_x74, _x75, _x76) {
   return _loadPlaybackPrepare.apply(this, arguments);
 }
 function _loadPlaybackPrepare() {
@@ -5984,7 +6011,7 @@ function _loadPlaybackPrepare() {
   });
   return _loadPlaybackPrepare.apply(this, arguments);
 }
-function loadAudioPreference(_x72, _x73) {
+function loadAudioPreference(_x77, _x78) {
   return _loadAudioPreference.apply(this, arguments);
 }
 function _loadAudioPreference() {
@@ -6025,7 +6052,7 @@ function renderSubtitleTracks() {
   subtitlesList.innerHTML = html;
   setupSubtitlesListDelegation();
 }
-function switchSubtitleTrack(_x74) {
+function switchSubtitleTrack(_x79) {
   return _switchSubtitleTrack.apply(this, arguments);
 }
 function _switchSubtitleTrack() {
@@ -6722,7 +6749,7 @@ function setupSubtitlesButton() {
   });
   setupPlayerPanelsOutsideClick();
 }
-function saveSubtitlePreference(_x75, _x76, _x77) {
+function saveSubtitlePreference(_x80, _x81, _x82) {
   return _saveSubtitlePreference.apply(this, arguments);
 }
 function _saveSubtitlePreference() {
@@ -6745,7 +6772,7 @@ function _saveSubtitlePreference() {
   });
   return _saveSubtitlePreference.apply(this, arguments);
 }
-function loadSubtitlePreference(_x78, _x79) {
+function loadSubtitlePreference(_x83, _x84) {
   return _loadSubtitlePreference.apply(this, arguments);
 }
 function _loadSubtitlePreference() {

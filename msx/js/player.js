@@ -3878,8 +3878,12 @@ async function playOpenedTorrent(item, torrent, videoFiles, idx, seek, from) {
   if (window.AndroidJS) AppState.playFromHash = true;
 
   var playUrl = AppState.currentTorrserverUrl + '/play/' + hash + '/' + videoFiles[idx].id;
+  // «Воспроизведение…» уступает место окну предзагрузки (startHLSPlayback
+  // открывает его и при старте с таймкода). Без предзагрузки окна не будет —
+  // тогда оверлей остаётся до плеера: он и держит пульт, иначе после нажатия
+  // «Продолжить» по экрану можно было ходить, пока запуск идёт
   var overlay = getEl('playback-overlay');
-  if (overlay) overlay.classList.remove('active');
+  if (overlay && AppState.preloadBeforePlay) overlay.classList.remove('active');
   resumingFromHome = true;
   var started;
   try { started = await startHLSPlayback(playUrl, seek, false, idx); }
@@ -4768,7 +4772,38 @@ function resolvePlayableStream(url) {
 }
 window.resolvePlayableStream = resolvePlayableStream;
 
+/**
+ * Отмена запуска «Назад», пока стоит экран предзагрузки, а плеера ещё нет
+ * (torrserverstats.js). Встроенный плеер обрывает signal; для внешних
+ * плееров Android и Apple сигнала нет — они сверяют номер запуска перед тем,
+ * как открыть плеер (playbackLaunchSeq).
+ */
+var playbackLaunchSeq = 0;
+
+function cancelPlaybackLaunch() {
+  playbackLaunchSeq++;
+  cancelCurrentPlayback();
+}
+window.cancelPlaybackLaunch = cancelPlaybackLaunch;
+
+/**
+ * Запуск не дошёл до плеера (false или ошибка) — экран предзагрузки снимаем
+ * сразу. Он держит пульт до плеера, и без этого человек ждал бы его таймаута
+ * (PRELOAD_HOLD_MAX_MS), не в силах ничего нажать. Успешный встроенный плеер
+ * (true) и внешние (undefined) снимают экран сами.
+ */
 async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeIndex, audioTrack) {
+  var ok = false;
+  try {
+    ok = await startHLSPlaybackNow(originalUrl, initialSeek, fromSearch, episodeIndex, audioTrack);
+    return ok;
+  } finally {
+    if (ok === false && typeof releasePreloadScreen === 'function') releasePreloadScreen(true);
+  }
+}
+
+async function startHLSPlaybackNow(originalUrl, initialSeek, fromSearch, episodeIndex, audioTrack) {
+  var launchSeq = playbackLaunchSeq;
   // Не видео (служебный файл Blu-ray, .exe, ISO) — подменить на фильм или не играть
   var playable = resolvePlayableStream(originalUrl);
   if (playable.error) {
@@ -4813,6 +4848,11 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
       }
       if (resumeAt > 0) {
         console.log('⏭️ Предзагрузка пропущена: старт с ' + formatTime(resumeAt));
+        // Позицию передали сразу («Продолжить», «Лучшие» с таймкодом) — окна ещё
+        // нет. Открываем его без прогрева: экран встаёт сразу и держится до
+        // первого кадра, а пульт под ним не ходит по интерфейсу. Раньше при
+        // таймкоде не было ничего: нажал — тишина, а плеер появлялся через секунды
+        if (!isPlaybackPreloadActive()) runPlaybackPreload(preloadRef.hash, null, preloadTitle);
         skipPlaybackPreload(preloadRef.hash);
       } else if (!(await runPlaybackPreload(preloadRef.hash, preloadRef.fileId, preloadTitle))) return false;
     }
@@ -4838,6 +4878,11 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
         if (appleSaved > 0) appleSeek = appleSaved;
       } catch (e) { /* нет таймкода — с начала */ }
     }
+    // «Назад» на экране предзагрузки, пока собирали серии и позицию
+    if (launchSeq !== playbackLaunchSeq) return false;
+    // Экран ждёт ухода страницы под внешний плеер — с этого момента, а не с
+    // конца предзагрузки: серии и позиция выше могли занять секунды
+    if (typeof armExternalPreloadHold === 'function') armExternalPreloadHold();
     if (openAppleExternalPlayer(originalUrl, buildExternalPlayerTitle(), appleSeek)) return;
   }
 
@@ -4884,6 +4929,10 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
 
     // Логотип и название TMDB для заголовка встроенного плеера (ждём недолго)
     if (androidRef) await prefetchAndroidHeading(androidRef.hash);
+    // «Назад» на экране предзагрузки, пока собирали серии и позицию
+    if (launchSeq !== playbackLaunchSeq) return false;
+    // Экран ждёт ухода страницы под нативный плеер — с этого момента
+    if (typeof armExternalPreloadHold === 'function') armExternalPreloadHold();
     if (playInExternalPlayer(originalUrl, buildExternalPlayerTitle(), androidSeek, fromSearch)) {
       getEl('config-screen').style.display = 'none';
       // Запуск с главной: главная (она внутри torrserver-section) остаётся под
@@ -4906,7 +4955,7 @@ async function startHLSPlayback(originalUrl, initialSeek, fromSearch, episodeInd
   //if (!AppState.transcodingFullOnOff) {
   var metadata = await preparePlaybackMetadata(originalUrl, initialSeek, audioTrack, signal);
   if (metadata) metadata.audioChosen = audioExplicit || metadata.savedAudioTrack !== null;
-  if (!metadata || signal.aborted) return false;
+  if (!metadata || signal.aborted || launchSeq !== playbackLaunchSeq) return false;
   var { fileInfo, savedAudioTrack, fileName, savedSubTrack, savedTimecode, seekTime } = metadata;
   initialSeek = seekTime;
   // } else {

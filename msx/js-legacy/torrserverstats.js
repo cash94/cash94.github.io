@@ -506,11 +506,19 @@ function holdPreloadUntilHidden() {
     onHide: onHide,
     timer: setTimeout(function () {
       releasePreloadScreen(false);
-    }, PRELOAD_EXTERNAL_HOLD_MS)
+    }, PRELOAD_HOLD_MAX_MS)
   };
   document.addEventListener('visibilitychange', onHide);
   window.addEventListener('pagehide', onHide);
 }
+function armExternalPreloadHold() {
+  if (!preloadHold || !preloadHold.onHide) return;
+  clearTimeout(preloadHold.timer);
+  preloadHold.timer = setTimeout(function () {
+    releasePreloadScreen(false);
+  }, PRELOAD_EXTERNAL_HOLD_MS);
+}
+window.armExternalPreloadHold = armExternalPreloadHold;
 function playerOverlaysBusy() {
   var po = document.getElementById('playback-overlay');
   var lo = document.getElementById('loading-player-overlay');
@@ -541,8 +549,25 @@ function releasePreloadScreen(immediate) {
   }, PRELOAD_FADE_MS);
 }
 window.releasePreloadScreen = releasePreloadScreen;
+function preloadHoldBlocksKeys() {
+  return !!preloadHold && !preloadHold.seenPlayer && AppState.currentScreen !== 'player';
+}
+function onPreloadHoldKeyDown(e) {
+  var kc = e.keyCode || e.which;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  preloadSwallowKeyup = true;
+  var isBack = e.key === 'Escape' || (typeof isBackKey === 'function' ? isBackKey(kc) : kc === 27 || kc === 8);
+  if (!isBack) return;
+  console.log('⏹️ Запуск отменён');
+  releasePreloadScreen(true);
+  if (typeof cancelPlaybackLaunch === 'function') cancelPlaybackLaunch();else if (typeof cancelCurrentPlayback === 'function') cancelCurrentPlayback();
+}
 function onPlaybackPreloadKeyDown(e) {
-  if (!activePlaybackPreload) return;
+  if (!activePlaybackPreload) {
+    if (preloadHoldBlocksKeys()) onPreloadHoldKeyDown(e);
+    return;
+  }
   var kc = e.keyCode || e.which;
   e.preventDefault();
   e.stopImmediatePropagation();
