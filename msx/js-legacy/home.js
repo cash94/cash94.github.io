@@ -2645,6 +2645,80 @@
     });else go();
     return true;
   }
+  function isHomeScreenActive() {
+    return isHomeVisible() && (!window.AppState || AppState.currentScreen === 'home');
+  }
+  function openCategoryByKey(catKey) {
+    var tile = null;
+    var tiles = document.querySelectorAll('#home-rows .home-cat-tile');
+    for (var i = 0; i < tiles.length; i++) {
+      if (tiles[i].dataset.homeCat === catKey) {
+        tile = tiles[i];
+        break;
+      }
+    }
+    if (!tile) return false;
+    var key = tile.dataset.homeKey,
+      index = parseInt(tile.dataset.itemIndex, 10) || 0;
+    if (isHomeScreenActive()) return openCategory(catKey, key, index);
+    if (typeof window.loadCatalog !== 'function') return false;
+    if (window.AppState && AppState.currentScreen === 'catalog' && typeof catalogState !== 'undefined' && catalogState.currentCatalog === catKey) return true;
+    homeState.lastRowKey = key;
+    homeState.lastColIndex = index;
+    if (window.Nav) {
+      var t = Nav.top();
+      var fromGrid = window.AppState && AppState.currentScreen === 'catalog' && t && t.screen === 'grid' && /^cat:/.test(String(t.data && t.data.key));
+      if (fromGrid) {
+        var below = Nav.pop('grid');
+        var saved = below ? below.restore : null;
+        Nav.push('grid', {
+          key: 'cat:' + catKey,
+          label: catKey
+        });
+        if (below) below.restore = saved;
+      } else {
+        Nav.reset('home');
+        Nav.push('grid', {
+          key: 'cat:' + catKey,
+          label: catKey
+        });
+      }
+    }
+    if (window.AppState) AppState.inSearch = 'catalog';
+    if (typeof catalogState !== 'undefined') catalogState.favoritesFromTopbar = false;
+    try {
+      localStorage.removeItem('lastCatalogCardIndex');
+    } catch (e) {}
+    if ((!window.AppState || AppState.currentScreen !== 'catalog') && typeof window.showContentScreen === 'function') {
+      window.showContentScreen('catalog');
+    }
+    Promise.resolve(window.loadCatalog(catKey)).then(function () {
+      setTimeout(function () {
+        if (!window.AppState || AppState.currentScreen !== 'catalog') return;
+        if (typeof catalogState !== 'undefined' && catalogState.currentCatalog !== catKey) return;
+        if (typeof window.ensureCatalogFocus === 'function') window.ensureCatalogFocus(true);
+      }, HOME.FOCUS_DELAY_MS);
+    }, function (e) {
+      console.warn('🏠 Категория ' + catKey + ' не загрузилась:', e && e.message);
+    });
+    return true;
+  }
+  function openRowByIndex(index) {
+    var cards = homeState.rows[index];
+    if (!cards || !cards.length) return false;
+    var col = Math.max(0, Math.min(cards.length - 1, homeState.rowCols[index] || 0));
+    homeState.lastRowKey = homeState.rowKeys[index];
+    homeState.lastColIndex = col;
+    if (isHomeScreenActive()) {
+      focusCard(index, col);
+      return true;
+    }
+    if (window.Nav) Nav.reset('home');
+    showHome({
+      restoreFocus: true
+    });
+    return true;
+  }
   function openHomeItem(item, key, index) {
     if (item && item.catKey) return openCategory(item.catKey, key, index);
     homeState.lastRowKey = key;
@@ -3740,6 +3814,8 @@
   }
   window.HomeScreen = {
     show: showHome,
+    openCategory: openCategoryByKey,
+    openRow: openRowByIndex,
     isActive: isHomeVisible,
     isFocusable: isHomeFocusable,
     ensureFocus: ensureHomeFocus,

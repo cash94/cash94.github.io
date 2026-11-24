@@ -168,6 +168,76 @@
     normal: '1',
     bright: '1.15'
   };
+  function hasOwn(obj, key) {
+    return Object.prototype.hasOwnProperty.call(obj, key);
+  }
+  function recBool(v) {
+    return v === true || v === 'true' ? true : v === false || v === 'false' ? false : undefined;
+  }
+  function recEnum(table) {
+    return function (v) {
+      v = String(v);
+      return hasOwn(table, v) ? v : undefined;
+    };
+  }
+  function recMatch(re) {
+    return function (v) {
+      v = String(v);
+      return re.test(v) ? v : undefined;
+    };
+  }
+  var RECOMMENDABLE = {
+    catalogColumns: recMatch(/^(auto|[3-8])$/),
+    cardSize: function (v) {
+      var n = Number(v);
+      return typeof v !== 'boolean' && v !== '' && isFinite(n) ? clampStep(n, SLIDERS.cardSize) : undefined;
+    },
+    heroTrailers: recBool,
+    showRatings: recBool,
+    showYear: recBool,
+    density: recEnum(DENSITIES),
+    borderRadius: recEnum(RADII),
+    animations: recEnum({
+      none: 1,
+      reduced: 1,
+      normal: 1
+    }),
+    posterBrightness: recEnum(BRIGHTNESS)
+  };
+  function recommendValue(key, value) {
+    return hasOwn(RECOMMENDABLE, key) ? RECOMMENDABLE[key](value) : undefined;
+  }
+  var RECOMMEND_LABELS = {
+    catalogColumns: 'Колонки каталога',
+    cardSize: 'Размер карточек',
+    heroTrailers: 'Трейлеры на главной',
+    showRatings: 'Оценки',
+    showYear: 'Год',
+    density: 'Плотность',
+    borderRadius: 'Скругление',
+    animations: 'Анимации',
+    posterBrightness: 'Яркость постеров'
+  };
+  var RECOMMEND_VALUES = {
+    'true': 'вкл',
+    'false': 'выкл',
+    auto: 'авто',
+    compact: 'плотно',
+    comfortable: 'обычно',
+    spacious: 'свободно',
+    none: 'нет',
+    small: 'малое',
+    medium: 'среднее',
+    large: 'большое',
+    reduced: 'меньше',
+    normal: 'обычно',
+    dim: 'темнее',
+    bright: 'ярче'
+  };
+  function recommendLabel(key, value) {
+    var v = String(value);
+    return (hasOwn(RECOMMEND_LABELS, key) ? RECOMMEND_LABELS[key] : key) + ': ' + (hasOwn(RECOMMEND_VALUES, v) ? RECOMMEND_VALUES[v] : v);
+  }
   var SCROLL_ANIMS = {
     none: 1,
     fast: 1,
@@ -1324,6 +1394,11 @@
     get: function () {
       return Object.assign({}, currentSettings);
     },
+    recommendKeys: function () {
+      return Object.keys(RECOMMENDABLE);
+    },
+    recommendValue: recommendValue,
+    recommendLabel: recommendLabel,
     set: function (partial) {
       if (partial && typeof partial === 'object') {
         currentSettings = normalizeSettings(Object.assign({}, currentSettings, partial));

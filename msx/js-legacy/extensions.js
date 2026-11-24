@@ -443,10 +443,12 @@
         }
       },
       keys: {
-        capture: function (on) {
+        capture: function (on, opts) {
+          var keys = opts && opts.keys ? [].concat(opts.keys).map(String) : null;
           send({
             type: 'capture',
-            on: !!on
+            on: !!on,
+            keys: keys
           });
         }
       },
@@ -460,6 +462,22 @@
         item: function (node) {
           return call('item', {
             h: hid(node)
+          });
+        },
+        openRow: function (index) {
+          return call('openRow', {
+            index: +index
+          });
+        },
+        openCategory: function (key) {
+          return call('openCategory', {
+            key: String(key)
+          });
+        },
+        recommend: function (settings) {
+          send({
+            type: 'recommend',
+            settings: settings || {}
           });
         }
       }
@@ -633,7 +651,10 @@
       listeners: [],
       undo: [],
       wantsNav: false,
-      wantsHome: false
+      wantsHome: false,
+      keyAt: 0,
+      startedAt: Date.now(),
+      startOpen: true
     };
     running[p.id] = st;
     p.error = '';
@@ -660,7 +681,7 @@
     }
     if (st.frame && st.frame.parentNode) st.frame.parentNode.removeChild(st.frame);
     if (st.styleEl && st.styleEl.parentNode) st.styleEl.parentNode.removeChild(st.styleEl);
-    if (captureOwner === id) captureOwner = null;
+    if (captureOwner === id) releaseCapture();
     revertDom(st);
     delete running[id];
     renderDetailExtras();
@@ -679,7 +700,9 @@
     } catch (e) {}
   }
   function emitTo(st, name, data) {
-    if (st.ready) post(st, {
+    if (!st.ready) return;
+    if (name === 'key' || name === 'nav') st.keyAt = Date.now();
+    post(st, {
       type: 'event',
       name: name,
       data: data
@@ -818,6 +841,14 @@
   var CLICK_ALLOWED = '.home-nav-btn, .catalog-row-card, .catalog-card, .home-cat-tile, .torrent-card, ' + '.search-result-item, .catalog-actor-card, .catalog-recommendation-card, .catalog-episode-card, ' + '#catalog-detail-actions > button:not(#catalog-favorite-btn), .back-btn';
   var QUERY_LIMIT = 500;
   var captureOwner = null;
+  var captureKeys = null;
+  function releaseCapture() {
+    captureOwner = null;
+    captureKeys = null;
+  }
+  var CAPTURE_DIRS = ['up', 'down', 'left', 'right', 'enter', 'back'];
+  var CAPTURE_SCAN = 32;
+  var FEATURES = ['capture-keys', 'focus-home-row', 'open-row', 'open-category', 'recommend'];
   function handleOf(st, el) {
     if (st.ids) {
       var known = st.ids.get(el);
@@ -994,6 +1025,79 @@
     }
     return null;
   }
+  var OPEN_FROM = {
+    home: 1,
+    catalog: 1,
+    torrents: 1
+  };
+  var OPEN_AFTER_KEY_MS = 2000;
+  var OPEN_ON_START_MS = 20000;
+  function openAllowed(st) {
+    if (!OPEN_FROM[currentScreen()] || modal || panelPlugin) return false;
+    if (window.OSK && OSK.isOpen && OSK.isOpen()) return false;
+    var dv = document.getElementById('detail-view');
+    if (dv && typeof _isScreenVisible === 'function' && _isScreenVisible(dv)) return false;
+    var now = Date.now();
+    if (now - st.keyAt < OPEN_AFTER_KEY_MS) return true;
+    if (st.startOpen && now - st.startedAt < OPEN_ON_START_MS) {
+      st.startOpen = false;
+      return true;
+    }
+    return false;
+  }
+  function openHomeRow(st, index) {
+    var i = parseInt(index, 10);
+    if (isNaN(i) || i < 0 || !window.HomeScreen || typeof HomeScreen.openRow !== 'function') throw new Error('Ряд недоступен');
+    if (!openAllowed(st)) throw new Error('Сейчас переход недоступен');
+    if (!HomeScreen.openRow(i)) throw new Error('Нет такого ряда');
+    return true;
+  }
+  function openHomeCategory(st, key) {
+    key = String(key || '');
+    if (!/^[\w-]{1,40}$/.test(key) || !window.HomeScreen || typeof HomeScreen.openCategory !== 'function') {
+      throw new Error('Категория недоступна');
+    }
+    if (!openAllowed(st)) throw new Error('Сейчас переход недоступен');
+    if (!HomeScreen.openCategory(key)) throw new Error('Нет такой категории');
+    return true;
+  }
+  function cleanRecommend(settings) {
+    if (!settings || typeof settings !== 'object' || !window.UICustomizer || typeof UICustomizer.recommendKeys !== 'function') return null;
+    var keys = UICustomizer.recommendKeys(),
+      out = {},
+      any = false;
+    for (var i = 0; i < keys.length; i++) {
+      if (!Object.prototype.hasOwnProperty.call(settings, keys[i])) continue;
+      var v = UICustomizer.recommendValue(keys[i], settings[keys[i]]);
+      if (v === undefined) continue;
+      out[keys[i]] = v;
+      any = true;
+    }
+    return any ? out : null;
+  }
+  function recommendChanges(rec) {
+    var cur = UICustomizer.get(),
+      settings = {},
+      parts = [];
+    for (var k in rec) {
+      if (!Object.prototype.hasOwnProperty.call(rec, k) || String(cur[k]) === String(rec[k])) continue;
+      settings[k] = rec[k];
+      parts.push(typeof UICustomizer.recommendLabel === 'function' ? UICustomizer.recommendLabel(k, rec[k]) : k + ': ' + rec[k]);
+    }
+    return parts.length ? {
+      settings: settings,
+      text: parts.join(', ')
+    } : null;
+  }
+  function recommendPending(st) {
+    var rec = st && st.recommend;
+    if (!rec || !window.UICustomizer || typeof UICustomizer.get !== 'function') return false;
+    var cur = UICustomizer.get();
+    for (var k in rec) {
+      if (Object.prototype.hasOwnProperty.call(rec, k) && String(cur[k]) !== String(rec[k])) return true;
+    }
+    return false;
+  }
   function homeData(st) {
     var hs = homeState();
     if (!hs) return {
@@ -1100,13 +1204,18 @@
       case 'focus':
         {
           var target = needNode(st, a.h);
-          if (target.offsetParent === null) throw new Error('Элемент не виден');
+          var homeCard = currentScreen() === 'home' && target.isConnected && target.classList.contains('catalog-row-card') && !!target.closest('#home-rows');
+          if (target.offsetParent === null && !homeCard) throw new Error('Элемент не виден');
           var s = typeof ScreenStrategies !== 'undefined' && ScreenStrategies[currentScreen()];
           if (s && typeof s.focusItem === 'function') s.focusItem(target);else if (typeof window.focusEl === 'function') window.focusEl(target);
           return true;
         }
       case 'home':
         return homeData(st);
+      case 'openRow':
+        return openHomeRow(st, a.index);
+      case 'openCategory':
+        return openHomeCategory(st, a.key);
       case 'screen':
         return currentScreen();
       case 'item':
@@ -1320,8 +1429,9 @@
             storage: st.data,
             info: {
               id: p.id,
-              appVersion: 1,
-              platform: platformName()
+              appVersion: 2,
+              platform: platformName(),
+              features: FEATURES.slice()
             },
             focusColor: focusColor()
           });
@@ -1364,10 +1474,24 @@
       case 'capture':
         if (m.on) {
           if (currentScreen() === 'player' || modal || panelPlugin) return;
+          var keys = null;
+          if (m.keys != null) {
+            if (!Array.isArray(m.keys)) return;
+            keys = [];
+            for (var ck = 0; ck < m.keys.length && ck < CAPTURE_SCAN && keys.length < CAPTURE_DIRS.length; ck++) {
+              var kd = String(m.keys[ck]);
+              if (CAPTURE_DIRS.indexOf(kd) !== -1 && keys.indexOf(kd) === -1) keys.push(kd);
+            }
+            if (!keys.length) return;
+          }
           captureOwner = st.id;
+          captureKeys = keys;
         } else if (captureOwner === st.id) {
-          captureOwner = null;
+          releaseCapture();
         }
+        break;
+      case 'recommend':
+        st.recommend = cleanRecommend(m.settings);
         break;
       case 'register':
         if (m.name) p.name = m.name;
@@ -1612,7 +1736,7 @@
       if (panelPlugin && s === 'player') closePanel();
       if (captureOwner) {
         var owner = running[captureOwner];
-        captureOwner = null;
+        releaseCapture();
         if (owner) emitTo(owner, 'key', 'back');
       }
     }
@@ -1695,14 +1819,18 @@
     var screen = currentScreen();
     if (captureOwner) {
       var cst = running[captureOwner];
+      var taken = !captureKeys || captureKeys.indexOf(dir) !== -1;
       if (!cst || screen === 'player') {
-        captureOwner = null;
-      } else {
+        releaseCapture();
+      } else if (taken) {
         e.preventDefault();
         e.stopImmediatePropagation();
-        if (dir === 'back') captureOwner = null;
+        if (dir === 'back') releaseCapture();
         emitTo(cst, 'key', dir);
         return;
+      } else if (dir === 'back') {
+        releaseCapture();
+        emitTo(cst, 'key', 'back');
       }
     }
     if (dir === 'back' || screen === 'player' || screen === 'config') return;
@@ -2007,7 +2135,9 @@
     var p = findPlugin(id);
     if (!p) return;
     var info = p.error ? '<p class="ext-modal-error">⚠ ' + esc(p.error) + '</p>' : p.description ? '<p class="ext-modal-desc">' + esc(p.description) + '</p>' : '';
-    var el = openModal('<div class="ext-modal-head">' + tileIcon(pluginTitle(p)) + '<div><h3>' + esc(pluginTitle(p)) + '</h3>' + '<div class="ext-modal-url">' + esc(p.url) + (p.version ? ' · версия ' + esc(p.version) : '') + '</div></div></div>' + info + '<div class="ext-modal-actions">' + (p.enabled && p.settings && running[id] ? '<button class="ext-modal-btn primary" data-act="open">Открыть</button>' : '') + '<button class="ext-modal-btn' + (p.enabled ? '' : ' primary') + '" data-act="toggle">' + (p.enabled ? 'Выключить' : 'Включить') + '</button>' + '<button class="ext-modal-btn danger" data-act="remove">Удалить</button>' + '<button class="ext-modal-btn" data-act="cancel">Отмена</button></div>', from);
+    var rec = p.enabled && recommendPending(running[id]) ? recommendChanges(running[id].recommend) : null;
+    if (rec) info += '<p class="ext-modal-desc">Рекомендует: ' + esc(rec.text) + '</p>';
+    var el = openModal('<div class="ext-modal-head">' + tileIcon(pluginTitle(p)) + '<div><h3>' + esc(pluginTitle(p)) + '</h3>' + '<div class="ext-modal-url">' + esc(p.url) + (p.version ? ' · версия ' + esc(p.version) : '') + '</div></div></div>' + info + '<div class="ext-modal-actions">' + (p.enabled && p.settings && running[id] ? '<button class="ext-modal-btn primary" data-act="open">Открыть</button>' : '') + (rec ? '<button class="ext-modal-btn primary" data-act="recommend">Применить рекомендуемые настройки</button>' : '') + '<button class="ext-modal-btn' + (p.enabled ? '' : ' primary') + '" data-act="toggle">' + (p.enabled ? 'Выключить' : 'Включить') + '</button>' + '<button class="ext-modal-btn danger" data-act="remove">Удалить</button>' + '<button class="ext-modal-btn" data-act="cancel">Отмена</button></div>', from);
     el.addEventListener('click', function (e) {
       var b = e.target.closest ? e.target.closest('[data-act]') : null;
       if (!b) return;
@@ -2030,6 +2160,13 @@
       if (act === 'toggle') {
         closeModal(true);
         setEnabled(id, !p.enabled);
+        focusTile(id);
+        return;
+      }
+      if (act === 'recommend') {
+        closeModal(true);
+        if (rec && window.UICustomizer && typeof UICustomizer.set === 'function') UICustomizer.set(rec.settings);
+        setStatus('Применены настройки, рекомендованные «' + pluginTitle(p) + '»');
         focusTile(id);
         return;
       }

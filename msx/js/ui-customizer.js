@@ -139,6 +139,51 @@
 
     var BRIGHTNESS = { dim: '0.8', normal: '1', bright: '1.15' };
 
+    // Что расширение может рекомендовать (extensions.js: TS.app.recommend) и в каком
+    // виде: значение приводим к тому, что хранится в настройках, недопустимое — undefined.
+    // Значения сверяются с теми же таблицами, по которым настройки применяются
+    function hasOwn(obj, key) { return Object.prototype.hasOwnProperty.call(obj, key); }
+    function recBool(v) { return v === true || v === 'true' ? true : (v === false || v === 'false' ? false : undefined); }
+    function recEnum(table) { return function (v) { v = String(v); return hasOwn(table, v) ? v : undefined; }; }
+    function recMatch(re) { return function (v) { v = String(v); return re.test(v) ? v : undefined; }; }
+    var RECOMMENDABLE = {
+        catalogColumns: recMatch(/^(auto|[3-8])$/),
+        cardSize: function (v) {
+            var n = Number(v);
+            return typeof v !== 'boolean' && v !== '' && isFinite(n) ? clampStep(n, SLIDERS.cardSize) : undefined;
+        },
+        heroTrailers: recBool,
+        showRatings: recBool,
+        showYear: recBool,
+        density: recEnum(DENSITIES),
+        borderRadius: recEnum(RADII),
+        animations: recEnum({ none: 1, reduced: 1, normal: 1 }),
+        posterBrightness: recEnum(BRIGHTNESS)
+    };
+
+    function recommendValue(key, value) {
+        return hasOwn(RECOMMENDABLE, key) ? RECOMMENDABLE[key](value) : undefined;
+    }
+
+    // Подписи для меню расширения: что именно поменяет «Применить рекомендуемые настройки»
+    var RECOMMEND_LABELS = {
+        catalogColumns: 'Колонки каталога', cardSize: 'Размер карточек',
+        heroTrailers: 'Трейлеры на главной', showRatings: 'Оценки', showYear: 'Год',
+        density: 'Плотность', borderRadius: 'Скругление', animations: 'Анимации',
+        posterBrightness: 'Яркость постеров'
+    };
+    var RECOMMEND_VALUES = {
+        'true': 'вкл', 'false': 'выкл', auto: 'авто',
+        compact: 'плотно', comfortable: 'обычно', spacious: 'свободно', none: 'нет', small: 'малое',
+        medium: 'среднее', large: 'большое', reduced: 'меньше', normal: 'обычно', dim: 'темнее', bright: 'ярче'
+    };
+
+    function recommendLabel(key, value) {
+        var v = String(value);
+        return (hasOwn(RECOMMEND_LABELS, key) ? RECOMMEND_LABELS[key] : key) + ': ' +
+            (hasOwn(RECOMMEND_VALUES, v) ? RECOMMEND_VALUES[v] : v);
+    }
+
     // Режимы анимации горизонтальной прокрутки (применяет control.js, CSS не порождают)
     var SCROLL_ANIMS = { none: 1, fast: 1, smooth: 1 };
 
@@ -2005,6 +2050,10 @@
         getHeroTrailers: function () { return currentSettings.heroTrailers !== false; }, // home.js: заводить ли отсчёт трейлера
         enterEmbedded: enterEmbedded,   // control.js: OK на пункте меню «Внешний вид»
         get: function () { return Object.assign({}, currentSettings); },
+        // extensions.js: какие настройки расширение может рекомендовать и проверка значения
+        recommendKeys: function () { return Object.keys(RECOMMENDABLE); },
+        recommendValue: recommendValue,
+        recommendLabel: recommendLabel,
         set: function (partial) {
             if (partial && typeof partial === 'object') {
                 currentSettings = normalizeSettings(Object.assign({}, currentSettings, partial));
