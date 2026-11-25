@@ -374,9 +374,10 @@
     els.desc.textContent = '';
     els.meta.textContent = result.sizeName || '';
     els.title.textContent = state.title;
-    setStatus('Получаем список файлов…', true);
+    var known = opts && Array.isArray(opts.files) && opts.files.length ? opts.files : null;
+    setStatus(known ? '' : 'Получаем список файлов…', !known);
     root.classList.remove('hidden');
-    fetchStat(state.magnet, gen).then(function (files) {
+    (known ? Promise.resolve(known) : fetchStat(state.magnet, gen)).then(function (files) {
       if (gen !== state.gen) {
         if (files && !state.chosen) dropIfTemporary(hash, state.preExisting);
         return;

@@ -6892,9 +6892,8 @@ function playFromCard(item, resume, from, rewatch) {
 }
 
 /**
- * Серия запускается с места, где остановились; досмотренная — сначала. Сериал
- * досмотрен до конца раздачи — пересмотр: таймкоды от этой серии до последней
- * обнуляются (prepareSeriesRewatch в player.js)
+ * Серия запускается с места, где остановились; досмотренная — сначала.
+ * Прогресс серий после неё стирается (prepareSeriesRewatch в player.js)
  */
 function playCardEpisode(card) {
     var d = card.dataset;

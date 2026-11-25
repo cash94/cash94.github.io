@@ -1572,7 +1572,7 @@ function _seekStream() {
                 throw error;
               }
             });
-            return function retrySeek(_x96, _x97) {
+            return function retrySeek(_x94, _x95) {
               return _ref2.apply(this, arguments);
             };
           }();
@@ -2967,52 +2967,13 @@ function _checkResumeHasNext() {
 window.checkResumeHasNext = checkResumeHasNext;
 var REWATCH_CLEAR_PARALLEL = 6;
 var REWATCH_WAIT_MS = 6000;
-function isSeriesWatchedThrough(_x22, _x23, _x24) {
-  return _isSeriesWatchedThrough.apply(this, arguments);
+function clearEpisodeTimecodes(_x22, _x23, _x24) {
+  return _clearEpisodeTimecodes.apply(this, arguments);
 }
-function _isSeriesWatchedThrough() {
-  _isSeriesWatchedThrough = _asyncToGenerator(function* (torrent, files, tmdbId) {
-    var hash = String(torrent.hash).toLowerCase();
-    var resume = null;
-    if (tmdbId && window.HomeScreen && typeof HomeScreen.fetchResume === 'function') {
-      try {
-        resume = yield HomeScreen.fetchResume({
-          id: tmdbId,
-          media_type: 'tv'
-        });
-      } catch (e) {
-        resume = null;
-      }
-    }
-    var sameHash = !!resume && String(resume.hash).toLowerCase() === hash;
-    if (resume && !sameHash) {
-      var seasons = getTorrentSeasons(torrent),
-        numbered = false;
-      for (var i = 0; i < files.length && !numbered; i++) numbered = !!fileEpisodeRef(hash, files[i], seasons);
-      if (!resume.episode || !numbered) resume = null;
-    }
-    if (!resume) {
-      var progress = yield getTorrentProgressBatch(hash, files);
-      var last = progress && progress.lastWatched;
-      resume = last ? {
-        hash: hash,
-        fileId: last.fileId,
-        timecode: last.timecode,
-        duration: last.duration
-      } : null;
-    }
-    return !!resume && isResumeFinished(resume) && pickSeriesEpisode(torrent, files, resume) === null;
-  });
-  return _isSeriesWatchedThrough.apply(this, arguments);
-}
-function clearSeriesTimecodesFrom(_x25, _x26, _x27) {
-  return _clearSeriesTimecodesFrom.apply(this, arguments);
-}
-function _clearSeriesTimecodesFrom() {
-  _clearSeriesTimecodesFrom = _asyncToGenerator(function* (torrent, files, index) {
-    var hash = String(torrent.hash).toLowerCase();
+function _clearEpisodeTimecodes() {
+  _clearEpisodeTimecodes = _asyncToGenerator(function* (hash, files, toClear) {
     var clientId = localStorage.getItem('clientId');
-    var queue = files.slice(index);
+    var queue = toClear.slice();
     var clearOne = function (file) {
       var mediaKey = null;
       try {
@@ -3040,41 +3001,50 @@ function _clearSeriesTimecodesFrom() {
     }
     if (torrentProgressCache.has(hash)) torrentProgressCache.delete(hash);
     resumeNextKnown = {};
-    console.log('🔁 Пересмотр: таймкоды серий ' + (index + 1) + '–' + files.length + ' обнулены');
   });
-  return _clearSeriesTimecodesFrom.apply(this, arguments);
+  return _clearEpisodeTimecodes.apply(this, arguments);
 }
-function prepareSeriesRewatch(_x28, _x29, _x30, _x31) {
+function prepareSeriesRewatch(_x25, _x26, _x27) {
   return _prepareSeriesRewatch.apply(this, arguments);
 }
 function _prepareSeriesRewatch() {
-  _prepareSeriesRewatch = _asyncToGenerator(function* (torrent, files, fileId, tmdbId) {
+  _prepareSeriesRewatch = _asyncToGenerator(function* (torrent, files, fileId) {
     try {
       if (typeof torrent === 'string') torrent = findLoadedTorrent(torrent) || {
         hash: torrent
       };
-      if (!torrent || !torrent.hash) return false;
+      if (!torrent || !torrent.hash) return 0;
       if (!files || !files.length) files = torrentVideoFiles(torrent);
-      if (files.length < 2) return false;
+      if (files.length < 2) return 0;
       var index = -1;
       for (var i = 0; i < files.length; i++) if (String(files[i].id) === String(fileId)) {
         index = i;
         break;
       }
-      if (index === -1) return false;
-      var id = tmdbId || getTorrentTmdbId(torrent);
-      var work = isSeriesWatchedThrough(torrent, files, id).then(function (through) {
-        if (!through) return false;
-        return clearSeriesTimecodesFrom(torrent, files, index).then(function () {
-          return true;
-        });
-      });
+      if (index === -1) return 0;
+      var hash = String(torrent.hash).toLowerCase();
+      var work = _asyncToGenerator(function* () {
+        if (torrentProgressCache.has(hash)) torrentProgressCache.delete(hash);
+        var progress = yield getTorrentProgressBatch(hash, files);
+        var byFileId = progress && progress.byFileId || {};
+        var toClear = [];
+        for (var f = index; f < files.length; f++) {
+          var saved = byFileId[String(files[f].id)];
+          if (!saved || !(saved.timecode > 0)) continue;
+          if (f === index && !isResumeFinished(saved)) continue;
+          toClear.push(files[f]);
+        }
+        if (!toClear.length) return 0;
+        yield clearEpisodeTimecodes(hash, files, toClear);
+        console.log('🔁 Серия ' + (index + 1) + ' выбрана вручную: прогресс ' + toClear.length + ' серий после неё стёрт');
+        return toClear.length;
+      })();
       return yield Promise.race([work, pauseMs(REWATCH_WAIT_MS).then(function () {
-        return false;
+        return 0;
       })]);
     } catch (e) {
-      console.warn('Пересмотр: не удалось обнулить таймкоды', e);
-      return false;
+      console.warn('Выбор серии: не удалось стереть прогресс следующих', e);
+      return 0;
     }
   });
   return _prepareSeriesRewatch.apply(this, arguments);
@@ -3195,7 +3165,7 @@ function findSameTitleSource(item, resume) {
   }
   return null;
 }
-function findResumeSource(_x32, _x33) {
+function findResumeSource(_x28, _x29) {
   return _findResumeSource.apply(this, arguments);
 }
 function _findResumeSource() {
@@ -3220,7 +3190,7 @@ function _findResumeSource() {
   });
   return _findResumeSource.apply(this, arguments);
 }
-function loadResumeEpisodes(_x34, _x35) {
+function loadResumeEpisodes(_x30, _x31) {
   return _loadResumeEpisodes.apply(this, arguments);
 }
 function _loadResumeEpisodes() {
@@ -3355,7 +3325,7 @@ function pickSeasonEpisode(torrent, files, start, season) {
     seek: 0
   };
 }
-function findSeriesStart(_x36, _x37) {
+function findSeriesStart(_x32, _x33) {
   return _findSeriesStart.apply(this, arguments);
 }
 function _findSeriesStart() {
@@ -3392,6 +3362,31 @@ function _findSeriesStart() {
   return _findSeriesStart.apply(this, arguments);
 }
 window.findSeriesStart = findSeriesStart;
+var SERIES_PICKER_RESUME_WAIT_MS = 1500;
+function seriesPickerFiles(_x34, _x35) {
+  return _seriesPickerFiles.apply(this, arguments);
+}
+function _seriesPickerFiles() {
+  _seriesPickerFiles = _asyncToGenerator(function* (hash, item) {
+    var torrent = findLoadedTorrent(hash);
+    var files = torrentVideoFiles(torrent);
+    if (!files.length || !window.HomeScreen || typeof HomeScreen.fetchResume !== 'function') return null;
+    var resume = yield Promise.race([Promise.resolve(HomeScreen.fetchResume({
+      id: item.id,
+      media_type: 'tv'
+    }))['catch'](function () {
+      return undefined;
+    }), pauseMs(SERIES_PICKER_RESUME_WAIT_MS).then(function () {
+      return undefined;
+    })]);
+    if (resume === undefined) return null;
+    var sameHash = !!resume && String(resume.hash).toLowerCase() === String(hash).toLowerCase();
+    if (resume && !sameHash && !filesHaveEpisodeNumbers(files)) return null;
+    return pickSeriesEpisode(torrent, files, resume) === null ? files : null;
+  });
+  return _seriesPickerFiles.apply(this, arguments);
+}
+window.seriesPickerFiles = seriesPickerFiles;
 var SEASON_FILES_WAIT_MS = 60000;
 var SEASON_FILES_RETRY_MS = 1500;
 function pauseMs(ms) {
@@ -3399,7 +3394,7 @@ function pauseMs(ms) {
     setTimeout(resolve, ms);
   });
 }
-function waitSeasonFiles(_x38, _x39) {
+function waitSeasonFiles(_x36, _x37) {
   return _waitSeasonFiles.apply(this, arguments);
 }
 function _waitSeasonFiles() {
@@ -3438,7 +3433,7 @@ function bestPickTitle(item) {
   }
   return t || '';
 }
-function playBestPick(_x40, _x41, _x42, _x43) {
+function playBestPick(_x38, _x39, _x40, _x41) {
   return _playBestPick.apply(this, arguments);
 }
 function _playBestPick() {
@@ -3521,7 +3516,7 @@ function _playBestPick() {
   return _playBestPick.apply(this, arguments);
 }
 window.playBestPick = playBestPick;
-function playOpenedTorrent(_x44, _x45, _x46, _x47, _x48, _x49) {
+function playOpenedTorrent(_x42, _x43, _x44, _x45, _x46, _x47) {
   return _playOpenedTorrent.apply(this, arguments);
 }
 function _playOpenedTorrent() {
@@ -3567,7 +3562,7 @@ function _playOpenedTorrent() {
   });
   return _playOpenedTorrent.apply(this, arguments);
 }
-function resumeWatching(_x50, _x51, _x52) {
+function resumeWatching(_x48, _x49, _x50) {
   return _resumeWatching.apply(this, arguments);
 }
 function _resumeWatching() {
@@ -3590,7 +3585,7 @@ function _resumeWatching() {
         }
       }
       if (idx === -1) return 'missing';
-      if (opts && opts.rewatch) yield prepareSeriesRewatch(torrent, videoFiles, source.fileId, item.id);
+      if (opts && opts.rewatch) yield prepareSeriesRewatch(torrent, videoFiles, source.fileId);
       var seek = Math.floor(resume.timecode) || 0;
       if (isResumeFinished(resume)) {
         if (item.media_type !== 'tv' || idx + 1 >= videoFiles.length) {
@@ -3839,7 +3834,7 @@ function showPlayerHint(message, durationMs) {
     playerHint.textContent = DEFAULT_PLAYER_HINT;
   }, durationMs || 4000);
 }
-function preparePlaybackMetadata(_x53, _x54, _x55, _x56) {
+function preparePlaybackMetadata(_x51, _x52, _x53, _x54) {
   return _preparePlaybackMetadata.apply(this, arguments);
 }
 function _preparePlaybackMetadata() {
@@ -3899,7 +3894,7 @@ function _preparePlaybackMetadata() {
   });
   return _preparePlaybackMetadata.apply(this, arguments);
 }
-function initGstPlayback(_x57, _x58, _x59) {
+function initGstPlayback(_x55, _x56, _x57) {
   return _initGstPlayback.apply(this, arguments);
 }
 function _initGstPlayback() {
@@ -4038,7 +4033,7 @@ function updateDirectTrackDiag(videoPlayer) {
   if (t) for (var i = 0; i < t.length; i++) kinds.push((t[i].kind || '?') + (t[i].language ? '/' + t[i].language : ''));
   directPlaybackDiag.kinds = kinds.join(', ');
 }
-function initTranscodingOffPlayback(_x60, _x61, _x62) {
+function initTranscodingOffPlayback(_x58, _x59, _x60) {
   return _initTranscodingOffPlayback.apply(this, arguments);
 }
 function _initTranscodingOffPlayback() {
@@ -4167,7 +4162,7 @@ function _initTranscodingOffPlayback() {
   });
   return _initTranscodingOffPlayback.apply(this, arguments);
 }
-function initServerProxyPlayback(_x63, _x64, _x65) {
+function initServerProxyPlayback(_x61, _x62, _x63) {
   return _initServerProxyPlayback.apply(this, arguments);
 }
 function _initServerProxyPlayback() {
@@ -4446,7 +4441,7 @@ function cancelPlaybackLaunch() {
   cancelCurrentPlayback();
 }
 window.cancelPlaybackLaunch = cancelPlaybackLaunch;
-function startHLSPlayback(_x66, _x67, _x68, _x69, _x70) {
+function startHLSPlayback(_x64, _x65, _x66, _x67, _x68) {
   return _startHLSPlayback.apply(this, arguments);
 }
 function _startHLSPlayback() {
@@ -4461,7 +4456,7 @@ function _startHLSPlayback() {
   });
   return _startHLSPlayback.apply(this, arguments);
 }
-function startHLSPlaybackNow(_x71, _x72, _x73, _x74, _x75) {
+function startHLSPlaybackNow(_x69, _x70, _x71, _x72, _x73) {
   return _startHLSPlaybackNow.apply(this, arguments);
 }
 function _startHLSPlaybackNow() {
@@ -4848,7 +4843,7 @@ function showDetailView(field = null) {
     }, 250);
   }
 }
-function updateDetailProgress(_x76) {
+function updateDetailProgress(_x74) {
   return _updateDetailProgress.apply(this, arguments);
 }
 function _updateDetailProgress() {
@@ -4952,7 +4947,7 @@ function updateCurrentFileProgress(hash, fileId, timecode, duration) {
     if (progressPercent > 5) targetItem.classList.add('has-progress');
   }
 }
-function loadFileInfo(_x77, _x78) {
+function loadFileInfo(_x75, _x76) {
   return _loadFileInfo.apply(this, arguments);
 }
 function _loadFileInfo() {
@@ -5017,7 +5012,7 @@ function applyNativeAudioPref(videoPlayer) {
   for (var i = 0; i < list.length; i++) list[i].enabled = i === index;
   return index;
 }
-function switchAudioTrack(_x79) {
+function switchAudioTrack(_x77) {
   return _switchAudioTrack.apply(this, arguments);
 }
 function _switchAudioTrack() {
@@ -6079,7 +6074,7 @@ function setupAudioButton() {
   });
   setupPlayerPanelsOutsideClick();
 }
-function saveAudioPreference(_x80, _x81, _x82) {
+function saveAudioPreference(_x78, _x79, _x80) {
   return _saveAudioPreference.apply(this, arguments);
 }
 function _saveAudioPreference() {
@@ -6102,7 +6097,7 @@ function _saveAudioPreference() {
   });
   return _saveAudioPreference.apply(this, arguments);
 }
-function loadMediaPreferences(_x83, _x84) {
+function loadMediaPreferences(_x81, _x82) {
   return _loadMediaPreferences.apply(this, arguments);
 }
 function _loadMediaPreferences() {
@@ -6129,7 +6124,7 @@ function _loadMediaPreferences() {
   });
   return _loadMediaPreferences.apply(this, arguments);
 }
-function loadPlaybackPrepare(_x85, _x86, _x87) {
+function loadPlaybackPrepare(_x83, _x84, _x85) {
   return _loadPlaybackPrepare.apply(this, arguments);
 }
 function _loadPlaybackPrepare() {
@@ -6179,7 +6174,7 @@ function _loadPlaybackPrepare() {
   });
   return _loadPlaybackPrepare.apply(this, arguments);
 }
-function loadAudioPreference(_x88, _x89) {
+function loadAudioPreference(_x86, _x87) {
   return _loadAudioPreference.apply(this, arguments);
 }
 function _loadAudioPreference() {
@@ -6220,7 +6215,7 @@ function renderSubtitleTracks() {
   subtitlesList.innerHTML = html;
   setupSubtitlesListDelegation();
 }
-function switchSubtitleTrack(_x90) {
+function switchSubtitleTrack(_x88) {
   return _switchSubtitleTrack.apply(this, arguments);
 }
 function _switchSubtitleTrack() {
@@ -6917,7 +6912,7 @@ function setupSubtitlesButton() {
   });
   setupPlayerPanelsOutsideClick();
 }
-function saveSubtitlePreference(_x91, _x92, _x93) {
+function saveSubtitlePreference(_x89, _x90, _x91) {
   return _saveSubtitlePreference.apply(this, arguments);
 }
 function _saveSubtitlePreference() {
@@ -6940,7 +6935,7 @@ function _saveSubtitlePreference() {
   });
   return _saveSubtitlePreference.apply(this, arguments);
 }
-function loadSubtitlePreference(_x94, _x95) {
+function loadSubtitlePreference(_x92, _x93) {
   return _loadSubtitlePreference.apply(this, arguments);
 }
 function _loadSubtitlePreference() {

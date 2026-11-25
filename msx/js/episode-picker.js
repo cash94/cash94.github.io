@@ -360,7 +360,8 @@
     /**
      * @param {Object} [opts] preExisting — была ли раздача на сервере до окна,
      *        если её уже успели добавить (запуск из поиска не нашёл, какую серию
-     *        включить, torrents.js): тогда по списку раздач этого не понять
+     *        включить, torrents.js): тогда по списку раздач этого не понять;
+     *        files — файлы раздачи, если уже известны: окно не ждёт TorrServer
      */
     function open(result, fromEl, opts) {
         if (state.open) return;
@@ -398,10 +399,13 @@
         els.desc.textContent = '';
         els.meta.textContent = result.sizeName || '';
         els.title.textContent = state.title;
-        setStatus('Получаем список файлов…', true);
+        // Файлы уже известны (раздача на сервере, torrents.js) — список сразу,
+        // без «Получаем список файлов…» и запроса к TorrServer
+        var known = opts && Array.isArray(opts.files) && opts.files.length ? opts.files : null;
+        setStatus(known ? '' : 'Получаем список файлов…', !known);
         root.classList.remove('hidden');
 
-        fetchStat(state.magnet, gen).then(function (files) {
+        (known ? Promise.resolve(known) : fetchStat(state.magnet, gen)).then(function (files) {
             if (gen !== state.gen) {
                 // Окно закрыли, пока TorrServer искал метаданные: раздача
                 // добавилась уже после остановки — останавливаем ещё раз

@@ -2170,9 +2170,10 @@ async function addProgressToDetail(torrent, preloadedFiles) {
             getEl('playback-overlay').classList.add('active');
             var detailView = getEl('detail-view');
             if (detailView) detailView.style.pointerEvents = 'none';
-            // «▶ Играть» у досмотренного сериала — первая серия: пересмотр с
-            // начала, таймкоды всех серий раздачи обнуляются (player.js)
-            if (!timecode && typeof window.prepareSeriesRewatch === 'function') {
+            // «▶ Играть» — первая серия, выбранная по сути вручную: прогресс
+            // серий после неё стирается (player.js). «Продолжить» и
+            // «Следующая серия» (has-progress) идут по месту просмотра — их не трогаем
+            if (!btn.classList.contains('has-progress') && typeof window.prepareSeriesRewatch === 'function') {
                 await window.prepareSeriesRewatch(detailTorrentFor(hash), null, fileId);
             }
             startHLSPlayback(playUrl, timecode, false, episodeIndex).finally(function () {
@@ -5144,8 +5145,7 @@ function setupFilePlayButtonDelegation() {
         var detailView = getEl('detail-view');
         if (detailView) detailView.style.pointerEvents = 'none';
 
-        // Серию выбрали сами: сериал досмотрен до конца раздачи — пересмотр,
-        // таймкоды от неё до последней обнуляются (player.js)
+        // Серию выбрали сами: прогресс серий после неё стирается (player.js)
         if (typeof window.prepareSeriesRewatch === 'function') await window.prepareSeriesRewatch(detailTorrentFor(hash), null, fileId);
 
         startHLSPlayback(playUrl, 0, false, episodeIndex).finally(function () {
@@ -7241,8 +7241,8 @@ async function playSearchResultFile(searchResult, fileId, episodeIndex, info) {
             for (var fi = 0; idx === -1 && fi < files.length; fi++) if (String(files[fi].id) === String(fileId)) idx = fi;
             if (idx === -1) throw new Error('В раздаче нет выбранного файла');
             if (!torrentVideoFiles(added).length) added.file_stats = files.slice();
-            // Сериал досмотрен — пересмотр с выбранной серии (player.js)
-            if (await Promise.race([prepareSeriesRewatch(added, files, fileId, card.id), onCancel]) === 'cancelled') return;
+            // Серию выбрали сами — прогресс серий после неё стираем (player.js)
+            if (await Promise.race([prepareSeriesRewatch(added, files, fileId), onCancel]) === 'cancelled') return;
             // Поиск закрываем под окном: под плеером — карточка. Фокус на ней
             // hideSearchResults ставит с задержкой — ждём её, чтобы он не
             // пришёл уже в плеер
@@ -7262,7 +7262,7 @@ async function playSearchResultFile(searchResult, fileId, episodeIndex, info) {
         // при автопереключении в него уходит весь список, а не одна серия, даже
         // если TorrServer отдал раздачу ещё без file_stats
         if (Array.isArray(info.files) && info.files.length && !torrentVideoFiles(added).length) added.file_stats = info.files.slice();
-        if (await Promise.race([prepareSeriesRewatch(added, info.files, fileId, meta.tmdbId), onCancel]) === 'cancelled') return;
+        if (await Promise.race([prepareSeriesRewatch(added, info.files, fileId), onCancel]) === 'cancelled') return;
         AppState.playFromHash = false;
         AppState.isCatalogSearch = false;
         AppState.isCatalogSerials = false;
@@ -7308,6 +7308,18 @@ async function playFromHash(hash, magnet, searchResult = null) {
     AppState.androidBackCatalog = AppState.currentDetailItem;
     if (window.addToWatchHistory && AppState.pendingDetailItem && AppState.pendingDetailItem.id) {
         await window.addToWatchHistory(String(AppState.pendingDetailItem.id), currentSearchQuery, AppState.pendingDetailItem.media_type, AppState.pendingDetailPoster || null);
+    }
+    // Сериал из его карточки, раздача уже на сервере, а серии для запуска нет —
+    // сразу окно серий, без оверлея «Поиск серии…», который мелькал перед ним
+    var pickerCard = AppState.searchLocked && AppState.pendingDetailItem && AppState.pendingDetailItem.id &&
+        AppState.pendingDetailItem.media_type === 'tv' ? AppState.pendingDetailItem : null;
+    if (pickerCard && searchResult && window.EpisodePicker && !EpisodePicker.isOpen() && typeof window.seriesPickerFiles === 'function') {
+        var readyFiles = await window.seriesPickerFiles(hash, pickerCard);
+        if (readyFiles) {
+            AppState.playFromHash = false;
+            EpisodePicker.open(searchResult, findSearchResultItem(hash), { preExisting: true, files: readyFiles });
+            return;
+        }
     }
     getEl('playback-overlay').classList.add('active'); document.querySelector('.playback-text').textContent = 'Поиск постера и добавление...';
     try {
@@ -7461,13 +7473,16 @@ async function playFromHash(hash, magnet, searchResult = null) {
                 // Серию не подобрать: сериал досмотрен до конца раздачи или
                 // место просмотра неизвестно. Вместо карточки раздачи — окно
                 // серий поверх выдачи, как по долгому OK: выбор серии там
-                // запускает её (при досмотренном сериале — пересмотр с неё,
-                // prepareSeriesRewatch), «Назад» возвращает в выдачу
+                // запускает её и стирает прогресс серий после неё
+                // (prepareSeriesRewatch), «Назад» возвращает в выдачу
                 if (searchResult && window.EpisodePicker && !EpisodePicker.isOpen()) {
                     AppState.isCatalogSerials = false;
+                    AppState.playFromHash = false;
                     AppState.currentDetailItem = AppState.androidBackCatalog;
                     getEl('playback-overlay').classList.remove('active');
-                    EpisodePicker.open(searchResult, findSearchResultItem(hash), { preExisting: wasOnServer });
+                    var addedFiles = torrentVideoFiles(addedTorrent);
+                    EpisodePicker.open(searchResult, findSearchResultItem(hash),
+                        { preExisting: wasOnServer, files: addedFiles.length ? addedFiles : null });
                     return true;
                 }
             }

@@ -1864,7 +1864,7 @@ function _addProgressToDetail() {
           getEl('playback-overlay').classList.add('active');
           var detailView = getEl('detail-view');
           if (detailView) detailView.style.pointerEvents = 'none';
-          if (!timecode && typeof window.prepareSeriesRewatch === 'function') {
+          if (!btn.classList.contains('has-progress') && typeof window.prepareSeriesRewatch === 'function') {
             yield window.prepareSeriesRewatch(detailTorrentFor(hash), null, fileId);
           }
           startHLSPlayback(playUrl, timecode, false, episodeIndex).finally(function () {
@@ -5798,7 +5798,7 @@ function _playSearchResultFile() {
         for (var fi = 0; idx === -1 && fi < files.length; fi++) if (String(files[fi].id) === String(fileId)) idx = fi;
         if (idx === -1) throw new Error('В раздаче нет выбранного файла');
         if (!torrentVideoFiles(added).length) added.file_stats = files.slice();
-        if ((yield Promise.race([prepareSeriesRewatch(added, files, fileId, card.id), onCancel])) === 'cancelled') return;
+        if ((yield Promise.race([prepareSeriesRewatch(added, files, fileId), onCancel])) === 'cancelled') return;
         hideSearchResults({
           returnTo: 'detail'
         });
@@ -5812,7 +5812,7 @@ function _playSearchResultFile() {
         return;
       }
       if (Array.isArray(info.files) && info.files.length && !torrentVideoFiles(added).length) added.file_stats = info.files.slice();
-      if ((yield Promise.race([prepareSeriesRewatch(added, info.files, fileId, meta.tmdbId), onCancel])) === 'cancelled') return;
+      if ((yield Promise.race([prepareSeriesRewatch(added, info.files, fileId), onCancel])) === 'cancelled') return;
       AppState.playFromHash = false;
       AppState.isCatalogSearch = false;
       AppState.isCatalogSerials = false;
@@ -5866,6 +5866,18 @@ function _playFromHash() {
     AppState.androidBackCatalog = AppState.currentDetailItem;
     if (window.addToWatchHistory && AppState.pendingDetailItem && AppState.pendingDetailItem.id) {
       yield window.addToWatchHistory(String(AppState.pendingDetailItem.id), currentSearchQuery, AppState.pendingDetailItem.media_type, AppState.pendingDetailPoster || null);
+    }
+    var pickerCard = AppState.searchLocked && AppState.pendingDetailItem && AppState.pendingDetailItem.id && AppState.pendingDetailItem.media_type === 'tv' ? AppState.pendingDetailItem : null;
+    if (pickerCard && searchResult && window.EpisodePicker && !EpisodePicker.isOpen() && typeof window.seriesPickerFiles === 'function') {
+      var readyFiles = yield window.seriesPickerFiles(hash, pickerCard);
+      if (readyFiles) {
+        AppState.playFromHash = false;
+        EpisodePicker.open(searchResult, findSearchResultItem(hash), {
+          preExisting: true,
+          files: readyFiles
+        });
+        return;
+      }
     }
     getEl('playback-overlay').classList.add('active');
     document.querySelector('.playback-text').textContent = 'Поиск постера и добавление...';
@@ -5992,10 +6004,13 @@ function _playFromHash() {
           }
           if (searchResult && window.EpisodePicker && !EpisodePicker.isOpen()) {
             AppState.isCatalogSerials = false;
+            AppState.playFromHash = false;
             AppState.currentDetailItem = AppState.androidBackCatalog;
             getEl('playback-overlay').classList.remove('active');
+            var addedFiles = torrentVideoFiles(addedTorrent);
             EpisodePicker.open(searchResult, findSearchResultItem(hash), {
-              preExisting: wasOnServer
+              preExisting: wasOnServer,
+              files: addedFiles.length ? addedFiles : null
             });
             return true;
           }

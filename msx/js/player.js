@@ -3436,62 +3436,32 @@ async function checkResumeHasNext(resume) {
 }
 window.checkResumeHasNext = checkResumeHasNext;
 
-// ==================== ПЕРЕСМОТР СЕРИАЛА ====================
-// Сериал досмотрен до конца раздачи, и серию выбирают заново: в карточке
-// раздачи («Мои торренты» — туда же ведёт раздача из поиска, когда после
-// досмотренной серии запускать нечего), в ленте карточки-«сцены» или в окне
-// серий по долгому OK (episode-picker.js). Это пересмотр: таймкоды от
-// выбранной серии до последней в раздаче стираем. Иначе следующие серии —
+// ==================== ВЫБОР СЕРИИ ВРУЧНУЮ ====================
+// Серию выбрали сами: в карточке раздачи («Мои торренты»), в ленте
+// карточки-«сцены» или в окне серий (долгое OK, или раздача из поиска, когда
+// серию для запуска не подобрать). Отсюда сериал и смотрят дальше, поэтому
+// прогресс всех серий после выбранной стираем. Иначе следующие серии —
 // автопереключение веб-плеера и плейлист нативного (buildEpisodesPlaylist) —
-// открывались бы на старых позициях у самого конца и тут же проскакивали.
-// Серии до выбранной не трогаем: их отметки «просмотрено» остаются.
+// открывались бы на старых позициях, у досмотренных у самого конца, и тут же
+// проскакивали, а лента показывала бы полосы серий, которых по новому кругу
+// ещё не смотрели. Выбранную стираем, только если она досмотрена (смотрят
+// заново); начатая продолжится со своего места. Серии до неё не трогаем.
 
 // Сколько таймкодов стираем одновременно и сколько всего ждём перед запуском
 var REWATCH_CLEAR_PARALLEL = 6;
 var REWATCH_WAIT_MS = 6000;
 
 /**
- * Досмотрен ли сериал до конца этой раздачи: последняя открытая серия
- * досмотрена, и после неё в раздаче серий нет — ровно тот случай, когда
- * pickSeriesEpisode возвращает null. Место просмотра — с сервера
- * (/api/history, общее для всех раздач сериала), а без него (раздача не
- * сопоставлена с TMDB) — последняя просмотренная серия самой раздачи.
+ * Обнулить таймкоды файлов. Не DELETE, а сохранение нуля с ключом серии:
+ * DELETE снимает общий таймкод серии, только если тот записан с этого же
+ * файла. Смотрели сериал в 2160p, пересматривают в 1080p — общий остался бы
+ * от первой раздачи, и серия открылась бы у конца. Ноль же ложится и в свой
+ * таймкод файла, и в общий; ноль сервер не отдаёт ни прогрессом (батч), ни
+ * позицией.
  */
-async function isSeriesWatchedThrough(torrent, files, tmdbId) {
-  var hash = String(torrent.hash).toLowerCase();
-  var resume = null;
-  if (tmdbId && window.HomeScreen && typeof HomeScreen.fetchResume === 'function') {
-    try { resume = await HomeScreen.fetchResume({ id: tmdbId, media_type: 'tv' }); } catch (e) { resume = null; }
-  }
-  var sameHash = !!resume && String(resume.hash).toLowerCase() === hash;
-  if (resume && !sameHash) {
-    // Смотрели в другой раздаче: сверяем по номеру серии, а его надо знать и
-    // у файлов этой. Без номеров pickSeriesEpisode не нашёл бы ничего «после»
-    // и счёл бы сериал досмотренным
-    var seasons = getTorrentSeasons(torrent), numbered = false;
-    for (var i = 0; i < files.length && !numbered; i++) numbered = !!fileEpisodeRef(hash, files[i], seasons);
-    if (!resume.episode || !numbered) resume = null;
-  }
-  if (!resume) {
-    var progress = await getTorrentProgressBatch(hash, files);
-    var last = progress && progress.lastWatched;
-    resume = last ? { hash: hash, fileId: last.fileId, timecode: last.timecode, duration: last.duration } : null;
-  }
-  return !!resume && isResumeFinished(resume) && pickSeriesEpisode(torrent, files, resume) === null;
-}
-
-/**
- * Обнулить таймкоды файлов с index до последнего. Не DELETE, а сохранение
- * нуля с ключом серии: DELETE снимает общий таймкод серии, только если тот
- * записан с этого же файла. Смотрели сериал в 2160p, пересматривают в 1080p —
- * общий остался бы от первой раздачи, и серия открылась бы у конца. Ноль же
- * ложится и в свой таймкод файла, и в общий; ноль сервер не отдаёт ни
- * прогрессом (батч), ни позицией.
- */
-async function clearSeriesTimecodesFrom(torrent, files, index) {
-  var hash = String(torrent.hash).toLowerCase();
+async function clearEpisodeTimecodes(hash, files, toClear) {
   var clientId = localStorage.getItem('clientId');
-  var queue = files.slice(index);
+  var queue = toClear.slice();
   var clearOne = function (file) {
     var mediaKey = null;
     try { mediaKey = getTimecodeMediaKey(hash, file.id, files); } catch (e) { mediaKey = null; }
@@ -3507,38 +3477,49 @@ async function clearSeriesTimecodesFrom(torrent, files, index) {
   // Прогресс раздачи (полосы, плейлист) и «есть ли следующая» — перечитать
   if (torrentProgressCache.has(hash)) torrentProgressCache.delete(hash);
   resumeNextKnown = {};
-  console.log('🔁 Пересмотр: таймкоды серий ' + (index + 1) + '–' + files.length + ' обнулены');
 }
 
 /**
- * Перед запуском серии, выбранной вручную. Сериал досмотрен до конца раздачи —
- * обнуляет таймкоды от неё до последней. Запуск не задерживает дольше
- * REWATCH_WAIT_MS и не ломается от ошибок: в худшем случае серии откроются,
- * как раньше.
+ * Перед запуском серии, выбранной вручную: стереть прогресс серий после неё
+ * (и её самой, если досмотрена). Прогресс читаем свежим — со всех раздач
+ * сериала (общий таймкод серии), стираем только то, что есть. Запуск не
+ * задерживает дольше REWATCH_WAIT_MS и не ломается от ошибок: в худшем случае
+ * серии откроются, как раньше.
  * @param {Object|string} torrent раздача или её hash
  * @param {?Array} files видеофайлы в порядке серий; null — из самой раздачи
  * @param {string|number} fileId выбранная серия
- * @param {?string|number} [tmdbId] сериал; нет — из раздачи
- * @returns {Promise<boolean>} true — обнулили
+ * @returns {Promise<number>} сколько серий обнулили
  */
-async function prepareSeriesRewatch(torrent, files, fileId, tmdbId) {
+async function prepareSeriesRewatch(torrent, files, fileId) {
   try {
     if (typeof torrent === 'string') torrent = findLoadedTorrent(torrent) || { hash: torrent };
-    if (!torrent || !torrent.hash) return false;
+    if (!torrent || !torrent.hash) return 0;
     if (!files || !files.length) files = torrentVideoFiles(torrent);
-    if (files.length < 2) return false;
+    if (files.length < 2) return 0;
     var index = -1;
     for (var i = 0; i < files.length; i++) if (String(files[i].id) === String(fileId)) { index = i; break; }
-    if (index === -1) return false;
-    var id = tmdbId || getTorrentTmdbId(torrent);
-    var work = isSeriesWatchedThrough(torrent, files, id).then(function (through) {
-      if (!through) return false;
-      return clearSeriesTimecodesFrom(torrent, files, index).then(function () { return true; });
-    });
-    return await Promise.race([work, pauseMs(REWATCH_WAIT_MS).then(function () { return false; })]);
+    if (index === -1) return 0;
+    var hash = String(torrent.hash).toLowerCase();
+    var work = (async function () {
+      if (torrentProgressCache.has(hash)) torrentProgressCache.delete(hash);
+      var progress = await getTorrentProgressBatch(hash, files);
+      var byFileId = (progress && progress.byFileId) || {};
+      var toClear = [];
+      for (var f = index; f < files.length; f++) {
+        var saved = byFileId[String(files[f].id)];
+        if (!saved || !(saved.timecode > 0)) continue;
+        if (f === index && !isResumeFinished(saved)) continue;
+        toClear.push(files[f]);
+      }
+      if (!toClear.length) return 0;
+      await clearEpisodeTimecodes(hash, files, toClear);
+      console.log('🔁 Серия ' + (index + 1) + ' выбрана вручную: прогресс ' + toClear.length + ' серий после неё стёрт');
+      return toClear.length;
+    })();
+    return await Promise.race([work, pauseMs(REWATCH_WAIT_MS).then(function () { return 0; })]);
   } catch (e) {
-    console.warn('Пересмотр: не удалось обнулить таймкоды', e);
-    return false;
+    console.warn('Выбор серии: не удалось стереть прогресс следующих', e);
+    return 0;
   }
 }
 window.prepareSeriesRewatch = prepareSeriesRewatch;
@@ -3867,6 +3848,34 @@ async function findSeriesStart(torrent, item) {
 }
 window.findSeriesStart = findSeriesStart;
 
+// Сколько ждём место просмотра для решения «сразу окно серий» (seriesPickerFiles)
+var SERIES_PICKER_RESUME_WAIT_MS = 1500;
+
+/**
+ * Раздача сериала из поиска в его карточке уже на сервере, а серии для
+ * запуска нет (findSeriesStart вернул бы null): сериал досмотрен до конца
+ * раздачи или место просмотра неизвестно. Решаем это ДО оверлея «Поиск
+ * серии…»: иначе он мелькал, и только потом открывалось окно серий.
+ * Решаем лишь наверняка — раздача в списке с файлами, место просмотра пришло
+ * быстро, серию файла знаем без TMDB (та же раздача или номера в именах). В
+ * остальных случаях — null, и запуск идёт обычным путём.
+ * @returns {Promise<?Array>} видеофайлы раздачи для окна серий; null — не оно
+ */
+async function seriesPickerFiles(hash, item) {
+  var torrent = findLoadedTorrent(hash);
+  var files = torrentVideoFiles(torrent);
+  if (!files.length || !window.HomeScreen || typeof HomeScreen.fetchResume !== 'function') return null;
+  var resume = await Promise.race([
+    Promise.resolve(HomeScreen.fetchResume({ id: item.id, media_type: 'tv' }))['catch'](function () { return undefined; }),
+    pauseMs(SERIES_PICKER_RESUME_WAIT_MS).then(function () { return undefined; })
+  ]);
+  if (resume === undefined) return null;
+  var sameHash = !!resume && String(resume.hash).toLowerCase() === String(hash).toLowerCase();
+  if (resume && !sameHash && !filesHaveEpisodeNumbers(files)) return null;
+  return pickSeriesEpisode(torrent, files, resume) === null ? files : null;
+}
+window.seriesPickerFiles = seriesPickerFiles;
+
 // Сколько ждём файлы раздачи сериала (список «Лучшие», раздача из поиска в
 // карточке сериала). Столько же ждёт метаданные и MonoServer; «Назад» — отмена
 var SEASON_FILES_WAIT_MS = 60000;
@@ -4067,8 +4076,8 @@ async function playOpenedTorrent(item, torrent, videoFiles, idx, seek, from) {
  * @param {Object} resume {hash, fileId, timecode, duration, season?, episode?}
  * @param {Object} [opts] card — запуск из карточки фильма, значение — элемент
  *          под фокусом: по выходу из плеера вернуться к нему, а не на главную;
- *          rewatch — серию выбрали вручную (лента карточки): досмотрен сериал —
- *          пересмотр (prepareSeriesRewatch)
+ *          rewatch — серию выбрали вручную (лента карточки): прогресс серий
+ *          после неё стереть (prepareSeriesRewatch)
  * @returns {Promise<string>} 'started' — ушли в плеер; 'missing' — раздачи
  *          (или файла) нет в TorrServer, пусть вызывающий откроет карточку;
  *          'last' — досмотрена последняя серия раздачи, следующей нет;
@@ -4089,8 +4098,8 @@ async function resumeWatching(item, resume, opts) {
       if (String(videoFiles[i].id) === String(source.fileId)) { idx = i; break; }
     }
     if (idx === -1) return 'missing';
-    // Серию выбрали в ленте карточки — при досмотренном сериале это пересмотр
-    if (opts && opts.rewatch) await prepareSeriesRewatch(torrent, videoFiles, source.fileId, item.id);
+    // Серию выбрали в ленте карточки — прогресс серий после неё стираем
+    if (opts && opts.rewatch) await prepareSeriesRewatch(torrent, videoFiles, source.fileId);
     // Досмотренная серия — следующая, со своего места (null: плеер спросит
     // сервер); досмотренного фильма здесь не бывает — баннер такой не предлагает
     var seek = Math.floor(resume.timecode) || 0;
