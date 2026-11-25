@@ -330,7 +330,11 @@
         delete s.catalogCardSize;
 
         s.cardSize = clampStep(s.cardSize, SLIDERS.cardSize);
-        s.detailScale = clampStep(s.detailScale, SLIDERS.detailScale);
+        // Ползунков «Масштаб детального просмотра» и «Текст описания» в
+        // панели больше нет — сохранённое раньше значение не должно остаться
+        // навсегда без способа вернуть: держим 100%
+        s.detailScale = defaultSettings.detailScale;
+        s.detailTextScale = defaultSettings.detailTextScale;
 
         delete s.fontSize;
 
@@ -344,7 +348,6 @@
         }
         delete s.heroOverviewScale;
         s.heroTextScale = clampStep(s.heroTextScale, SLIDERS.heroTextScale);
-        s.detailTextScale = clampStep(s.detailTextScale, SLIDERS.detailTextScale);
         s.topbarScale = clampStep(s.topbarScale, SLIDERS.topbarScale);
         s.topbarStyle = s.topbarStyle === 'icons' ? 'icons' : 'text';
         s.settingsScale = clampStep(s.settingsScale, SLIDERS.settingsScale);
@@ -724,6 +727,10 @@
                 '#exit-player-btn.focused,.close-panel-btn.focused{transition:none!important;}');
         } else if (currentSettings.animations === 'reduced') {
             css.push('*,*::before,*::after{transition-duration:.1s!important;animation-duration:.1s!important;}');
+            // Бегущая строка — не украшение, а способ прочитать длинное
+            // название: за 0,1 с она пролетала мимо. Длительность — своя,
+            // из applyTitleMarquee (control.js)
+            css.push('.focused .marquee-text.marquee>span{animation-duration:var(--mq-dur,8s)!important;}');
         }
 
         return css.join('\n');
@@ -1101,11 +1108,6 @@
             sliderRow('cardSize', '120 × ' + posterHeight(SLIDERS.cardSize.min), CARD_MAX_W + ' × ' + CARD_MAX_H) +
             '</div>' +
 
-            '<div class="ui-customizer-group"><h3>Масштаб детального просмотра</h3>' +
-            '<div class="ui-customizer-hint">Шапка, описание, кнопки, актёры и список файлов на экране фильма.</div>' +
-            sliderRow('detailScale', SLIDERS.detailScale.min + '%', SLIDERS.detailScale.max + '%') +
-            '</div>' +
-
             '<div class="ui-customizer-group"><h3>Шапка</h3>' +
             '<div class="ui-customizer-hint">Размер шрифта верхней строки: TorrStream, разделы, лупа, «Настройки», часы и дата. Не влезет в экран — шапка уменьшится до того, что влезает.</div>' +
             sliderRow('topbarScale', SLIDERS.topbarScale.min + '%', SLIDERS.topbarScale.max + '%') +
@@ -1120,11 +1122,6 @@
             '<div class="ui-customizer-group"><h3>Экран «Настройки»</h3>' +
             '<div class="ui-customizer-hint">Размер всего экрана настроек — разделы, подписи, поля, переключатели, кнопки — и этой панели.</div>' +
             sliderRow('settingsScale', SLIDERS.settingsScale.min + '%', SLIDERS.settingsScale.max + '%') +
-            '</div>' +
-
-            '<div class="ui-customizer-group"><h3>Текст описания</h3>' +
-            '<div class="ui-customizer-hint">Размер шрифта описания на экране фильма. Кнопки, постеры и остальное не меняются.</div>' +
-            sliderRow('detailTextScale', SLIDERS.detailTextScale.min + '%', SLIDERS.detailTextScale.max + '%') +
             '</div>' +
 
             '<div class="ui-customizer-group"><h3>Результаты поиска</h3>' +

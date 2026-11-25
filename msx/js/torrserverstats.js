@@ -536,6 +536,7 @@ function renderPlaybackPreload(state) {
   var progress = Math.min(state.loaded, goal) * 100 / goal;
   els.fill.style.width = progress.toFixed(1) + '%';
   els.percent.textContent = Math.round(progress) + '%';
+  els.percent.classList.remove('hidden');
   setPreloadSpiders(progress / 100);
   var showPeers = !!stats;
   els.peers.classList.toggle('hidden', !showPeers);
@@ -579,8 +580,8 @@ function finishPlaybackPreload(state, play) {
   if (play && state.waiting) return;
   activePlaybackPreload = null;
   if (state.timer) { clearTimeout(state.timer); state.timer = null; }
-  if (play && preloadHoldsUntilPlaying()) holdPreloadScreen();
-  else if (play) holdPreloadUntilHidden();
+  if (play && preloadHoldsUntilPlaying()) holdPreloadScreen(state.skipped);
+  else if (play) holdPreloadUntilHidden(state.skipped);
   else releasePreloadScreen(true);
   if (!play) {
     if (state.controller) { try { state.controller.abort(); } catch (e) { } }
@@ -615,12 +616,23 @@ function preloadHoldsUntilPlaying() {
   return !(apple && apple.template);
 }
 
-function holdPreloadScreen() {
-  var els = getPreloadPanel();
+/**
+ * Шкала «набрано»: логотип цветной целиком. noPercent — запуск с таймкода
+ * без прогрева (skipPlaybackPreload): буфер не набирали, и «100%» на экране
+ * было неправдой — подпись прячем вместе с разделителем перед ней.
+ */
+function showPreloadFilled(els, noPercent) {
   els.fill.style.width = '100%';
   els.percent.textContent = '100%';
+  els.percent.classList.toggle('hidden', !!noPercent);
+  if (noPercent) els.sepSpeed.classList.add('hidden');
   setPreloadSpiders(1);
   els.root.classList.add('preload-holding');
+}
+
+function holdPreloadScreen(noPercent) {
+  var els = getPreloadPanel();
+  showPreloadFilled(els, noPercent);
   var video = document.getElementById('video-player');
   // Видео пошло — гасим, но не раньше, чем уберут чёрные прослойки плеера:
   // «Воспроизведение…» снимает уже тот, кто звал startHLSPlayback, после
@@ -666,12 +678,9 @@ function holdPreloadScreen() {
  */
 var PRELOAD_EXTERNAL_HOLD_MS = 5000;
 
-function holdPreloadUntilHidden() {
+function holdPreloadUntilHidden(noPercent) {
   var els = getPreloadPanel();
-  els.fill.style.width = '100%';
-  els.percent.textContent = '100%';
-  setPreloadSpiders(1);
-  els.root.classList.add('preload-holding');
+  showPreloadFilled(els, noPercent);
   if (preloadHold) releasePreloadScreen(true);
   var onHide = function (e) {
     if (e.type === 'pagehide' || document.hidden) releasePreloadScreen(true);
@@ -879,6 +888,7 @@ function skipPlaybackPreload(hash) {
   var state = activePlaybackPreload;
   if (!state || state.hash !== String(hash).toLowerCase()) return;
   state.waiting = false;
+  state.skipped = true;
   finishPlaybackPreload(state, true);
 }
 
