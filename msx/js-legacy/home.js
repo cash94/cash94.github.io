@@ -2,8 +2,7 @@
 (function () {
   'use strict';
   var HOME = {
-    TTL_MS: 3 * 24 * 60 * 60 * 1000,
-    TMDB_TTL_MS: 24 * 60 * 60 * 1000,
+    TTL_MS: 24 * 60 * 60 * 1000,
     STALE_RETRY_MS: 60 * 60 * 1000,
     FOCUS_DELAY_MS: 100,
     CATEGORY_FADE_S: 0.2,
@@ -487,23 +486,19 @@
       return data.history.slice(0, HOME.ITEMS_PER_ROW).map(historyRowItem);
     });
   }
-  function collectionTtl(cfg) {
-    return cfg.source === 'tmdb' ? HOME.TMDB_TTL_MS : HOME.TTL_MS;
-  }
-  function noteRowExpiry(cfg, ts) {
-    if (cfg.source !== 'tmdb') return;
-    var at = ts + collectionTtl(cfg);
+  function noteRowExpiry(ts) {
+    var at = ts + HOME.TTL_MS;
     if (!homeState.staleAt || at < homeState.staleAt) homeState.staleAt = at;
   }
   function homeRowsStale() {
     return !!homeState.staleAt && Date.now() >= homeState.staleAt;
   }
   function loadCollectionItems(cfg) {
-    var ttl = collectionTtl(cfg);
+    var ttl = HOME.TTL_MS;
     return dbGet(cfg.key).then(function (rec) {
       var fresh = rec && rec.items && rec.items.length && rec.v === ITEMS_SCHEMA_VERSION && Date.now() - (rec.ts || 0) < ttl;
       if (fresh) {
-        noteRowExpiry(cfg, rec.ts);
+        noteRowExpiry(rec.ts);
         return rec.items;
       }
       var url = cfg.url ? serverUrl() + cfg.url : cfg.source === 'kinopoisk' ? serverUrl() + '/api/kinopoisk/collection?preset=' + encodeURIComponent(cfg.key) : serverUrl() + '/api/tmdb/collection?preset=' + encodeURIComponent(cfg.key);
@@ -513,7 +508,7 @@
           var ts = now;
           if (data.stale) ts = now - ttl + HOME.STALE_RETRY_MS;else if (typeof data.age === 'number' && data.age > 0 && data.age < ttl) ts = now - data.age;
           dbPut(cfg.key, data.items, ts);
-          noteRowExpiry(cfg, ts);
+          noteRowExpiry(ts);
           return data.items;
         }
         if (rec && rec.items && rec.items.length) {
@@ -3156,7 +3151,7 @@
     ensureHeroDom();
     invalidateFocus();
     if (homeState.built && !homeState.loading && homeRowsStale()) {
-      console.log('🏠 Подборки TMDB старше суток — пересобираем главную');
+      console.log('🏠 Подборки старше суток — пересобираем главную');
       leaveCategoryHero();
       suspendHero();
       homeState.built = false;

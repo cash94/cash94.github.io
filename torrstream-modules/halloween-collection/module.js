@@ -355,7 +355,7 @@ function getData(log) {
 
 module.exports = {
     name: 'halloween-collection',
-    version: '1.0.0',
+    version: '1.0.1',
 
     init: function (app, ctx) {
         var log = ctx.log;
@@ -366,7 +366,14 @@ module.exports = {
         // Ряд главной (HOME_ROWS в public/js/home.js)
         app.get('/api/halloween/collection', function (req, res) {
             getData(log).then(function (data) {
-                res.json({ success: true, preset: 'halloween', name: 'Хэллоуин', items: data.home });
+                var out = { success: true, preset: 'halloween', name: 'Хэллоуин', items: data.home };
+                // age — мс с последней сборки: главная отсчитывает свои сутки
+                // от него; протухший кэш (сборка не удалась) — stale
+                if (data.ts) {
+                    out.age = Date.now() - data.ts;
+                    if (out.age >= TTL_MS) out.stale = true;
+                }
+                res.json(out);
             });
         });
 

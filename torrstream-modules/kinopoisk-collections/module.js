@@ -64,8 +64,10 @@ var serverTmdbGet = null;
 // каждая подборка это ровно один запрос к Кинопоиску, сколько бы элементов в
 // ней ни лежало.
 var ROW_LIMIT = 20;
-// Столько же, сколько COLLECTION_CACHE_TTL_MS у серверных подборок.
-var TTL_MS = 3 * 24 * 60 * 60 * 1000;
+// Раз в сутки — как HOME_COLLECTION_TTL_MS у серверных подборок и HOME.TTL_MS
+// главной. Ответ несёт age (мс с последней сборки): главная отсчитывает свои
+// сутки от него.
+var TTL_MS = 24 * 60 * 60 * 1000;
 // Одновременных запросов к TMDB при сборке. Выше 6 зеркало начинает терять
 // ответы: на 8 из ста элементов не сопоставились 28 против шести на четырёх.
 var TMDB_CONCURRENCY = 6;
@@ -534,7 +536,7 @@ function getCollection(key, log) {
 
 module.exports = {
     name: 'kinopoisk-collections',
-    version: '3.4.0',
+    version: '3.4.1',
 
     init: function (app, ctx) {
         var log = ctx.log;
@@ -568,12 +570,20 @@ module.exports = {
                 return res.status(400).json({ success: false, error: 'Неизвестная подборка' });
             }
             getCollection(key, log).then(function (items) {
-                res.json({
+                var out = {
                     success: true,
                     preset: key,
                     name: COLLECTIONS[key].name,
                     items: items
-                });
+                };
+                // Сборка не удалась и отдан протухший кэш — stale: главная
+                // спросит снова через час, а не через сутки
+                var rec = cache[key];
+                if (rec && rec.items === items) {
+                    out.age = Date.now() - rec.ts;
+                    if (out.age >= TTL_MS) out.stale = true;
+                }
+                res.json(out);
             }, function (e) {
                 res.status(500).json({ success: false, error: e.message });
             });
