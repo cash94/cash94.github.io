@@ -4866,12 +4866,12 @@ function pluralRu(n, one, few, many) {
  * показываем: иначе текст мелькал бы и сменялся картинкой. Не пришёл за
  * CINEMA_LOGO_WAIT_MS ни с одного зеркала — остаётся текст.
  *
- * Откуда логотип: в ответе /api/tmdb/details его нет — он приходит в
- * элементах подборок главной (item.logo) или отдельным /api/tmdb/logo,
- * который спрашивает только главная. Поэтому первым делом спрашиваем главную
- * (HomeScreen.logoUrl): она знает логотипы всего, что показывала в баннере, и
- * отдаёт адрес с того зеркала, где картинка уже скачана, — файл придёт из
- * HTTP-кэша. Своих запросов за логотипом карточка не делает.
+ * Откуда логотип, по порядку: главная (HomeScreen.logoUrl) — она знает
+ * логотипы всего, что показывала в баннере, и отдаёт адрес с того зеркала,
+ * где картинка уже скачана, — файл придёт из HTTP-кэша; затем сам элемент
+ * каталога (item.logo — парсер кладёт его в файл каталога, выбран по тем же
+ * правилам, что и на сервере); и только если там нет — ответ /details TMDB,
+ * как раньше. Своих запросов за логотипом карточка не делает.
  */
 var cinemaLogoGen = 0;
 var CINEMA_LOGO_WAIT_MS = 1500;
@@ -4882,7 +4882,7 @@ function cinemaLogoUrl(item, src) {
         try { url = window.HomeScreen.logoUrl(item); } catch (e) { url = null; }
     }
     if (url) return url;
-    var path = (src && src.logo && src.logo.file_path) || (item && item.logo && item.logo.file_path);
+    var path = (item && item.logo && item.logo.file_path) || (src && src.logo && src.logo.file_path);
     return path ? getTmdbImageUrl(path, 'w500') : null;
 }
 
@@ -5567,10 +5567,12 @@ function renderDetailHeader(item, posterUrl, details) {
     }
 
     // Backdrop через img.decode().
-    // item.backdrop_path — обязательный фоллбэк: ответ /details иногда приходит
-    // без кадра (обрезанный ответ зеркала, запись из своего кэша), а в самом
-    // элементе каталога путь есть. Без него карточка молча оставалась чёрной.
-    var bp = src.backdrop_path || (item && item.backdrop_path) ||
+    // Сначала кадр из самого элемента каталога: парсер кладёт его в файл
+    // каталога (backdrop_path, w1280) — тот же, что уже скачан для плитки и
+    // баннера. Нет его (поиск, «похожие», старый файл каталога) — из ответа
+    // /details, как раньше; ответ иногда приходит без кадра (обрезанный ответ
+    // зеркала, запись из своего кэша) — тогда первый из backdrops.
+    var bp = (item && item.backdrop_path) || src.backdrop_path ||
         (Array.isArray(src.backdrops) && src.backdrops[0] && src.backdrops[0].file_path);
     if (bp) {
         var bpUrl = getTmdbImageUrl(bp, CATALOG_CONSTANTS.IMG_SIZES.BACKDROP);

@@ -3746,7 +3746,7 @@ function cinemaLogoUrl(item, src) {
     }
   }
   if (url) return url;
-  var path = src && src.logo && src.logo.file_path || item && item.logo && item.logo.file_path;
+  var path = item && item.logo && item.logo.file_path || src && src.logo && src.logo.file_path;
   return path ? getTmdbImageUrl(path, 'w500') : null;
 }
 function renderCinemaLogo(item, src) {
@@ -4348,7 +4348,7 @@ function renderDetailHeader(item, posterUrl, details) {
     oe.classList.remove('hidden');
     oe.style.display = 'block';
   }
-  var bp = src.backdrop_path || item && item.backdrop_path || Array.isArray(src.backdrops) && src.backdrops[0] && src.backdrops[0].file_path;
+  var bp = item && item.backdrop_path || src.backdrop_path || Array.isArray(src.backdrops) && src.backdrops[0] && src.backdrops[0].file_path;
   if (bp) {
     var bpUrl = getTmdbImageUrl(bp, CATALOG_CONSTANTS.IMG_SIZES.BACKDROP);
     _loadBackdropDecoded(be, bpUrl);
