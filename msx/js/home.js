@@ -22,18 +22,24 @@
 // Данные берём с TMDB через свой сервер: зеркало tsapi.hnar.online отвечает 302
 // на другие хосты, а на редиректе нет Access-Control-Allow-*, поэтому из браузера
 // телевизора запрос не проходит. Эндпоинт — GET /api/tmdb/collection?preset=...
-// (routes/tmdb.js), он же держит серверный кэш на те же 3 дня.
+// (routes/tmdb.js), он же держит серверный кэш на те же 24 часа.
 //
-// Всё, кроме истории просмотра, лежит в IndexedDB и обновляется раз в 3 дня:
-// открытие главной на прогретом устройстве не делает ни одного запроса к TMDB.
+// Всё, кроме истории просмотра, лежит в IndexedDB: подборки TMDB обновляются
+// раз в 24 часа (HOME.TMDB_TTL_MS), остальные — раз в 3 дня. Открытие главной
+// на прогретом устройстве не делает ни одного запроса к TMDB.
 // История — всегда живой GET /api/history, её кэшировать нельзя.
 (function () {
     'use strict';
 
     // ==================== КОНСТАНТЫ ====================
     var HOME = {
-        // Горизонт кэша подборок. Совпадает с COLLECTION_CACHE_TTL_MS на сервере.
+        // Горизонт кэша подборок (Кинопоиск, сезонные)
         TTL_MS: 3 * 24 * 60 * 60 * 1000,
+        // Подборки TMDB — раз в сутки. Совпадает с HOME_COLLECTION_TTL_MS на
+        // сервере; отсчёт от возраста его кэша (age в ответе), см. loadCollectionItems
+        TMDB_TTL_MS: 24 * 60 * 60 * 1000,
+        // TMDB не ответил и сервер отдал просроченное — спросить снова через час
+        STALE_RETRY_MS: 60 * 60 * 1000,
         // Пауза между «ряды в DOM» и «фокус на карточке»: столько же, сколько
         // CATALOG_CONSTANTS.FOCUS_DELAY_MS у каталога
         FOCUS_DELAY_MS: 100,
@@ -241,6 +247,7 @@
     var homeState = {
         built: false,            // ряды собраны и лежат в DOM
         loading: false,
+        staleAt: 0,              // к этому Date.now() ряды TMDB на экране устареют (0 — не знаем)
         activated: false,        // фокус уже уехал на карточку → постеры можно грузить
         rows: [],                // [[card, ...], ...] в порядке показа
         rowEls: [],              // сами <section class="catalog-row"> по тому же индексу
@@ -602,14 +609,14 @@
         });
     }
 
-    function dbPut(key, items) {
+    function dbPut(key, items, ts) {
         return openDb().then(function (db) {
             if (!db) return;
             return new Promise(function (resolve) {
                 try {
                     var tx = db.transaction(DB_STORE, 'readwrite');
                     tx.objectStore(DB_STORE).put({
-                        key: key, items: items, ts: Date.now(), v: ITEMS_SCHEMA_VERSION
+                        key: key, items: items, ts: ts || Date.now(), v: ITEMS_SCHEMA_VERSION
                     });
                     tx.oncomplete = function () { resolve(); };
                     tx.onerror = function () { resolve(); };
@@ -662,18 +669,38 @@
         });
     }
 
+    function collectionTtl(cfg) {
+        return cfg.source === 'tmdb' ? HOME.TMDB_TTL_MS : HOME.TTL_MS;
+    }
+
+    // Ряды TMDB на экране устареют к этому моменту — тогда главную пересобираем
+    // при возврате на неё (showHome) или при выходе приложения из фона
+    function noteRowExpiry(cfg, ts) {
+        if (cfg.source !== 'tmdb') return;
+        var at = ts + collectionTtl(cfg);
+        if (!homeState.staleAt || at < homeState.staleAt) homeState.staleAt = at;
+    }
+
+    function homeRowsStale() {
+        return !!homeState.staleAt && Date.now() >= homeState.staleAt;
+    }
+
     /**
      * Свежая запись в IndexedDB → сеть не трогаем вообще.
-     * Записи нет, ей больше 3 дней или она от прошлой версии проекции (нет полей
-     * баннера) → запрос к серверу и перезапись.
+     * Записи нет, она старше срока (TMDB — сутки, прочие — 3 дня) или от прошлой
+     * версии проекции (нет полей баннера) → запрос к серверу и перезапись.
      * Сеть молчит → рисуем что было; и этого нет — ряд не показываем.
      */
     function loadCollectionItems(cfg) {
+        var ttl = collectionTtl(cfg);
         return dbGet(cfg.key).then(function (rec) {
             var fresh = rec && rec.items && rec.items.length &&
                 rec.v === ITEMS_SCHEMA_VERSION &&
-                (Date.now() - (rec.ts || 0)) < HOME.TTL_MS;
-            if (fresh) return rec.items;
+                (Date.now() - (rec.ts || 0)) < ttl;
+            if (fresh) {
+                noteRowExpiry(cfg, rec.ts);
+                return rec.items;
+            }
 
             // Подборки Кинопоиска и сезонные отдают модули-расширения, всё
             // остальное — routes/tmdb.js. Формат ответа у них одинаковый,
@@ -685,8 +712,16 @@
 
             return homeFetch(url).then(function (data) {
                     if (data && data.success && data.items && data.items.length) {
+                        // Срок считаем от того, когда сервер сам взял подборку у
+                        // TMDB (age — разница, а не время: часы телевизора и
+                        // сервера могут не совпадать). Старый сервер age не шлёт.
+                        var now = Date.now();
+                        var ts = now;
+                        if (data.stale) ts = now - ttl + HOME.STALE_RETRY_MS;
+                        else if (typeof data.age === 'number' && data.age > 0 && data.age < ttl) ts = now - data.age;
                         // Запись в IndexedDB не блокирует показ ряда
-                        dbPut(cfg.key, data.items);
+                        dbPut(cfg.key, data.items, ts);
+                        noteRowExpiry(cfg, ts);
                         return data.items;
                     }
                     if (rec && rec.items && rec.items.length) {
@@ -3950,6 +3985,7 @@
         homeState.activeRow = 0;
         homeState.data = {};
         homeState.activated = false;
+        homeState.staleAt = 0;
         resetPosterQueue();
         // Заглушка ещё на экране (первый запуск) — window.load её не снимет:
         // он приходит раньше постеров, их грузим мы. Снимет dismissLoaderWhenReady
@@ -4107,6 +4143,17 @@
         ensureHeroDom();
         invalidateFocus();
 
+        // Главная собрана больше суток назад (приложение не закрывали) —
+        // подборки TMDB перечитываем. Ряд и карточку фокуса (lastRowKey) не
+        // сбрасываем: restoreHomeFocus вернёт туда же, где стояли
+        if (homeState.built && !homeState.loading && homeRowsStale()) {
+            console.log('🏠 Подборки TMDB старше суток — пересобираем главную');
+            leaveCategoryHero();
+            suspendHero();
+            homeState.built = false;
+            homeState.heroDetails = {};
+        }
+
         if (!homeState.built && !homeState.loading) {
             homeState.loading = true;
             layoutHome();
@@ -4236,6 +4283,12 @@
         document.addEventListener('visibilitychange', function () {
             if (document.hidden) { suspendHero(true); return; }
             if (!isHomeVisible()) return;
+            // Пока были в фоне, подборки TMDB устарели (сутки) — showHome
+            // пересоберёт ряды и вернёт фокус на прежнее место
+            if (homeState.built && !homeState.loading && homeRowsStale() && isHomeFocusable()) {
+                showHome({ restoreFocus: true });
+                return;
+            }
             var f = document.querySelector('.focused');
             if (f && findCardPosition(f)) setHeroFromCard(f);
         });

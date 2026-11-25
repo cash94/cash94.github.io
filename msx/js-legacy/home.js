@@ -3,6 +3,8 @@
   'use strict';
   var HOME = {
     TTL_MS: 3 * 24 * 60 * 60 * 1000,
+    TMDB_TTL_MS: 24 * 60 * 60 * 1000,
+    STALE_RETRY_MS: 60 * 60 * 1000,
     FOCUS_DELAY_MS: 100,
     CATEGORY_FADE_S: 0.2,
     DETAIL_COVER_MS: 450,
@@ -133,6 +135,7 @@
   var homeState = {
     built: false,
     loading: false,
+    staleAt: 0,
     activated: false,
     rows: [],
     rowEls: [],
@@ -414,7 +417,7 @@
       });
     });
   }
-  function dbPut(key, items) {
+  function dbPut(key, items, ts) {
     return openDb().then(function (db) {
       if (!db) return;
       return new Promise(function (resolve) {
@@ -423,7 +426,7 @@
           tx.objectStore(DB_STORE).put({
             key: key,
             items: items,
-            ts: Date.now(),
+            ts: ts || Date.now(),
             v: ITEMS_SCHEMA_VERSION
           });
           tx.oncomplete = function () {
@@ -484,14 +487,33 @@
       return data.history.slice(0, HOME.ITEMS_PER_ROW).map(historyRowItem);
     });
   }
+  function collectionTtl(cfg) {
+    return cfg.source === 'tmdb' ? HOME.TMDB_TTL_MS : HOME.TTL_MS;
+  }
+  function noteRowExpiry(cfg, ts) {
+    if (cfg.source !== 'tmdb') return;
+    var at = ts + collectionTtl(cfg);
+    if (!homeState.staleAt || at < homeState.staleAt) homeState.staleAt = at;
+  }
+  function homeRowsStale() {
+    return !!homeState.staleAt && Date.now() >= homeState.staleAt;
+  }
   function loadCollectionItems(cfg) {
+    var ttl = collectionTtl(cfg);
     return dbGet(cfg.key).then(function (rec) {
-      var fresh = rec && rec.items && rec.items.length && rec.v === ITEMS_SCHEMA_VERSION && Date.now() - (rec.ts || 0) < HOME.TTL_MS;
-      if (fresh) return rec.items;
+      var fresh = rec && rec.items && rec.items.length && rec.v === ITEMS_SCHEMA_VERSION && Date.now() - (rec.ts || 0) < ttl;
+      if (fresh) {
+        noteRowExpiry(cfg, rec.ts);
+        return rec.items;
+      }
       var url = cfg.url ? serverUrl() + cfg.url : cfg.source === 'kinopoisk' ? serverUrl() + '/api/kinopoisk/collection?preset=' + encodeURIComponent(cfg.key) : serverUrl() + '/api/tmdb/collection?preset=' + encodeURIComponent(cfg.key);
       return homeFetch(url).then(function (data) {
         if (data && data.success && data.items && data.items.length) {
-          dbPut(cfg.key, data.items);
+          var now = Date.now();
+          var ts = now;
+          if (data.stale) ts = now - ttl + HOME.STALE_RETRY_MS;else if (typeof data.age === 'number' && data.age > 0 && data.age < ttl) ts = now - data.age;
+          dbPut(cfg.key, data.items, ts);
+          noteRowExpiry(cfg, ts);
           return data.items;
         }
         if (rec && rec.items && rec.items.length) {
@@ -3011,6 +3033,7 @@
     homeState.activeRow = 0;
     homeState.data = {};
     homeState.activated = false;
+    homeState.staleAt = 0;
     resetPosterQueue();
     if (moduleLoaderUp() && typeof window.holdModuleLoader === 'function') {
       window.holdModuleLoader();
@@ -3132,6 +3155,13 @@
     }
     ensureHeroDom();
     invalidateFocus();
+    if (homeState.built && !homeState.loading && homeRowsStale()) {
+      console.log('🏠 Подборки TMDB старше суток — пересобираем главную');
+      leaveCategoryHero();
+      suspendHero();
+      homeState.built = false;
+      homeState.heroDetails = {};
+    }
     if (!homeState.built && !homeState.loading) {
       homeState.loading = true;
       layoutHome();
@@ -3226,6 +3256,12 @@
         return;
       }
       if (!isHomeVisible()) return;
+      if (homeState.built && !homeState.loading && homeRowsStale() && isHomeFocusable()) {
+        showHome({
+          restoreFocus: true
+        });
+        return;
+      }
       var f = document.querySelector('.focused');
       if (f && findCardPosition(f)) setHeroFromCard(f);
     });
