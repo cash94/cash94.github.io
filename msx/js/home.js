@@ -3406,7 +3406,12 @@
     function handleHomeBack() {
         var f = document.querySelector('.focused');
         var btns = getNavButtons();
-        if (f && btns.indexOf(f) !== -1) return true;    // уже в шапке — уходить некуда
+        // Уже в шапке — уходить некуда. В Android-приложении это и есть корень
+        // для выхода двойным «Назад» (config.js: rootBackPress)
+        if (f && btns.indexOf(f) !== -1) {
+            if (typeof window.rootBackPress === 'function') window.rootBackPress(!!window.backFromPointer);
+            return true;
+        }
         if (isHeroButton(f)) { focusTopbar(); return true; }
         if (f && findCardPosition(f)) {
             var pb = playButton();
@@ -3684,12 +3689,32 @@
         return 'Продолжить' + (ep ? ' · ' + ep : '') + ' · ' + formatResumeTime(r.timecode);
     }
 
+    /**
+     * resume для кнопки баннера: как heroResume, но досмотренная последняя
+     * серия раздачи — уже не «Следующая серия», а обычное «Смотреть» (поиск
+     * раздачи, как у досмотренного фильма). Есть ли следующий файл, знает
+     * только список раздачи (player.js: checkResumeHasNext), поэтому подпись
+     * поправляется, когда он ответит.
+     */
+    function heroPlayResume(item) {
+        var r = heroResume(item);
+        if (r && typeof window.resumeHasNextKnown === 'function' && window.resumeHasNextKnown(r) === false &&
+            window.isResumeFinished(r)) return null;
+        return r;
+    }
+
     function setPlayLabel(item) {
         var label = el('home-play-label');
         if (!label) return;
-        var r = heroResume(item);
+        var r = heroPlayResume(item);
         var text = r ? resumeLabel(item, r) : 'Смотреть';
         if (label.textContent !== text) label.textContent = text;
+        if (r && typeof window.checkResumeHasNext === 'function' && window.isResumeFinished(r) &&
+            window.resumeHasNextKnown(r) === null) {
+            window.checkResumeHasNext(r).then(function (hasNext) {
+                if (hasNext === false && homeState.hero.item === item) setPlayLabel(item);
+            })['catch'](function () { });
+        }
     }
 
     function resumeHeroItem(item, r) {
@@ -3697,8 +3722,10 @@
         window.resumeWatching(item, r).then(function (res) {
             if (res === 'started' || res === 'offline') return;
             // Раздачу удалили из TorrServer (или в ней нет этого файла) —
-            // открываем карточку: там «Смотреть» найдёт раздачу заново
-            if (typeof window.showToast === 'function') window.showToast('Раздачи больше нет в TorrServer — выберите её заново');
+            // открываем карточку: там «Смотреть» найдёт раздачу заново.
+            // 'last' — досмотрена последняя серия: тоже в карточку, но без
+            // тоста про удалённую раздачу; «Следующей серии» там уже не будет
+            if (res !== 'last' && typeof window.showToast === 'function') window.showToast('Раздачи больше нет в TorrServer — выберите её заново');
             openHomeItem(item, homeState.rowKeys[homeState.activeRow], homeState.lastColIndex);
         }, function () {
             openHomeItem(item, homeState.rowKeys[homeState.activeRow], homeState.lastColIndex);
@@ -3840,7 +3867,7 @@
     function playHeroItem() {
         var item = homeState.hero.item;
         if (!item) return ensureHomeFocus(true);
-        var resume = heroResume(item);
+        var resume = heroPlayResume(item);
         if (resume && typeof window.resumeWatching === 'function') return resumeHeroItem(item, resume);
         suspendHero();
 
@@ -5120,6 +5147,8 @@
         resumeFor: resumeForItem,
         fetchResume: fetchResumeFor,
         resumeLabel: resumeLabel,
+        // Список раздачи ответил, что следующей серии нет (catalog.js)
+        refreshPlayLabel: function () { if (homeState.hero.item) setPlayLabel(homeState.hero.item); },
         logoUrl: knownLogoUrl,
         state: homeState
     };

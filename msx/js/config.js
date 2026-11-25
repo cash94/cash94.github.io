@@ -1037,6 +1037,43 @@ function exitApp() {
 
 window.exitApp = exitApp;
 
+// ==================== ВЫХОД ИЗ ANDROID-ПРИЛОЖЕНИЯ: ДВАЖДЫ «НАЗАД» НА ГЛАВНОЙ ====================
+//
+// Режим «Выход из приложения: двойным нажатием «Назад»» («Прочее», app.js:
+// setupAndroidAppSettings). Ловим его здесь, а не в приложении: только страница
+// знает, что «Назад» вести уже некуда — главная, фокус в шапке, поверх ничего
+// не открыто (home.js: handleHomeBack зовёт сюда ровно в этом случае). Нажатие,
+// которое привело на главную, сюда не попадает, поэтому быстрая серия «Назад»
+// из глубины (карточка → категория → главная) приложение не закрывает: первое
+// нажатие на корне только показывает подсказку, выходит лишь второе в течение
+// ROOT_BACK_EXIT_MS. Правая кнопка мыши и долгое касание (contextmenu в
+// control.js) — тоже «Назад», но выходить по ним нельзя: backFromPointer.
+var ROOT_BACK_EXIT_MS = 2000;
+var rootBackArmedAt = 0;
+
+function rootBackPress(fromPointer) {
+  if (fromPointer || !window.AndroidJS || typeof AndroidJS.appExit !== 'function') return;
+  if (typeof window.getAndroidBackExitMode !== 'function' || window.getAndroidBackExitMode() !== 'double') return;
+  var now = Date.now();
+  if (rootBackArmedAt && now - rootBackArmedAt < ROOT_BACK_EXIT_MS) {
+    rootBackArmedAt = 0;
+    try { AndroidJS.appExit(); } catch (e) { }
+    return;
+  }
+  rootBackArmedAt = now;
+  if (typeof window.showToast === 'function') window.showToast('Нажмите «Назад» ещё раз для выхода', ROOT_BACK_EXIT_MS);
+}
+window.rootBackPress = rootBackPress;
+
+// Любая другая клавиша между двумя «Назад» — уже не выход: человек передумал
+window.addEventListener('keydown', function (e) {
+  if (!rootBackArmedAt) return;
+  var kc = e.keyCode || e.which;
+  // isBackKey (control.js) знает и Escape, в который приложение превращает «Назад»
+  var back = typeof window.isBackKey === 'function' ? window.isBackKey(kc) : isKeyPressed('BACK', kc);
+  if (!back) rootBackArmedAt = 0;
+}, true);
+
 // ==================== ЗАКРЫЛИ КЛАВИАТУРУ — СНИМАЕМ ФОКУС С ПОЛЯ (ТЕЛЕФОН) ====================
 //
 // На новых Android (проверено на 15) жест «Назад» не доходит до страницы, пока

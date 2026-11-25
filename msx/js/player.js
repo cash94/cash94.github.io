@@ -3386,6 +3386,50 @@ function isResumeFinished(resume) {
 }
 window.isResumeFinished = isResumeFinished;
 
+// Досмотрена последняя серия раздачи — «Следующей серии» нет: ни на баннере
+// главной (home.js: setPlayLabel), ни в карточке-сцене (catalog.js:
+// setupDetailResume). Запись истории про число файлов не знает, это скажет
+// только список раздачи, поэтому ответ запоминаем на сеанс по hash:fileId.
+var resumeNextKnown = {};
+
+function resumeNextKey(resume) {
+  return String(resume.hash).toLowerCase() + ':' + resume.fileId;
+}
+
+/** true / false — есть ли файл после этого; null — пока неизвестно */
+function resumeHasNextKnown(resume) {
+  if (!resume || !resume.hash) return null;
+  var v = resumeNextKnown[resumeNextKey(resume)];
+  return v === undefined ? null : v;
+}
+window.resumeHasNextKnown = resumeHasNextKnown;
+
+function setResumeHasNext(resume, hasNext) {
+  if (resume && resume.hash) resumeNextKnown[resumeNextKey(resume)] = !!hasNext;
+}
+window.setResumeHasNext = setResumeHasNext;
+
+/**
+ * Есть ли файл после записи истории — по уже загруженному списку раздач, без
+ * запросов (баннер главной зовёт это на каждую смену карточки).
+ * @returns {Promise<?boolean>} null — раздачи в списке нет, неизвестно
+ */
+async function checkResumeHasNext(resume) {
+  var known = resumeHasNextKnown(resume);
+  if (known !== null) return known;
+  if (!resume || !resume.hash) return null;
+  var torrent = await resolveTorrentWithFiles(String(resume.hash).toLowerCase(), 1, 0);
+  var files = torrent ? extractVideoFiles(torrentFileList(torrent)) : [];
+  for (var i = 0; i < files.length; i++) {
+    if (String(files[i].id) === String(resume.fileId)) {
+      setResumeHasNext(resume, i + 1 < files.length);
+      return i + 1 < files.length;
+    }
+  }
+  return null;
+}
+window.checkResumeHasNext = checkResumeHasNext;
+
 // Нативный плеер Android. resumingFromHome — идёт запуск из resumeWatching;
 // androidReturnHome — хэш раздачи, запущенной так (ставит playInExternalPlayer
 // на каждый запуск): по возврату (updatePlayerTimeline) — на главную, а не в
@@ -3566,24 +3610,31 @@ async function findResumeSource(item, resume) {
 /**
  * Серии раздачи, которую смотрели, — для ленты в карточке сериала.
  * @returns {Promise<?Object>} {hash, files, progress: {fileId: запись},
- *          current: fileId серии, которую запустит «Продолжить»}; null — раздачи
- *          нет или в ней один файл, показывать нечего
+ *          current: fileId серии, которую запустит «Продолжить», noNext:
+ *          досмотрена последняя серия — «Следующей серии» не будет}; files
+ *          пустой — в раздаче один файл, ленты нет; null — раздачи нет
  */
 async function loadResumeEpisodes(item, resume) {
   var source = await findResumeSource(item, resume);
-  if (!source || source.files.length < 2) return null;
+  if (!source) return null;
+  var finished = isResumeFinished(resume);
+  var last = String(source.files[source.files.length - 1].id) === String(source.fileId);
+  // Запомнить для баннера главной; source мог прийти из другой раздачи
+  // (findSameTitleSource) — тогда запись истории про неё не говорит
+  if (String(source.torrent.hash).toLowerCase() === String(resume.hash).toLowerCase()) setResumeHasNext(resume, !last);
+  if (source.files.length < 2) return { hash: '', files: [], progress: null, current: null, noNext: finished };
   var torrent = source.torrent, files = source.files;
   if (!torrent.tmdbId && item.id) torrent.tmdbId = String(item.id);
   if (!torrent.media_type) torrent.media_type = 'tv';
   await ensureTorrentEpisodeMeta(torrent, files);
   var progress = await getTorrentProgressBatch(torrent.hash, files);
   var current = source.fileId;
-  if (isResumeFinished(resume)) {
+  if (finished) {
     for (var i = 0; i + 1 < files.length; i++) {
       if (String(files[i].id) === String(source.fileId)) { current = files[i + 1].id; break; }
     }
   }
-  return { hash: torrent.hash, files: files, progress: progress.byFileId, current: current };
+  return { hash: torrent.hash, files: files, progress: progress.byFileId, current: current, noNext: finished && last };
 }
 window.loadResumeEpisodes = loadResumeEpisodes;
 
@@ -3927,7 +3978,10 @@ async function resumeWatching(item, resume, opts) {
     // сервер); досмотренного фильма здесь не бывает — баннер такой не предлагает
     var seek = Math.floor(resume.timecode) || 0;
     if (isResumeFinished(resume)) {
-      if (item.media_type !== 'tv' || idx + 1 >= videoFiles.length) return 'last';
+      if (item.media_type !== 'tv' || idx + 1 >= videoFiles.length) {
+        if (hash === String(resume.hash).toLowerCase()) setResumeHasNext(resume, false);
+        return 'last';
+      }
       idx++;
       seek = null;
     }
@@ -5282,7 +5336,11 @@ async function updateDetailProgress(torrent) {
       episodeIndex = episodeIndex + 1;
       isNextFile = true;
     } else {
-      timecode = 0; // это последний файл — начинаем с начала
+      // Досмотрен последний файл раздачи — следующей серии нет: кнопка
+      // остаётся «Играть» (первый файл), как в addProgressToDetail (torrents.js).
+      // Полосу на плитке всё равно обновляем
+      updateCurrentFileProgress(torrent.hash, progress.fileId, progress.timecode, progress.duration);
+      return null;
     }
   }
 

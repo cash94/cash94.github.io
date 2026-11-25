@@ -134,7 +134,7 @@
       "js-legacy/legacy-polyfills.js": "e0e9de38",
       "js/account.js": "65c22e09",
       "js/animations.js": "f5352ec9",
-      "js/app.js": "8e713749",
+      "js/app.js": "a0b9f49f",
       "js/best-torrents-pick.js": "cd63487a",
       "js/best-torrents.js": "b0a98d04",
       "js/catalog-idb-patch.js": "72557f9c",
@@ -143,22 +143,22 @@
       "js/catalog-worker-posters-batch-patch.js": "0ba6a595",
       "js/catalog-worker-posters-patch.js": "d7d7dcc3",
       "js/catalog-worker.js": "a8782e3d",
-      "js/catalog.js": "ef2a0f4d",
+      "js/catalog.js": "aca92d49",
       "js/category-banners.js": "46ea538e",
-      "js/config.js": "5a1b256d",
-      "js/control.js": "a8d99cf7",
+      "js/config.js": "900397df",
+      "js/control.js": "512cddce",
       "js/donate.js": "7d86fb27",
       "js/episode-picker.js": "a5064462",
       "js/extensions.js": "8d2a0a9a",
       "js/favorites-db.js": "8772a3b7",
-      "js/home.js": "976a5856",
+      "js/home.js": "94cef2fb",
       "js/magnet-store.js": "773f87d4",
       "js/nav.js": "02a98d5e",
       "js/osk.js": "a9e73b09",
       "js/perf-probe.js": "7143cc61",
       "js/player-diag.js": "776a28db",
       "js/player-memory-fix.js": "2fbf8c05",
-      "js/player.js": "1a010bf1",
+      "js/player.js": "014467b3",
       "js/poster-db.js": "5133286b",
       "js/poster-prefetch.js": "2a856e18",
       "js/screensaver.js": "01f61cc9",
@@ -172,7 +172,7 @@
       "js/torrents-worker-bridge.js": "84a127e9",
       "js/torrents-worker-patch.js": "367f78ec",
       "js/torrents-worker.js": "f76474cd",
-      "js/torrents.js": "6775d541",
+      "js/torrents.js": "411abd9d",
       "js/torrserverstats.js": "2f006d35",
       "js/ui-customizer.js": "614e6e55"
       // ASSET_V:end
@@ -1033,6 +1033,19 @@
               </div>
             </div>
 
+            <!-- Только в Android-приложении (app.js: setupAndroidAppSettings, AndroidJS.*BackExitMode).
+                 В APK без этих методов не показывается, поэтому веб можно выложить раньше приложения -->
+            <div class="settings-section settings-group" id="android-app-settings" hidden>
+              <h2 class="settings-group-title">Выход из приложения</h2>
+              <p class="settings-lead settings-group-description">Удержанием «Назад» — закрыть приложение на любом экране. Двойным нажатием — только с главной, когда «Назад» больше некуда вести: первое нажатие покажет подсказку, второе в течение 2 секунд закроет приложение. Когда удержание не занято выходом, оно открывает меню приложения; меню есть и на кнопке ниже, и на кнопке «Меню» пульта.</p>
+              <div class="action-row">
+                <button class="btn btn-primary" id="android-back-exit-btn">Выход из приложения</button>
+              </div>
+              <div class="action-row" id="android-app-menu-row" hidden>
+                <button class="btn" id="android-app-menu-btn">Меню приложения</button>
+              </div>
+            </div>
+
             <!-- Фильтры поиска по умолчанию. Кнопки строит setupSearchFilterDefaults
                  (app.js) из списков torrents.js; стрелки влево/вправо ходят внутри
                  ряда, вверх/вниз — между рядами (handleConfigNavigation, control.js) -->
@@ -1099,17 +1112,6 @@
             <div class="settings-section">
               <h2>Об устройстве</h2>
               <p class="settings-lead">Пригодится, если пишете в поддержку: приложите эти сведения к вопросу.</p>
-              <!-- Только в Android-приложении (app.js: setupAndroidAppSettings, AndroidJS.*BackHoldExit).
-                   В APK без этих методов не показывается -->
-              <div class="settings-list" id="android-app-settings" hidden>
-                <div class="checkbox-container">
-                  <input type="checkbox" id="android-back-hold-exit">
-                  <span>Выход из приложения по удержанию клавиши «Назад»<small class="setting-desc">Выключено — удержание «Назад» открывает меню приложения. Включено — закрывает приложение, а меню открывается кнопкой ниже или кнопкой «Меню» на пульте</small></span>
-                </div>
-                <div class="action-row" id="android-app-menu-row" hidden>
-                  <button class="btn" id="android-app-menu-btn">Меню приложения</button>
-                </div>
-              </div>
               <div class="device-info" id="device-info"></div>
             </div>
           </div>

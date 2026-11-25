@@ -5967,7 +5967,11 @@ function setupMouseControls() {
         // «Назад»: в плеере — как с пульта (двойное нажатие для выхода),
         // onBack плеер не разбирает — там правая кнопка ничего не делала
         if (AppState.currentScreen === 'player') playerBackPress(true);
-        else onBack();
+        else {
+            // С главной по нему не выходим (config.js: rootBackPress)
+            window.backFromPointer = true;
+            try { onBack(); } finally { window.backFromPointer = false; }
+        }
 
         return false;
     });

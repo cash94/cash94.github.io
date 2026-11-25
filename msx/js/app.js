@@ -2596,6 +2596,8 @@ function setupCheckboxes() {
 
   // Размер субтитров — для всех, кроме Android
   setupSubtitleSizeSetting();
+  // Android-приложение — выход по «Назад» и меню приложения («Прочее»)
+  setupAndroidAppSettings();
 
   if (window.AndroidJS) {
     // 7. Плеер по умолчанию — только в Android-приложении,
@@ -2942,21 +2944,78 @@ function browserVersionName() {
 }
 
 /**
- * Android-приложение: что делает удержание «Назад» — меню приложения (как было)
- * или выход. Состояние хранит само приложение, поэтому при каждом открытии
- * раздела читаем его заново. Кнопка «Меню приложения» — чтобы меню оставалось
- * доступным, когда удержание занято выходом, а кнопки «Меню» на пульте нет.
+ * Android-приложение, «Прочее» → «Выход из приложения»: выкл (удержание
+ * «Назад» — меню приложения, как было), удержанием «Назад» или двойным
+ * нажатием «Назад» на главной (config.js: rootBackPress). Одним выбором из
+ * трёх — удержание и двойное нажатие взаимоисключающие. Режим хранит само
+ * приложение (AndroidJS.getBackExitMode), подпись и меню берут его оттуда же.
+ * В APK без этих методов (до 1.1.42) блок скрыт —
+ * веб можно выложить раньше приложения. Кнопка «Меню приложения» — чтобы меню
+ * оставалось доступным, когда удержание занято выходом, а кнопки «Меню» на
+ * пульте нет.
  */
+var BACK_EXIT_MODES = [
+  { value: 'off', label: 'Выключен', title: 'выключен' },
+  { value: 'hold', label: 'Удержанием «Назад»', title: 'удержанием «Назад»' },
+  { value: 'double', label: 'Двойным нажатием «Назад»', title: 'двойным нажатием «Назад»' }
+];
+
+function getAndroidBackExitMode() {
+  var bridge = window.AndroidJS;
+  if (!bridge || typeof bridge.getBackExitMode !== 'function') return 'off';
+  try { return String(bridge.getBackExitMode() || 'off'); } catch (e) { return 'off'; }
+}
+window.getAndroidBackExitMode = getAndroidBackExitMode;
+
+var androidAppSettingsReady = false;
+
 function setupAndroidAppSettings() {
   var block = getEl('android-app-settings');
+  var btn = getEl('android-back-exit-btn');
   var bridge = window.AndroidJS;
-  if (!block || !bridge || typeof bridge.getBackHoldExit !== 'function') return;
+  if (!block || !btn || !bridge || typeof bridge.getBackExitMode !== 'function' ||
+      typeof bridge.setBackExitMode !== 'function') return;
   block.hidden = false;
-  var box = getEl('android-back-hold-exit');
-  try { box.checked = !!bridge.getBackHoldExit(); } catch (e) { }
-  box.onchange = function () {
-    try { bridge.setBackHoldExit(box.checked); } catch (e) { }
-  };
+
+  function modeIndex() {
+    var mode = getAndroidBackExitMode();
+    for (var i = 0; i < BACK_EXIT_MODES.length; i++) if (BACK_EXIT_MODES[i].value === mode) return i;
+    return 0;
+  }
+  function label() {
+    btn.textContent = 'Выход из приложения: ' + BACK_EXIT_MODES[modeIndex()].title;
+  }
+  label();
+  if (androidAppSettingsReady) return;
+  androidAppSettingsReady = true;
+
+  // Список — то же меню выбора, что у размера субтитров (customFilterMenuState)
+  var select = document.createElement('select');
+  BACK_EXIT_MODES.forEach(function (m) {
+    var o = document.createElement('option');
+    o.value = m.value;
+    o.textContent = m.label;
+    select.appendChild(o);
+  });
+  select.addEventListener('change', function () {
+    try { bridge.setBackExitMode(select.value); } catch (e) { }
+    label();
+    showToast('Выход из приложения: ' + BACK_EXIT_MODES[modeIndex()].title);
+    // Меню после выбора ставит фокус на select — возвращаем его на кнопку
+    setTimeout(function () { if (typeof focusEl === 'function') focusEl(btn); }, 0);
+  });
+  btn.addEventListener('click', function () {
+    if (typeof ensureCustomFilterMenu !== 'function' || typeof renderCustomFilterMenu !== 'function') return;
+    var index = modeIndex();
+    select.value = BACK_EXIT_MODES[index].value;
+    customFilterMenuState = {
+      selectEl: select, title: 'Выход из приложения', index: index, value: select.value,
+      options: BACK_EXIT_MODES.map(function (m) { return { value: m.value, label: m.label }; })
+    };
+    ensureCustomFilterMenu().classList.remove('hidden');
+    renderCustomFilterMenu();
+  });
+
   var menuRow = getEl('android-app-menu-row');
   var menuBtn = getEl('android-app-menu-btn');
   if (menuRow && menuBtn && typeof bridge.openAppMenu === 'function') {
@@ -2965,6 +3024,7 @@ function setupAndroidAppSettings() {
       try { bridge.openAppMenu(); } catch (e) { }
     };
   }
+  if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
 }
 
 // Службы на Tizen — по IP телевизора или 127.0.0.1 (player.js: tizenServiceGet):
@@ -3034,7 +3094,6 @@ function deviceKeyboardViewport() {
 }
 
 function renderDeviceInfo() {
-  setupAndroidAppSettings();
   var box = getEl('device-info');
   if (!box) return;
   // Разрешение интерфейса в Android (index.html: uiViewport): страница

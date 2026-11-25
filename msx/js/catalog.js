@@ -6833,18 +6833,47 @@ function setupDetailDelegation(dv) {
  * Плитки только прибавляются, лишние гасятся, как и в других лентах. */
 var detailResume = { item: null, resume: null, hash: '', tiles: [] };
 
+/**
+ * Досмотрена последняя серия раздачи — «Следующей серии» нет, и кнопку не
+ * показываем вовсе (раньше она оставалась и по нажатию давала только тост).
+ * Есть ли следующий файл, знает лишь список раздачи из TorrServer, поэтому
+ * кнопка сперва видна и гаснет по ответу loadResumeEpisodes; уже известный
+ * конец (player.js: resumeHasNextKnown, на сеанс) гасим сразу — при возврате
+ * из плеера она не мигает. Лента серий при этом остаётся.
+ */
+function hideDetailResumeBtn(btn) {
+    var hadFocus = btn.classList.contains('focused');
+    btn.classList.add('hidden');
+    if (hadFocus) {
+        btn.classList.remove('focused');
+        focusDetailMain();
+    }
+    if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
+}
+
 function setupDetailResume(item) {
     var btn = getEl('catalog-resume-btn');
     var r = window.HomeScreen && typeof HomeScreen.resumeFor === 'function' ? HomeScreen.resumeFor(item) : null;
     detailResume.item = item;
     detailResume.resume = r;
     if (!btn) return null;
-    btn.classList.toggle('hidden', !r);
+    var finished = !!r && typeof window.isResumeFinished === 'function' && window.isResumeFinished(r);
+    var knownLast = finished && typeof window.resumeHasNextKnown === 'function' && window.resumeHasNextKnown(r) === false;
+    btn.classList.toggle('hidden', !r || knownLast);
     if (!r) return null;
     btn.textContent = HomeScreen.resumeLabel(item, r);
     btn.onclick = function () { playFromCard(item, r, btn); };
     if (item.media_type !== 'tv' || typeof window.loadResumeEpisodes !== 'function') return null;
-    return window.loadResumeEpisodes(item, r)['catch'](function () { return null; });
+    return window.loadResumeEpisodes(item, r).then(function (data) {
+        // Пока шёл ответ, карточку могли сменить или место просмотра обновить
+        if (finished && data && data.noNext && detailResume.item === item && detailResume.resume === r &&
+            !btn.classList.contains('hidden')) {
+            hideDetailResumeBtn(btn);
+        }
+        // Баннер главной под карточкой — его «Следующая серия» тоже уже не та
+        if (window.HomeScreen && typeof HomeScreen.refreshPlayLabel === 'function') HomeScreen.refreshPlayLabel();
+        return data;
+    })['catch'](function () { return null; });
 }
 
 function playFromCard(item, resume, from) {

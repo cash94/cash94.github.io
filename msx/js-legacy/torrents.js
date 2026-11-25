@@ -1915,7 +1915,9 @@ function _addProgressToDetail() {
         episodeIndex = episodeIndex + 1;
         isNextFile = true;
       } else {
-        timecode = 0;
+        btn.innerHTML = '<span class="btn-label">▶ Играть</span>';
+        showButton();
+        return null;
       }
     }
     btn.dataset.fileId = String(fileId);

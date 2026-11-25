@@ -2223,7 +2223,12 @@ async function addProgressToDetail(torrent, preloadedFiles) {
             episodeIndex = episodeIndex + 1;
             isNextFile = true;
         } else {
-            timecode = 0;
+            // Досмотрен последний файл раздачи: следующей серии нет, а
+            // «Продолжить» с подписью «44:10 / 45:00» запускал его же с начала.
+            // Кнопка — обычная «Играть» (первый файл), dataset уже такой
+            btn.innerHTML = '<span class="btn-label">▶ Играть</span>';
+            showButton();
+            return null;
         }
     }
     btn.dataset.fileId = String(fileId);

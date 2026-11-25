@@ -5355,20 +5355,37 @@ var detailResume = {
   hash: '',
   tiles: []
 };
+function hideDetailResumeBtn(btn) {
+  var hadFocus = btn.classList.contains('focused');
+  btn.classList.add('hidden');
+  if (hadFocus) {
+    btn.classList.remove('focused');
+    focusDetailMain();
+  }
+  if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
+}
 function setupDetailResume(item) {
   var btn = getEl('catalog-resume-btn');
   var r = window.HomeScreen && typeof HomeScreen.resumeFor === 'function' ? HomeScreen.resumeFor(item) : null;
   detailResume.item = item;
   detailResume.resume = r;
   if (!btn) return null;
-  btn.classList.toggle('hidden', !r);
+  var finished = !!r && typeof window.isResumeFinished === 'function' && window.isResumeFinished(r);
+  var knownLast = finished && typeof window.resumeHasNextKnown === 'function' && window.resumeHasNextKnown(r) === false;
+  btn.classList.toggle('hidden', !r || knownLast);
   if (!r) return null;
   btn.textContent = HomeScreen.resumeLabel(item, r);
   btn.onclick = function () {
     playFromCard(item, r, btn);
   };
   if (item.media_type !== 'tv' || typeof window.loadResumeEpisodes !== 'function') return null;
-  return window.loadResumeEpisodes(item, r)['catch'](function () {
+  return window.loadResumeEpisodes(item, r).then(function (data) {
+    if (finished && data && data.noNext && detailResume.item === item && detailResume.resume === r && !btn.classList.contains('hidden')) {
+      hideDetailResumeBtn(btn);
+    }
+    if (window.HomeScreen && typeof HomeScreen.refreshPlayLabel === 'function') HomeScreen.refreshPlayLabel();
+    return data;
+  })['catch'](function () {
     return null;
   });
 }

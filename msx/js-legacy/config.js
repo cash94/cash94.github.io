@@ -655,6 +655,29 @@ function exitApp() {
   close();
 }
 window.exitApp = exitApp;
+var ROOT_BACK_EXIT_MS = 2000;
+var rootBackArmedAt = 0;
+function rootBackPress(fromPointer) {
+  if (fromPointer || !window.AndroidJS || typeof AndroidJS.appExit !== 'function') return;
+  if (typeof window.getAndroidBackExitMode !== 'function' || window.getAndroidBackExitMode() !== 'double') return;
+  var now = Date.now();
+  if (rootBackArmedAt && now - rootBackArmedAt < ROOT_BACK_EXIT_MS) {
+    rootBackArmedAt = 0;
+    try {
+      AndroidJS.appExit();
+    } catch (e) {}
+    return;
+  }
+  rootBackArmedAt = now;
+  if (typeof window.showToast === 'function') window.showToast('Нажмите «Назад» ещё раз для выхода', ROOT_BACK_EXIT_MS);
+}
+window.rootBackPress = rootBackPress;
+window.addEventListener('keydown', function (e) {
+  if (!rootBackArmedAt) return;
+  var kc = e.keyCode || e.which;
+  var back = typeof window.isBackKey === 'function' ? window.isBackKey(kc) : isKeyPressed('BACK', kc);
+  if (!back) rootBackArmedAt = 0;
+}, true);
 (function () {
   if (!navigator.maxTouchPoints) return;
   var vv = window.visualViewport;

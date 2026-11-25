@@ -2010,6 +2010,7 @@ function setupCheckboxes() {
   setupCheckboxWithStorage('auto-switch-episodes', 'autoSwitchEpisodes', 'autoSwitchEpisodes');
   setupApplePlayerChoice();
   setupSubtitleSizeSetting();
+  setupAndroidAppSettings();
   if (window.AndroidJS) {
     var choosePlayerContainer = getEl('choose-player-container');
     if (choosePlayerContainer) choosePlayerContainer.hidden = false;
@@ -2294,20 +2295,83 @@ function browserVersionName() {
   }
   return '—';
 }
+var BACK_EXIT_MODES = [{
+  value: 'off',
+  label: 'Выключен',
+  title: 'выключен'
+}, {
+  value: 'hold',
+  label: 'Удержанием «Назад»',
+  title: 'удержанием «Назад»'
+}, {
+  value: 'double',
+  label: 'Двойным нажатием «Назад»',
+  title: 'двойным нажатием «Назад»'
+}];
+function getAndroidBackExitMode() {
+  var bridge = window.AndroidJS;
+  if (!bridge || typeof bridge.getBackExitMode !== 'function') return 'off';
+  try {
+    return String(bridge.getBackExitMode() || 'off');
+  } catch (e) {
+    return 'off';
+  }
+}
+window.getAndroidBackExitMode = getAndroidBackExitMode;
+var androidAppSettingsReady = false;
 function setupAndroidAppSettings() {
   var block = getEl('android-app-settings');
+  var btn = getEl('android-back-exit-btn');
   var bridge = window.AndroidJS;
-  if (!block || !bridge || typeof bridge.getBackHoldExit !== 'function') return;
+  if (!block || !btn || !bridge || typeof bridge.getBackExitMode !== 'function' || typeof bridge.setBackExitMode !== 'function') return;
   block.hidden = false;
-  var box = getEl('android-back-hold-exit');
-  try {
-    box.checked = !!bridge.getBackHoldExit();
-  } catch (e) {}
-  box.onchange = function () {
+  function modeIndex() {
+    var mode = getAndroidBackExitMode();
+    for (var i = 0; i < BACK_EXIT_MODES.length; i++) if (BACK_EXIT_MODES[i].value === mode) return i;
+    return 0;
+  }
+  function label() {
+    btn.textContent = 'Выход из приложения: ' + BACK_EXIT_MODES[modeIndex()].title;
+  }
+  label();
+  if (androidAppSettingsReady) return;
+  androidAppSettingsReady = true;
+  var select = document.createElement('select');
+  BACK_EXIT_MODES.forEach(function (m) {
+    var o = document.createElement('option');
+    o.value = m.value;
+    o.textContent = m.label;
+    select.appendChild(o);
+  });
+  select.addEventListener('change', function () {
     try {
-      bridge.setBackHoldExit(box.checked);
+      bridge.setBackExitMode(select.value);
     } catch (e) {}
-  };
+    label();
+    showToast('Выход из приложения: ' + BACK_EXIT_MODES[modeIndex()].title);
+    setTimeout(function () {
+      if (typeof focusEl === 'function') focusEl(btn);
+    }, 0);
+  });
+  btn.addEventListener('click', function () {
+    if (typeof ensureCustomFilterMenu !== 'function' || typeof renderCustomFilterMenu !== 'function') return;
+    var index = modeIndex();
+    select.value = BACK_EXIT_MODES[index].value;
+    customFilterMenuState = {
+      selectEl: select,
+      title: 'Выход из приложения',
+      index: index,
+      value: select.value,
+      options: BACK_EXIT_MODES.map(function (m) {
+        return {
+          value: m.value,
+          label: m.label
+        };
+      })
+    };
+    ensureCustomFilterMenu().classList.remove('hidden');
+    renderCustomFilterMenu();
+  });
   var menuRow = getEl('android-app-menu-row');
   var menuBtn = getEl('android-app-menu-btn');
   if (menuRow && menuBtn && typeof bridge.openAppMenu === 'function') {
@@ -2318,6 +2382,7 @@ function setupAndroidAppSettings() {
       } catch (e) {}
     };
   }
+  if (typeof window.invalidateFocusCache === 'function') window.invalidateFocusCache();
 }
 var tizenServiceStatus = {};
 function checkTizenService(port, missing) {
@@ -2392,7 +2457,6 @@ function deviceKeyboardViewport() {
   return k ? ' · с клавиатурой ' + k.w + '×' + k.h : '';
 }
 function renderDeviceInfo() {
-  setupAndroidAppSettings();
   var box = getEl('device-info');
   if (!box) return;
   var vp = window.uiViewport;

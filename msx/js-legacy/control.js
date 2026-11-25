@@ -5062,7 +5062,14 @@ function setupMouseControls() {
     }
     e.preventDefault();
     e.stopPropagation();
-    if (AppState.currentScreen === 'player') playerBackPress(true);else onBack();
+    if (AppState.currentScreen === 'player') playerBackPress(true);else {
+      window.backFromPointer = true;
+      try {
+        onBack();
+      } finally {
+        window.backFromPointer = false;
+      }
+    }
     return false;
   });
 }
