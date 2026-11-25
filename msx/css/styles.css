@@ -15803,9 +15803,13 @@ html.apple-tv-ui #loading-player-overlay {
   padding: 8px;
 }
 
-/* Кнопки расширений в «сцене» — круглые, как соседние (подпись под кнопкой в фокусе) */
+/* Кнопки расширений в «сцене» (и общая «Онлайн») — как родные круглые:
+   круг со значком, подпись под КАЖДОЙ (в фокусе белая, остальные приглушены),
+   тот же зазор между кругами. Вид задаёт плагин: style 'wide' — с текстом,
+   'primary' — белая, как «Продолжить» (TS.ui.addButton, js/extensions.js) */
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn {
   width: calc(var(--cs) * 2.9);
+  margin-right: calc(var(--cs) * 2) !important;
   padding: 0 !important;
   font-size: 0 !important;
   border-radius: 50% !important;
@@ -15840,14 +15844,98 @@ html.apple-tv-ui #loading-player-overlay {
   font-size: calc(var(--cs) * 0.72);
   font-weight: 600;
   line-height: 1.2;
-  color: #fff;
+  color: rgba(255, 255, 255, 0.7);
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
-  opacity: 0;
   pointer-events: none;
 }
 
 #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn.focused::after {
-  opacity: 1;
+  color: #fff;
+}
+
+/* С текстом: «пилюля» той же высоты, значок слева, подписи под ней нет */
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn.ext-detail-wide,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn.ext-detail-primary {
+  width: auto;
+  margin-right: calc(var(--cs) * 0.8) !important;
+  padding: 0 calc(var(--cs) * 1.5) !important;
+  font-size: calc(var(--cs) * 0.95) !important;
+  border-radius: calc(var(--cs) * 1.45) !important;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn.ext-detail-wide .ext-detail-icon,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn.ext-detail-primary .ext-detail-icon {
+  margin-right: 0.45em;
+  font-size: 1.1em;
+  vertical-align: -0.12em;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn.ext-detail-wide::after,
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn.ext-detail-primary::after {
+  content: none;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn.ext-detail-primary {
+  background: #fff !important;
+  color: #000 !important;
+  font-weight: 700;
+}
+
+#detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn.ext-detail-primary.focused {
+  background: var(--focus-color, #ff8c00) !important;
+  color: #fff !important;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.45) !important;
+}
+
+/* Apple TV: font-size: 0 там не работает (см. родные кнопки выше) — текст
+   прячем цветом, значок ставим по центру круга */
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn:not(.ext-detail-wide):not(.ext-detail-primary) {
+  color: transparent !important;
+  text-shadow: none;
+}
+
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn:not(.ext-detail-wide):not(.ext-detail-primary) .ext-detail-icon {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  -webkit-justify-content: center;
+  justify-content: center;
+  color: #fff;
+}
+
+html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn.focused:not(.ext-detail-wide):not(.ext-detail-primary) .ext-detail-icon {
+  color: #000;
+}
+
+/* Телефон: все кнопки сцены — круглые значки, и с текстом тоже */
+@media screen and (max-width: 600px) and (orientation: portrait),
+  screen and (orientation: landscape) and (max-height: 500px) {
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn.ext-detail-wide,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn.ext-detail-primary {
+    width: calc(var(--cs) * 2.9);
+    margin-right: calc(var(--cs) * 2) !important;
+    padding: 0 !important;
+    font-size: 0 !important;
+    border-radius: 50% !important;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn.ext-detail-wide .ext-detail-icon,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn.ext-detail-primary .ext-detail-icon {
+    margin: 0;
+    font-size: calc(var(--cs) * 1.15);
+    vertical-align: middle;
+  }
+
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn.ext-detail-wide::after,
+  #detail-view.catalog-detail-mode.detail-cinema #catalog-detail-actions > .ext-detail-btn.ext-detail-primary::after {
+    content: attr(data-label);
+  }
 }
 
 .ext-detail-btn .ext-detail-icon {
@@ -15855,8 +15943,20 @@ html.apple-tv-ui #loading-player-overlay {
   vertical-align: -0.12em;
 }
 
-#detail-view.detail-cinema .ext-detail-btn .ext-detail-icon {
+#detail-view.detail-cinema .ext-detail-btn:not(.ext-detail-wide):not(.ext-detail-primary) .ext-detail-icon {
   margin-right: 0;
+}
+
+/* Выбор источника «Онлайн» — столбцом */
+.ext-modal-list {
+  -webkit-flex-direction: column;
+  flex-direction: column;
+  -webkit-align-items: stretch;
+  align-items: stretch;
+}
+
+.ext-modal-list .ext-modal-btn {
+  text-align: left;
 }
 
 .ext-detail-block {

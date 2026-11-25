@@ -565,7 +565,7 @@ function getUserRatingButtons() {
   return out;
 }
 function getDetailItems() {
-  var s = ['#detail-view .home-nav-btn', '.detail-progress-btn', '.file-item', '#catalog-resume-btn', '#catalog-watch-btn', '#catalog-best-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-favorite-btn', '#catalog-trailer-btn', '.catalog-user-rating-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-episode-card', '.catalog-actor-card', '.catalog-recommendation-card'];
+  var s = ['#detail-view .home-nav-btn', '.detail-progress-btn', '.file-item', '#catalog-resume-btn', '#catalog-watch-btn', '#catalog-best-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-favorite-btn', '#catalog-trailer-btn', '#catalog-detail-actions > .ext-detail-btn', '.catalog-user-rating-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-episode-card', '.catalog-actor-card', '.catalog-recommendation-card'];
   var it = document.querySelectorAll(s.join(','));
   var a = [];
   for (var i = 0; i < it.length; i++) if (VISIBLE(it[i])) a.push(it[i]);

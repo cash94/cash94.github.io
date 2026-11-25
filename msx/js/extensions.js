@@ -193,6 +193,9 @@
 
         // ---- Навигация пультом внутри окна плагина ----
         // Фокусируемое — button, a, [data-focus]. Класс .focused на текущем.
+        // Ходим рядами, как по рядам приложения: вверх-вниз — в ближайший ряд
+        // (в нём на отмеченную .on кнопку — выбранная озвучка, сезон, — иначе на
+        // ближайшую по горизонтали), влево-вправо — только в своём ряду
         function focusables() {
             var all = document.querySelectorAll('button, a[href], [data-focus]');
             var out = [];
@@ -218,24 +221,50 @@
             if (!c || list.indexOf(c) === -1) { focus(list[0]); return; }
             var r = c.getBoundingClientRect();
             var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-            var best = null, bestScore = Infinity;
-            for (var i = 0; i < list.length; i++) {
+            var i, q, best = null, bestScore = Infinity;
+            if (dir === 'left' || dir === 'right') {
+                for (i = 0; i < list.length; i++) {
+                    if (list[i] === c) continue;
+                    q = list[i].getBoundingClientRect();
+                    var qy = q.top + q.height / 2, dx = q.left + q.width / 2 - cx;
+                    // Свой ряд — центры по вертикали в пределах половины высоты
+                    if (Math.abs(qy - cy) > Math.max(r.height, q.height) / 2) continue;
+                    if (dir === 'left' ? dx >= -1 : dx <= 1) continue;
+                    if (Math.abs(dx) < bestScore) { bestScore = Math.abs(dx); best = list[i]; }
+                }
+                if (best) focus(best);
+                return;
+            }
+            // Вверх-вниз: сначала ближайший ряд, потом кнопка в нём
+            var cand = [], rowY = null;
+            for (i = 0; i < list.length; i++) {
                 if (list[i] === c) continue;
-                var q = list[i].getBoundingClientRect();
-                var qx = q.left + q.width / 2, qy = q.top + q.height / 2;
-                var dx = qx - cx, dy = qy - cy;
-                var ok = dir === 'up' ? dy < -1 : dir === 'down' ? dy > 1 : dir === 'left' ? dx < -1 : dx > 1;
-                if (!ok) continue;
-                var main = (dir === 'up' || dir === 'down') ? Math.abs(dy) : Math.abs(dx);
-                var side = (dir === 'up' || dir === 'down') ? Math.abs(dx) : Math.abs(dy);
-                var score = main + side * 2;
-                if (score < bestScore) { bestScore = score; best = list[i]; }
+                q = list[i].getBoundingClientRect();
+                if (dir === 'down' ? q.top < r.bottom - 2 : q.bottom > r.top + 2) continue;
+                var y = q.top + q.height / 2;
+                cand.push({ el: list[i], q: q, y: y });
+                if (rowY === null || Math.abs(y - cy) < Math.abs(rowY - cy)) rowY = y;
+            }
+            if (!cand.length) return;
+            for (i = 0; i < cand.length; i++) {
+                if (Math.abs(cand[i].y - rowY) > cand[i].q.height / 2) continue;
+                var score = cand[i].el.classList.contains('on') ? -1 : Math.abs(cand[i].q.left + cand[i].q.width / 2 - cx);
+                if (score < bestScore) { bestScore = score; best = cand[i].el; }
             }
             if (best) focus(best);
         }
 
+        // Клавиши, нажатые, пока фокус ввода внутри окна (человек щёлкнул по нему
+        // мышью), до приложения не доходят — пересылаем, приложение решит само
+        document.addEventListener('keydown', function (e) {
+            var t = e.target;
+            if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+            send({ type: 'native-key', keyCode: e.keyCode || e.which || 0 });
+            e.preventDefault();
+        }, true);
+
         var TS = {
-            version: 1,
+            version: 2,
             info: function () { return copy(info); },
             on: function (name, fn) {
                 if (typeof fn !== 'function') return;
@@ -274,11 +303,21 @@
                 addStyle: function (css) { send({ type: 'style', css: String(css) }); },
                 hide: function (selector) { send({ type: 'hide', selector: String(selector) }); },
                 setText: function (selector, text) { send({ type: 'text', selector: String(selector), text: String(text) }); },
-                addButton: function (opts) {
-                    opts = opts || {};
-                    send({ type: 'button', id: String(opts.id || 'main'), label: String(opts.label || ''), icon: String(opts.icon || '') });
+                // Кнопка в строке действий карточки. Где встать: before / after —
+                // ключ кнопки приложения (TS.ui.detailButtons()) или 'ext:<id>' своей
+                // кнопки; position: 'start' | 'end'. Вид: style 'round' (круг со
+                // значком и подписью, как «Трейлер») | 'wide' (с текстом) |
+                // 'primary' (белая, как «Продолжить»)
+                addButton: function (opts) { send(buttonMsg('button', opts)); },
+                // Только переданные поля: label, icon, hidden, style, before/after/position
+                updateButton: function (id, changes) {
+                    var m = buttonMsg('button-update', changes);
+                    m.id = String(id || 'main');
+                    send(m);
                 },
                 removeButton: function (id) { send({ type: 'button-remove', id: String(id || 'main') }); },
+                // Кнопки строки сейчас: [{ key, label, visible, own }] по порядку
+                detailButtons: function () { return call('detailButtons', {}); },
                 setDetailBlock: function (html) { send({ type: 'block', html: String(html || '') }); }
             },
             panel: {
@@ -348,10 +387,48 @@
                 openCategory: function (key) { return call('openCategory', { key: String(key) }); },
                 // Рекомендуемые настройки «Внешнего вида» — в меню расширения появится
                 // «Применить рекомендуемые настройки». Сами по себе не применяются
-                recommend: function (settings) { send({ type: 'recommend', settings: settings || {} }); }
+                recommend: function (settings) { send({ type: 'recommend', settings: settings || {} }); },
+                // Сведения открытой карточки — свежие (IMDb, сезоны дописываются,
+                // когда TMDB ответит), null — карточка не открыта
+                detail: function () { return call('detail', {}); }
+            },
+            // Источник онлайн-просмотра: в карточке появится общая кнопка «Онлайн»
+            // (одна на все такие расширения; источников несколько — приложение
+            // спросит, какой). Нажали — событие 'online' { item } этому плагину
+            online: {
+                register: function (meta) {
+                    meta = meta || {};
+                    send({
+                        type: 'online', on: true,
+                        name: String(meta.name || '').slice(0, 40),
+                        types: meta.types ? [].concat(meta.types).map(String) : null
+                    });
+                },
+                unregister: function () { send({ type: 'online', on: false }); }
+            },
+            // Воспроизведение по ссылке — только в ответ на действие человека.
+            // opts: url | quality {'1080p': url}, title, poster, subtitles
+            // [{ label, url, language, default }], playlist [{ url | quality, title,
+            // season, episode, subtitles }] + index, startAt (с), headers (Android)
+            player: {
+                play: function (opts) { return call('play', { opts: copy(opts || {}) }); }
             }
         };
         window.TS = TS;
+
+        function buttonMsg(type, o) {
+            o = o || {};
+            var m = { type: type };
+            if (o.id != null) m.id = String(o.id);
+            if (o.label != null) m.label = String(o.label);
+            if (o.icon != null) m.icon = String(o.icon);
+            if (o.style != null) m.style = String(o.style);
+            if (o.hidden != null) m.hidden = !!o.hidden;
+            if (o.before != null) m.before = String(o.before);
+            if (o.after != null) m.after = String(o.after);
+            if (o.position != null) m.position = String(o.position);
+            return m;
+        }
 
         var domHandlers = {};
         function hid(x) { return x && typeof x === 'object' ? x.h : x; }
@@ -511,6 +588,7 @@
         if (st.frame && st.frame.parentNode) st.frame.parentNode.removeChild(st.frame);
         if (st.styleEl && st.styleEl.parentNode) st.styleEl.parentNode.removeChild(st.styleEl);
         if (captureOwner === id) releaseCapture();
+        if (extPlayback && extPlayback.st === st) finishExtPlayback('stopped');
         revertDom(st);
         delete running[id];
         renderDetailExtras();
@@ -670,7 +748,8 @@
     var CAPTURE_DIRS = ['up', 'down', 'left', 'right', 'enter', 'back'];
     var CAPTURE_SCAN = 32;     // сколько элементов списка keys вообще разбираем
     // Что умеет этот мост — плагин сверяется с TS.info().features
-    var FEATURES = ['capture-keys', 'focus-home-row', 'open-row', 'open-category', 'recommend'];
+    var FEATURES = ['capture-keys', 'focus-home-row', 'open-row', 'open-category', 'recommend',
+        'button-placement', 'button-style', 'online', 'player', 'detail'];
 
     function handleOf(st, el) {
         if (st.ids) {
@@ -1047,6 +1126,12 @@
                 var card = needNode(st, a.h);
                 return cardItem(card) || (card.closest('#detail-view') ? detailMeta(AppState.currentDetailItem) : null);
             }
+            case 'detail':
+                return currentScreen() === 'detail' && window.AppState ? detailMeta(AppState.currentDetailItem) : null;
+            case 'detailButtons':
+                return detailButtonsInfo(st);
+            case 'play':
+                return playForPlugin(st, a.opts || {});
         }
         throw new Error('Неизвестная операция ' + op);
     }
@@ -1241,6 +1326,13 @@
                 var result, error = '';
                 try { result = domCall(st, String(m.op), m.args || {}); }
                 catch (err) { error = String(err && err.message || err); }
+                // Долгие операции (play) отвечают промисом — ждём его
+                if (result && typeof result.then === 'function') {
+                    var reqId = m.reqId;
+                    result.then(function (v) { post(st, { type: 'call', reqId: reqId, result: v === undefined ? true : v, error: '' }); },
+                        function (err) { post(st, { type: 'call', reqId: reqId, error: String(err && err.message || err || 'Ошибка') }); });
+                    break;
+                }
                 post(st, { type: 'call', reqId: m.reqId, result: result, error: error });
                 break;
             case 'listen':
@@ -1332,13 +1424,35 @@
                 }
                 break;
             case 'button':
-                setButton(st, m);
+                setButton(st, m, false);
+                break;
+            case 'button-update':
+                setButton(st, m, true);
                 break;
             case 'button-remove':
                 for (var b = 0; b < st.buttons.length; b++) {
                     if (st.buttons[b].id === m.id) { st.buttons.splice(b, 1); break; }
                 }
                 renderDetailExtras();
+                break;
+            case 'online':
+                if (m.on) {
+                    var types = null;
+                    if (Array.isArray(m.types)) {
+                        types = [];
+                        for (var ot = 0; ot < m.types.length && ot < 4; ot++) {
+                            if ((m.types[ot] === 'movie' || m.types[ot] === 'tv') && types.indexOf(m.types[ot]) === -1) types.push(m.types[ot]);
+                        }
+                        if (!types.length) types = null;
+                    }
+                    st.online = { name: String(m.name || p.name || nameFromUrl(p.url)).slice(0, 40), types: types };
+                } else {
+                    st.online = null;
+                }
+                renderDetailExtras();
+                break;
+            case 'native-key':
+                onPanelNativeKey(st, +m.keyCode || 0);
                 break;
             case 'block':
                 st.block = String(m.html || '').slice(0, HTML_LIMIT);
@@ -1398,17 +1512,110 @@
     // ==================== КАРТОЧКА ====================
 
     var ICON_RE = /^[a-z0-9-]{1,40}$/;
+    var BUTTON_STYLES = { round: 1, wide: 1, primary: 1 };
 
-    function setButton(st, m) {
+    /*
+     * Кнопки строки действий, к которым расширение может пристроить свою:
+     * ключ → id кнопки приложения. Ключи, а не id, — чтобы вёрстку приложения
+     * можно было менять, не ломая плагины. «online» — общая кнопка источников
+     * онлайн-просмотра (её рисует приложение, см. ниже).
+     */
+    var DETAIL_ANCHORS = {
+        resume: 'catalog-resume-btn', torrents: 'catalog-watch-btn', best: 'catalog-best-btn',
+        play: 'detail-progress-btn', overview: 'catalog-toggle-overview-btn', 'open-card': 'detail-open-card-btn',
+        favorite: 'catalog-favorite-btn', trailer: 'catalog-trailer-btn', online: 'ext-online-btn'
+    };
+    var ONLINE_BTN_ID = 'ext-online-btn';
+    var ANCHOR_RE = /^(start|end|ext:[\w-]{1,30}|[a-z-]{1,20})$/;
+
+    /** Место кнопки: { before | after: ключ } или { position: 'start' | 'end' } */
+    function cleanPlacement(m, into) {
+        var before = m.before != null && ANCHOR_RE.test(m.before) ? m.before : null;
+        var after = m.after != null && ANCHOR_RE.test(m.after) ? m.after : null;
+        var pos = m.position === 'start' || m.position === 'end' ? m.position : null;
+        if (before || after || pos) { into.before = before; into.after = before ? null : after; into.position = pos; }
+    }
+
+    /** addButton (update — false: создаёт или заменяет целиком) и updateButton (только переданное) */
+    function setButton(st, m, update) {
         var id = String(m.id || 'main').slice(0, 30);
-        var label = String(m.label || st.plugin.name || 'Расширение').slice(0, 30);
-        var icon = ICON_RE.test(m.icon) ? m.icon : 'puzzle';
-        for (var i = 0; i < st.buttons.length; i++) {
-            if (st.buttons[i].id === id) { st.buttons[i].label = label; st.buttons[i].icon = icon; renderDetailExtras(); return; }
+        var def = null;
+        for (var i = 0; i < st.buttons.length; i++) if (st.buttons[i].id === id) { def = st.buttons[i]; break; }
+        if (!def) {
+            if (update || st.buttons.length >= MAX_BUTTONS) return;
+            def = { id: id };
+            st.buttons.push(def);
+        } else if (!update) {
+            // Повторный addButton — кнопка такая, как описана сейчас
+            for (var k in def) if (def.hasOwnProperty(k) && k !== 'id') delete def[k];
         }
-        if (st.buttons.length >= MAX_BUTTONS) return;
-        st.buttons.push({ id: id, label: label, icon: icon });
+        if (!update || m.label != null) def.label = String(m.label || st.plugin.name || 'Расширение').slice(0, 30);
+        if (!update || m.icon != null) def.icon = ICON_RE.test(m.icon) ? m.icon : 'puzzle';
+        if (!update || m.style != null) def.style = BUTTON_STYLES[m.style] ? m.style : 'round';
+        if (!update || m.hidden != null) def.hidden = !!m.hidden;
+        cleanPlacement(m, def);
         renderDetailExtras();
+    }
+
+    function makeDetailButton(extId, buttonId, label, icon, style) {
+        var btn = document.createElement('button');
+        btn.className = 'catalog-toggle-overview-btn ext-detail-btn' + (style && style !== 'round' ? ' ext-detail-' + style : '');
+        btn.setAttribute('data-label', label);
+        btn.setAttribute('data-ext', extId);
+        btn.setAttribute('data-ext-button', buttonId);
+        btn.innerHTML = '<i class="fi fi-rr-' + icon + ' ext-detail-icon"></i>';
+        btn.appendChild(document.createTextNode(' ' + label));
+        return btn;
+    }
+
+    /**
+     * Вставить кнопку по её месту. Несколько кнопок у одного якоря встают в
+     * порядке появления: «после X» — за X и за теми, кого уже поставили после X;
+     * «перед X» — вплотную перед X. Якоря нет на странице (кнопка приложения
+     * спрятана — она остаётся в разметке, — или своей кнопки ещё нет) — в конец.
+     */
+    function placeDetailButton(row, btn, def, ownOf) {
+        var key = def.before || def.after;
+        var anchor = null;
+        if (key) {
+            if (key.indexOf('ext:') === 0) anchor = ownOf(key.slice(4));
+            else if (DETAIL_ANCHORS.hasOwnProperty(key)) anchor = document.getElementById(DETAIL_ANCHORS[key]);
+            if (anchor && anchor.parentNode !== row) anchor = null;
+        }
+        if (anchor && def.before) { row.insertBefore(btn, anchor); return; }
+        if (anchor) {
+            var ref = anchor;
+            for (;;) {
+                var next = ref.nextElementSibling;
+                // Меню «Лучших» — продолжение своей кнопки, его не разрываем
+                if (next && (next.id === 'catalog-best-menu' || next._extAfter === anchor)) { ref = next; continue; }
+                break;
+            }
+            btn._extAfter = anchor;
+            row.insertBefore(btn, ref.nextSibling);
+            return;
+        }
+        if (def.position === 'start') {
+            var first = row.firstElementChild;
+            while (first && first._extStart) first = first.nextElementSibling;
+            btn._extStart = true;
+            row.insertBefore(btn, first);
+            return;
+        }
+        row.appendChild(btn);
+    }
+
+    /** Источники онлайн-просмотра, подходящие открытой карточке */
+    function onlineProviders(meta) {
+        var out = [];
+        if (!meta || !meta.tmdbId || meta.torrent) return out;
+        for (var id in running) {
+            if (!running.hasOwnProperty(id) || !running[id].online) continue;
+            var o = running[id].online;
+            if (o.types && o.types.indexOf(meta.type) === -1) continue;
+            out.push(running[id]);
+        }
+        return out;
     }
 
     /** Кнопки расширений в строке действий и блоки под ней — перестраиваются целиком */
@@ -1424,22 +1631,36 @@
         var oldBlocks = document.querySelectorAll('.ext-detail-block');
         for (var j = 0; j < oldBlocks.length; j++) oldBlocks[j].parentNode.removeChild(oldBlocks[j]);
 
+        // «Онлайн» — первой: к ней могут пристраиваться кнопки расширений
+        var meta = window.AppState ? detailMeta(AppState.currentDetailItem) : null;
+        if (onlineProviders(meta).length) {
+            var ob = makeDetailButton('app', 'online', 'Онлайн', 'play-alt', 'round');
+            ob.id = ONLINE_BTN_ID;
+            ob.addEventListener('click', onOnlineButton);
+            placeDetailButton(row, ob, { after: 'torrents' }, function () { return null; });
+        }
+
         var anchor = row.nextSibling;
         for (var id in running) {
             if (!running.hasOwnProperty(id)) continue;
             var st = running[id];
+            var made = {};
+            var ownOf = function (bid) { return made[bid] || null; };
+            // Кнопки с якорем на свою ещё не поставленную — вторым проходом
+            var later = [];
             for (var b = 0; b < st.buttons.length; b++) {
                 var def = st.buttons[b];
-                var btn = document.createElement('button');
-                btn.className = 'catalog-toggle-overview-btn ext-detail-btn';
-                btn.setAttribute('data-label', def.label);
-                btn.setAttribute('data-ext', id);
-                btn.setAttribute('data-ext-button', def.id);
-                btn.innerHTML = '<i class="fi fi-rr-' + def.icon + ' ext-detail-icon"></i>';
-                btn.appendChild(document.createTextNode(' ' + def.label));
-                btn.addEventListener('click', onDetailButton);
-                row.appendChild(btn);
+                if (def.hidden) continue;
+                var key = def.before || def.after || '';
+                if (key.indexOf('ext:') === 0 && !made[key.slice(4)]) { later.push(def); continue; }
+                made[def.id] = makeDetailButton(id, def.id, def.label, def.icon, def.style);
+                placeDetailButton(row, made[def.id], def, ownOf);
             }
+            for (var lb = 0; lb < later.length; lb++) {
+                made[later[lb].id] = makeDetailButton(id, later[lb].id, later[lb].label, later[lb].icon, later[lb].style);
+                placeDetailButton(row, made[later[lb].id], later[lb], ownOf);
+            }
+            for (var mb in made) if (made.hasOwnProperty(mb)) made[mb].addEventListener('click', onDetailButton);
             if (st.block) {
                 var frag = cleanHtml(st.block);
                 if (frag && frag.childNodes.length) {
@@ -1460,16 +1681,80 @@
         }
     }
 
+    /** TS.ui.detailButtons: что сейчас в строке, по порядку — чтобы выбрать якорь */
+    function detailButtonsInfo(st) {
+        var row = document.getElementById('catalog-detail-actions');
+        var out = [];
+        if (!row) return out;
+        var byId = {};
+        for (var k in DETAIL_ANCHORS) if (DETAIL_ANCHORS.hasOwnProperty(k)) byId[DETAIL_ANCHORS[k]] = k;
+        var all = row.querySelectorAll('button');
+        for (var i = 0; i < all.length; i++) {
+            var b = all[i], key = null, own = false;
+            if (byId[b.id]) key = byId[b.id];
+            else if (b.getAttribute('data-ext') === st.id) { key = 'ext:' + b.getAttribute('data-ext-button'); own = true; }
+            if (!key) continue;   // чужие кнопки расширений якорем не бывают
+            out.push({
+                key: key, own: own,
+                label: String(b.getAttribute('data-label') || b.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 60),
+                visible: b.offsetParent !== null && !b.classList.contains('hidden')
+            });
+        }
+        return out;
+    }
+
     function onDetailButton(e) {
         if (e && e.preventDefault) e.preventDefault();
         var btn = e.currentTarget;
         var st = running[btn.getAttribute('data-ext')];
         if (!st) return;
         panelReturnFocus = btn;
+        st.actedAt = Date.now();
         // Сведения карточки могли дополниться после открытия — берём свежие
         var item = window.AppState ? detailMeta(AppState.currentDetailItem) : null;
         if (item) lastDetailMeta = item;
         emitTo(st, 'button', { id: btn.getAttribute('data-ext-button'), item: lastDetailMeta });
+    }
+
+    // ---------- «Онлайн»: общая кнопка источников ----------
+
+    var ONLINE_LAST_KEY = 'extensions-online-last';
+
+    function startOnline(st, btn) {
+        var item = window.AppState ? detailMeta(AppState.currentDetailItem) : null;
+        if (!item) return;
+        lastDetailMeta = item;
+        panelReturnFocus = btn || null;
+        st.actedAt = Date.now();
+        try { localStorage.setItem(ONLINE_LAST_KEY, st.id); } catch (e) { }
+        emitTo(st, 'online', { item: item });
+    }
+
+    function onOnlineButton(e) {
+        if (e && e.preventDefault) e.preventDefault();
+        var btn = e.currentTarget;
+        var list = onlineProviders(window.AppState ? detailMeta(AppState.currentDetailItem) : null);
+        if (!list.length) return;
+        if (list.length === 1) { startOnline(list[0], btn); return; }
+        // Несколько источников — спросить; прошлый выбор первым и в фокусе
+        var last = '';
+        try { last = localStorage.getItem(ONLINE_LAST_KEY) || ''; } catch (err) { }
+        list.sort(function (a, b) { return (b.id === last) - (a.id === last); });
+        var html = '<h3>Смотреть онлайн</h3><div class="ext-modal-actions ext-modal-list">';
+        for (var i = 0; i < list.length; i++) {
+            html += '<button class="ext-modal-btn' + (i === 0 ? ' primary' : '') + '" data-online="' + esc(list[i].id) + '">' +
+                esc(list[i].online.name) + '</button>';
+        }
+        html += '<button class="ext-modal-btn" data-act="cancel">Отмена</button></div>';
+        var el = openModal(html, btn);
+        el.addEventListener('click', function (ev) {
+            var b = ev.target.closest ? ev.target.closest('button') : null;
+            if (!b) return;
+            if (b.getAttribute('data-act') === 'cancel') { closeModal(); return; }
+            var st = running[b.getAttribute('data-online')];
+            closeModal(true);
+            if (st) startOnline(st, btn);
+        });
     }
 
     /**
@@ -1495,16 +1780,291 @@
         if (poster) poster = String(poster).replace(/^http:\/\/image\.tmdb\.org\//i, 'https://image.tmdb.org/');
         if (poster && !/^https:/i.test(poster)) poster = null;
         var tmdbId = item.tmdbId || item.tmdb_id || (item.hash ? null : item.id) || null;
+        var type = item.media_type === 'tv' || (!item.media_type && (item.first_air_date || item.name)) ? 'tv' : 'movie';
+        // Полные сведения TMDB открытой карточки (renderCinemaHead в catalog.js
+        // кладёт их в AppState.currentDetailSource) — только если они о ней же
+        var src = window.AppState && AppState.currentDetailSource;
+        if (!src || !tmdbId || String(src.id) !== String(tmdbId)) src = {};
+        var imdb = String(src.imdb_id || (src.external_ids && src.external_ids.imdb_id) || item.imdb_id || '');
+        var kp = item.kinopoisk_id || item.kp_id || item.kinopoiskId || src.kinopoisk_id || null;
+        var seasons = null;
+        if (type === 'tv' && src.seasons && src.seasons.length) {
+            seasons = [];
+            for (var i = 0; i < src.seasons.length && seasons.length < 100; i++) {
+                var s = src.seasons[i];
+                // Нулевой сезон TMDB — «Спецматериалы», в онлайне его обычно нет
+                if (s && s.season_number > 0) seasons.push({ season: +s.season_number, episodes: +s.episode_count || 0, name: String(s.name || '').slice(0, 100) });
+            }
+        }
         return {
             tmdbId: tmdbId ? String(tmdbId) : null,
-            type: item.media_type === 'tv' || (!item.media_type && (item.first_air_date || item.name)) ? 'tv' : 'movie',
+            type: type,
             title: String(title || '').slice(0, 300),
-            originalTitle: String(item.original_title || item.original_name || '').slice(0, 300),
+            originalTitle: String(item.original_title || item.original_name || src.original_title || src.original_name || '').slice(0, 300),
+            originalLanguage: String(item.original_language || src.original_language || '').slice(0, 10) || null,
             year: year ? +year : null,
             poster: poster,
+            backdrop: tmdbImage(item.backdrop_path || src.backdrop_path, 'w1280'),
             vote: typeof item.vote_average === 'number' ? item.vote_average : null,
+            imdbId: /^tt\d{3,12}$/.test(imdb) ? imdb : null,
+            kinopoiskId: kp && /^\d{1,10}$/.test(String(kp)) ? String(kp) : null,
+            seasons: seasons,
             torrent: !!item.hash
         };
+    }
+
+    function tmdbImage(path, size) {
+        if (!path || typeof path !== 'string') return null;
+        if (/^https:\/\//i.test(path)) return path;
+        return path.charAt(0) === '/' ? 'https://image.tmdb.org/t/p/' + size + path : null;
+    }
+
+    // ==================== ВОСПРОИЗВЕДЕНИЕ (TS.player.play) ====================
+    /*
+     * Видео источника онлайн-просмотра. Только в ответ на человека: пока открыто
+     * окно плагина или в пределах PLAY_GESTURE_MS после его кнопки, «Онлайн» или
+     * клавиши, пришедшей плагину, — иначе плагин мог бы включать видео сам по
+     * таймеру. Адреса — по правилам TS.fetch: не сервер TorrStream, не TorrServer
+     * и не домашняя сеть (GET туда — тоже запрос с последствиями).
+     */
+    var PLAY_GESTURE_MS = 15000;
+    var PLAYLIST_LIMIT = 500;
+    var extPlayback = null;   // { st, items, index, web, seen, timer, handlers }
+
+    function mediaUrl(u) {
+        u = String(u || '');
+        if (!validPluginUrl(u) || fetchAllowed(u)) return '';
+        return u.slice(0, 4000);
+    }
+
+    /** Ярлык качества → число строк для сравнения: «1080p», «4K», «720» */
+    function qualityLines(label) {
+        var s = String(label).toLowerCase();
+        if (/2160|4k|uhd/.test(s)) return 2160;
+        var m = /(\d{3,4})/.exec(s);
+        return m ? +m[1] : 0;
+    }
+
+    function cleanSubtitles(list) {
+        var out = [];
+        if (!Array.isArray(list)) return out;
+        for (var i = 0; i < list.length && out.length < 30; i++) {
+            var s = list[i];
+            if (!s || typeof s !== 'object') continue;
+            var url = mediaUrl(s.url);
+            if (!url) continue;
+            var lang = String(s.language || s.lang || '').toLowerCase();
+            out.push({
+                url: url,
+                label: String(s.label || lang || 'Субтитры ' + (out.length + 1)).slice(0, 60),
+                language: /^[a-z]{2,3}(-[a-z0-9]{2,8})?$/.test(lang) ? lang : '',
+                'default': !!s['default']
+            });
+        }
+        return out;
+    }
+
+    /** Элемент плейлиста: адрес (или лучшее из quality), подписи, субтитры */
+    function cleanPlayItem(o, fallbackTitle) {
+        if (!o || typeof o !== 'object') return null;
+        var quality = null, best = '', bestLines = -1;
+        if (o.quality && typeof o.quality === 'object') {
+            var n = 0;
+            for (var label in o.quality) {
+                if (!o.quality.hasOwnProperty(label) || n >= 12) continue;
+                var qu = mediaUrl(o.quality[label]);
+                if (!qu) continue;
+                quality = quality || {};
+                quality[String(label).slice(0, 20)] = qu;
+                n++;
+                if (qualityLines(label) > bestLines) { bestLines = qualityLines(label); best = qu; }
+            }
+        }
+        var url = mediaUrl(o.url) || best;
+        if (!url) return null;
+        var item = {
+            url: url,
+            title: String(o.title || fallbackTitle || 'Видео').slice(0, 200),
+            quality: quality,
+            subtitles: cleanSubtitles(o.subtitles)
+        };
+        if (+o.season > 0) item.season = Math.floor(+o.season);
+        if (+o.episode > 0) item.episode = Math.floor(+o.episode);
+        if (typeof o.hls === 'boolean') item.hls = o.hls;
+        return item;
+    }
+
+    function playForPlugin(st, o) {
+        var now = Date.now();
+        var acted = Math.max(st.keyAt || 0, st.actedAt || 0);
+        if (panelPlugin !== st.id && now - acted > PLAY_GESTURE_MS) {
+            throw new Error('Видео включается только в ответ на действие человека (кнопка, ОК в окне расширения)');
+        }
+        var screen = currentScreen();
+        if (screen === 'config') throw new Error('В настройках видео не включается');
+        if (screen === 'player' && !(extPlayback && extPlayback.st === st)) throw new Error('Сейчас идёт другое видео');
+        var base = cleanPlayItem(o, o.title);
+        var items = [], index = 0;
+        if (Array.isArray(o.playlist) && o.playlist.length) {
+            for (var i = 0; i < o.playlist.length && items.length < PLAYLIST_LIMIT; i++) {
+                var it = cleanPlayItem(o.playlist[i], o.title);
+                if (it) items.push(it);
+            }
+            index = Math.max(0, Math.min(items.length - 1, Math.floor(+o.index) || 0));
+            if (base && o.index == null) {
+                for (var j = 0; j < items.length; j++) if (items[j].url === base.url) { index = j; break; }
+            }
+        } else if (base) {
+            items.push(base);
+        }
+        if (!items.length) throw new Error('Нет ссылки на видео (или адрес закрыт: домашняя сеть, сервер TorrStream, TorrServer)');
+        var opts = {
+            startAt: +o.startAt > 0 ? Math.floor(+o.startAt) : 0,
+            poster: /^https:\/\//i.test(String(o.poster || '')) ? String(o.poster).slice(0, 1000) : (lastDetailMeta && lastDetailMeta.poster) || '',
+            headers: null
+        };
+        if (o.headers && typeof o.headers === 'object') {
+            var hn = 0;
+            for (var h in o.headers) {
+                if (!o.headers.hasOwnProperty(h) || hn >= 10 || HEADER_FORBIDDEN.test(h) || !/^[\w-]{1,60}$/.test(h)) continue;
+                opts.headers = opts.headers || {};
+                opts.headers[h] = String(o.headers[h]).slice(0, 1000);
+                hn++;
+            }
+        }
+        if (panelPlugin === st.id) { panelReturnFocus = null; closePanel(); }
+        if (window.AndroidJS && typeof AndroidJS.openPlayer === 'function') return playAndroid(st, items, index, opts);
+        if (typeof window.openUrlInWebPlayer !== 'function') throw new Error('Плеер недоступен');
+        return playWeb(st, items, index, opts);
+    }
+
+    /** Android: встроенный или внешний плеер приложения — формат плейлиста как у Lampa */
+    function playAndroid(st, items, index, opts) {
+        var cur = items[index];
+        function lampa(it) {
+            var o = { url: it.url, title: it.title };
+            if (it.quality) o.quality = it.quality;
+            if (it.subtitles.length) o.subtitles = it.subtitles.map(function (s) { return { url: s.url, label: s.label, language: s.language }; });
+            if (it.season) o.season = it.season;
+            if (it.episode) o.episode = it.episode;
+            return o;
+        }
+        var meta = lastDetailMeta || {};
+        var data = lampa(cur);
+        data.iptv = false;
+        data.poster = opts.poster;
+        data.focus_color = focusColor();
+        data.auto_next = AppState.autoSwitchEpisodes !== false;
+        if (meta.title) data.title_base = meta.title;
+        if (meta.tmdbId) { data.id = meta.tmdbId; data.tmdb_id = meta.tmdbId; data.type = meta.type; }
+        if (opts.startAt) { data.timecode = opts.startAt; data.timeline = { hash: '', time: opts.startAt, duration: 0, percent: 0 }; }
+        if (opts.headers) data.headers = opts.headers;
+        if (items.length > 1) data.playlist = items.map(lampa);
+        AndroidJS.openPlayer(cur.url, JSON.stringify(data));
+        emitTo(st, 'player', { state: 'start', index: index, url: cur.url, player: 'android' });
+        return true;
+    }
+
+    /** Веб-плеер: openUrlInWebPlayer (catalog.js); плейлист и события — здесь */
+    function playWeb(st, items, index, opts) {
+        if (extPlayback && extPlayback.st !== st) finishExtPlayback('replaced');
+        if (!extPlayback) extPlayback = { st: st, items: items, index: index, web: true, seen: false, startedAt: Date.now() };
+        extPlayback.items = items;
+        extPlayback.index = index;
+        return startWebItem(opts.startAt);
+    }
+
+    function startWebItem(startAt) {
+        var pb = extPlayback;
+        var it = pb.items[pb.index];
+        bindVideoEvents(pb);
+        return window.openUrlInWebPlayer({ url: it.url, title: it.title, startAt: startAt, hls: it.hls }).then(function () {
+            if (extPlayback !== pb) return true;
+            pb.seen = true;
+            attachWebSubtitles(it);
+            emitTo(pb.st, 'player', { state: 'start', index: pb.index, url: it.url, player: 'web' });
+            return true;
+        }, function (err) {
+            if (extPlayback === pb && currentScreen() !== 'player') finishExtPlayback('error');
+            throw err;
+        });
+    }
+
+    /** Субтитры источника — в «Онлайн субтитры» веб-плеера (OnlineSubs в player.js) */
+    function attachWebSubtitles(it) {
+        var OS = window.OnlineSubs;
+        if (!OS || typeof OS.reset !== 'function') return;
+        OS.reset();
+        if (!it.subtitles.length) return;
+        OS.fileKey = 'ext|' + it.url;
+        OS.hash = 'ext';
+        OS.target = { ext: true };
+        OS.list = it.subtitles.map(function (s) { return { url: s.url, lang: s.language || '', name: s.label, source: 'Источник', format: '' }; });
+        for (var i = 0; i < it.subtitles.length; i++) {
+            if (it.subtitles[i]['default']) { OS.load(OS.list[i], true); break; }
+        }
+    }
+
+    function videoEl() { return document.getElementById('video-player'); }
+
+    function bindVideoEvents(pb) {
+        var vp = videoEl();
+        if (!vp || pb.handlers) return;
+        pb.handlers = {
+            ended: function () {
+                if (extPlayback !== pb || currentScreen() !== 'player') return;
+                emitTo(pb.st, 'player', { state: 'ended', index: pb.index, position: vp.currentTime || 0, duration: vp.duration || 0 });
+                // Следующая серия — как у торрентов: по настройке «Переключать серии автоматически»
+                if (pb.index + 1 < pb.items.length && AppState.autoSwitchEpisodes !== false) {
+                    pb.index++;
+                    startWebItem(0)['catch'](function (err) {
+                        if (typeof window.showToast === 'function') window.showToast('Следующая серия не открылась: ' + (err && err.message || err));
+                    });
+                }
+            }
+        };
+        vp.addEventListener('ended', pb.handlers.ended);
+    }
+
+    /** Просмотр расширения закончился: из плеера ушли (или его сменили) */
+    function finishExtPlayback(reason) {
+        var pb = extPlayback;
+        if (!pb) return;
+        extPlayback = null;
+        var vp = videoEl();
+        if (vp && pb.handlers) vp.removeEventListener('ended', pb.handlers.ended);
+        if (window.OnlineSubs && OnlineSubs.fileKey && String(OnlineSubs.fileKey).indexOf('ext|') === 0) OnlineSubs.reset();
+        emitTo(pb.st, 'player', {
+            state: 'exit', reason: reason, index: pb.index,
+            url: pb.items[pb.index] ? pb.items[pb.index].url : '',
+            position: pb.lastPos || 0, duration: pb.lastDur || 0
+        });
+    }
+
+    /** Из опроса: позиция для события exit и уход с экрана плеера */
+    function pollExtPlayback(screen) {
+        var pb = extPlayback;
+        if (!pb) return;
+        if (screen === 'player') {
+            var vp = videoEl();
+            if (vp && vp.currentTime > 0) { pb.lastPos = vp.currentTime; pb.lastDur = isFinite(vp.duration) ? vp.duration : 0; }
+            // Плеер занят уже не нами (запустили раздачу)
+            if (pb.seen && window.AppState && !AppState.isYoutubePlayback) finishExtPlayback('replaced');
+            return;
+        }
+        if (pb.seen || Date.now() - pb.startedAt > 60000) finishExtPlayback('exit');
+    }
+
+    /** Клавиша, нажатая с фокусом ввода внутри окна плагина (щёлкнули мышью) */
+    function onPanelNativeKey(st, k) {
+        if (panelPlugin !== st.id || !k) return;
+        var dir = null;
+        if (typeof isBackKey === 'function' && isBackKey(k)) dir = 'back';
+        else if (typeof isArrowKey === 'function' && isArrowKey(k)) dir = arrowDir(k);
+        else if (typeof isOkKey === 'function' && isOkKey(k)) dir = 'enter';
+        if (!dir) return;
+        if (dir === 'back') { closePanel(); return; }
+        emitTo(st, 'key', dir);
     }
 
     // ==================== ЭКРАН И КАРТОЧКА: ОПРОС ====================
@@ -1534,13 +2094,22 @@
             lastItem = item;
             lastDetailMeta = detailMeta(item);
             if (lastDetailMeta && s === 'detail') emitAll('detail', lastDetailMeta);
-            // Карточку перестроили — кнопки расширений могли выпасть из ряда
-            if (hasDetailExtras() && !document.querySelector('#catalog-detail-actions .ext-detail-btn')) renderDetailExtras();
+            // Карточку перестроили — кнопки расширений могли выпасть из ряда. С
+            // источниками онлайна — всегда: «Онлайн» есть не у всякой карточки
+            if (hasOnline() || (hasDetailExtras() && !document.querySelector('#catalog-detail-actions .ext-detail-btn'))) renderDetailExtras();
         }
+        pollExtPlayback(s);
     }
 
     function hasDetailExtras() {
-        for (var id in running) if (running.hasOwnProperty(id) && (running[id].buttons.length || running[id].block)) return true;
+        for (var id in running) {
+            if (running.hasOwnProperty(id) && (running[id].buttons.length || running[id].block || running[id].online)) return true;
+        }
+        return false;
+    }
+
+    function hasOnline() {
+        for (var id in running) if (running.hasOwnProperty(id) && running[id].online) return true;
         return false;
     }
 
@@ -1582,7 +2151,13 @@
         var st = running[id];
         var head = document.getElementById('ext-panel-head');
         if (head) head.classList.remove('open');
-        if (st) { st.frame.classList.remove('open'); emitTo(st, 'panel', { open: false }); }
+        if (st) {
+            st.frame.classList.remove('open');
+            emitTo(st, 'panel', { open: false });
+            // Щёлкнули мышью по окну — фокус ввода остался в iframe, и клавиши
+            // шли бы в спрятанную песочницу. Возвращаем его странице
+            if (document.activeElement === st.frame) { try { st.frame.blur(); window.focus(); } catch (e) { } }
+        }
         document.documentElement.classList.remove('ext-panel-open');
         var back = panelReturnFocus;
         panelReturnFocus = null;

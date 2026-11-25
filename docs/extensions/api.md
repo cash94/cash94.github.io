@@ -11,7 +11,8 @@ TS.register({ name: 'Название', version: '1.0', description: 'Что д�
 TS.info();   // { id, appVersion, platform, features }
 ```
 `features` — что умеет этот TorrStream: `capture-keys`, `focus-home-row`,
-`open-row`, `open-category`, `recommend` (см. ниже). Версии с ним отвечают
+`open-row`, `open-category`, `recommend`, `button-placement`, `button-style`,
+`online`, `player`, `detail` (см. ниже). Версии с ним отвечают
 `appVersion: 2`; на старых (`appVersion: 1`) поля нет — проверяйте, прежде чем
 пользоваться:
 ```js
@@ -27,6 +28,8 @@ if (F.indexOf('capture-keys') !== -1) { /* … */ }
 TS.on('detail', function (item) { … });   // открыта карточка фильма или сериала
 TS.on('screen', function (name) { … });    // home | torrents | catalog | search | detail | player | config
 TS.on('button', function (e) { … });       // нажата ваша кнопка в карточке: { id, item }
+TS.on('online', function (e) { … });       // нажата «Онлайн» и выбран ваш источник: { item }
+TS.on('player', function (e) { … });       // ваше видео: start | ended | exit (см. «Онлайн-просмотр»)
 TS.on('settings', function () { … });      // «Открыть» в меню расширения
 TS.on('panel', function (e) { … });        // ваше окно открыто/закрыто: { open }
 TS.on('key', function (dir) { return true; });  // пульт: up | down | left | right | enter | back
@@ -37,8 +40,15 @@ TS.off(name, fn);
 
 **item** — открытые сведения TMDB о фильме:
 ```js
-{ tmdbId: '603', type: 'movie' | 'tv', title, originalTitle, year, poster, vote, torrent }
+{ tmdbId: '603', type: 'movie' | 'tv', title, originalTitle, originalLanguage, year,
+  poster, backdrop, vote, imdbId: 'tt0133093', kinopoiskId: '301',
+  seasons: [{ season: 1, episodes: 10, name: 'Сезон 1' }], torrent }
 ```
+`imdbId`, `seasons` (только у сериалов, без нулевого «Спецматериалы») и
+`kinopoiskId` бывают `null`: первые два приходят, когда TMDB ответит на
+запрос карточки, а Кинопоиск известен не у всех подборок. Свежие сведения
+открытой карточки — `TS.app.detail()` (Promise, `null` — карточка не открыта);
+`button` и `online` приносят свежие сами.
 Хеша раздачи, magnet-ссылки и адресов серверов в нём нет. `torrent: true`
 означает, что открыта карточка раздачи, а не фильма.
 
@@ -52,7 +62,10 @@ TS.off(name, fn);
 **key** приходит, пока открыто ваше окно (`TS.panel.open`) или пока вы держите
 пульт (`TS.keys.capture`). Обработчик, вернувший `true`, отменяет стандартное
 поведение. В окне стандартное поведение такое: стрелки двигают фокус между
-`button`, `a[href]` и `[data-focus]`, ОК нажимает.
+`button`, `a[href]` и `[data-focus]` рядами, ОК нажимает. Влево-вправо —
+только внутри своего ряда; вверх-вниз — в ближайший ряд, на элемент с классом
+`on` (выбранная озвучка, сезон), а если такого нет — на ближайший по
+горизонтали. Клавиши, нажатые после щелчка мышью по окну, приходят так же.
 
 ## Хранилище
 
@@ -74,12 +87,44 @@ TS.ui.addStyle('.home-card { border-radius: 0 }');
 TS.ui.hide('#home-hero .home-hero-actions');
 TS.ui.setText('.some-label', 'Текст');            // только элементы без вложенных
 TS.ui.addButton({ id: 'x', label: 'Подпись', icon: 'star' });  // в карточке, до 3
+TS.ui.updateButton('x', { label: 'Другая', hidden: true });
 TS.ui.removeButton('x');
+TS.ui.detailButtons();                            // Promise: кнопки строки по порядку
 TS.ui.setDetailBlock('<b>HTML</b>');              // блок под описанием карточки; '' — убрать
 TS.toast('Сообщение');
 ```
 - `icon` — имя значка [uicons](https://www.flaticon.com/uicons) без приставки:
   `star` → `fi-rr-star`.
+
+### Кнопки в карточке: место и вид
+
+Кнопка встаёт в строку действий карточки в том же стиле, что кнопки
+приложения, и пульт ходит по ней как по своим.
+```js
+TS.ui.addButton({
+  id: 'kp', label: 'Кинопоиск', icon: 'link',
+  after: 'trailer',          // или before: 'favorite'; или position: 'start' | 'end'
+  style: 'round'             // 'round' | 'wide' | 'primary'
+});
+TS.ui.addButton({ id: 'more', label: 'Ещё', icon: 'menu-dots', after: 'ext:kp' });  // за своей
+TS.ui.updateButton('kp', { hidden: !item.imdbId });   // только переданные поля
+```
+- **Место** — ключ кнопки приложения в `before` или `after`:
+  `resume` («Продолжить»), `torrents`, `online` (общая «Онлайн»), `best`,
+  `play`, `overview` («Подробнее»), `open-card`, `favorite`, `trailer`; или
+  `ext:<id>` своей кнопки. Без места — в конец строки. Спрятанная сейчас
+  кнопка приложения якорем остаётся: ваша встанет там, где появилась бы она.
+  Несколько кнопок у одного якоря стоят в порядке добавления.
+- **Вид**: `round` (по умолчанию) — круг со значком и подписью под ним, как
+  «Трейлер»; `wide` — «пилюля» со значком и текстом; `primary` — белая, как
+  «Продолжить», для главного действия. На телефоне все кнопки карточки —
+  круги, `wide` и `primary` тоже.
+- `TS.ui.detailButtons()` отдаёт `[{ key, label, visible, own }]` — какие
+  кнопки сейчас в строке: по ним выбирают якорь. Чужих кнопок расширений в
+  списке нет.
+- Повторный `addButton` с тем же `id` заменяет кнопку целиком,
+  `updateButton` меняет только переданное (`label`, `icon`, `style`,
+  `hidden`, место).
 - В CSS нельзя `url()`, `image-set()`, `@import`, `@font-face` и обратную
   косую черту: ими можно было бы вынести значения полей на чужой сервер.
 - HTML блока чистится по белому списку тегов (`div span p b i u s strong em
@@ -203,6 +248,60 @@ TS.app.recommend({ catalogColumns: '4', heroTrailers: false });
 - `TS.keys.capture` возвращается приложению само по «Назад» и при смене
   экрана: в этот момент приходит `key` со значением `back`. Если «Назад» не в
   списке `keys`, он работает в приложении, но пульт возвращается так же.
+
+## Онлайн-просмотр
+
+Расширение может быть источником фильмов и сериалов по прямым ссылкам — как
+онлайн-плагины Lampa.
+```js
+TS.online.register({ name: 'Мой источник', types: ['movie', 'tv'] });   // types — необязательно
+
+TS.on('online', function (e) {
+  // e.item — сведения карточки (imdbId, kinopoiskId, seasons…). Ищем видео,
+  // показываем выбор в своём окне:
+  TS.panel.open('онлайн');
+});
+
+TS.player.play({
+  url: 'https://cdn.example/film.m3u8',     // или quality — тогда берётся лучшее
+  quality: { '1080p': 'https://…/1080.mp4', '720p': 'https://…/720.mp4' },
+  title: 'Фильм (2024)',
+  poster: 'https://…/poster.jpg',
+  subtitles: [{ label: 'Русские', url: 'https://…/ru.vtt', language: 'ru', default: true }],
+  startAt: 600                               // с какой секунды
+}).then(function () { /* видео пошло */ }, function (err) { TS.toast(err.message); });
+```
+- `TS.online.register` добавляет в карточку фильма **одну общую кнопку
+  «Онлайн»** (сразу за «Торрентами»). Источников несколько — приложение
+  спрашивает, какой открыть, и помнит последний выбор. Нажали — вашему
+  расширению приходит `online` с `item`. Карточке раздачи кнопка не
+  показывается. `TS.online.unregister()` убирает источник.
+- **Сериал** — плейлистом: `playlist: [{ url | quality, title, season,
+  episode, subtitles }]` и `index` — с какой серии начать (или `url` текущей).
+  Дальше плеер переключает серии сам, по настройке «Переключать серии
+  автоматически».
+- **Где играет**: в Android-приложении — его плеер (встроенный или выбранный
+  внешний): качества, субтитры, плейлист и `headers` (`{ 'User-Agent': … }`)
+  он понимает. В остальных — встроенный веб-плеер: `m3u8` через hls.js (или
+  сам браузер телевизора), остальное — тегом `<video>`; субтитры источника —
+  в меню «Онлайн субтитры». `headers` веб-плеер не умеет.
+- **Только в ответ на человека**: пока открыто ваше окно или 15 секунд после
+  его кнопки, «Онлайн» или клавиши, пришедшей вам. Иначе — отказ.
+- **Адреса** — по правилам `TS.fetch` (ниже): не домашняя сеть и не серверы
+  TorrStream. Для `m3u8` в веб-плеере источник должен отдавать CORS; для
+  `mp4` — не обязательно. Субтитры веб-плеер скачивает сам — им CORS нужен.
+- Окно расширения перед запуском закрывается само; «Назад» в плеере
+  возвращает в карточку.
+
+Событие `player` (на Android приходит только `start`):
+```js
+TS.on('player', function (e) {
+  // { state: 'start', index, url, player: 'web' | 'android' }
+  // { state: 'ended', index, position, duration }  — серия доиграла
+  // { state: 'exit', reason, index, url, position, duration } — из плеера вышли
+  if (e.state === 'exit' && e.position > 10) TS.storage.set('pos', Math.floor(e.position));
+});
+```
 
 ## Сеть
 

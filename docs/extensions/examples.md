@@ -64,3 +64,32 @@ function close(go) {
   if (go) { if (it.click) TS.dom.click(it.h); else TS.dom.focus(it.h); }
 }
 ```
+
+## Онлайн: пример — источник видео
+
+[online-demo.js](https://cash94.github.io/msx/extensions/online-demo.js) —
+заготовка источника онлайн-просмотра. Вместо поиска предлагает открытые
+тестовые ролики, зато показывает всё, что нужно настоящему источнику. В каталог
+не входит — ставится по ссылке на файл:
+- `TS.online.register` — общая кнопка «Онлайн» и событие `online`;
+- своё окно со списком; класс `on` у выбранной кнопки ряда;
+- `TS.player.play`: качества, плейлист серий с автопереходом, `startAt`;
+- событие `player` — где остановились, чтобы продолжить;
+- своя кнопка за «Трейлером»: `after: 'trailer'`, `style: 'wide'`.
+
+```js
+TS.online.register({ name: 'Пример (тестовые ролики)' });
+
+TS.on('online', function (e) {
+  item = e.item;                       // imdbId, kinopoiskId, seasons…
+  document.body.innerHTML = '<button class="on" data-play="hls">HLS</button>…';
+  TS.panel.open('пример');
+});
+
+// Сериал — плейлистом: дальше серии переключает плеер
+TS.player.play({ playlist: list, index: 1 })['catch'](function (err) { TS.toast(err.message); });
+
+TS.on('detail', function (it) {
+  TS.ui.addButton({ id: 'about', label: 'О примере', icon: 'info', after: 'trailer', style: 'wide' });
+});
+```

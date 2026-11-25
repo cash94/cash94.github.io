@@ -4124,6 +4124,7 @@ function renderCinemaScore(item, src) {
 }
 function renderCinemaHead(item, src) {
   if (!getEl('detail-cinema-head')) return;
+  AppState.currentDetailSource = src || null;
   var name = getEl('detail-cinema-name');
   if (name) name.textContent = getCatalogItemTitle(item);
   renderCinemaLogo(item, src);
@@ -4618,6 +4619,169 @@ function _openRutubeTrailerInPlayer() {
     }
   });
   return _openRutubeTrailerInPlayer.apply(this, arguments);
+}
+var URL_PLAYER_START_TIMEOUT_MS = 30000;
+function openUrlInWebPlayer(opts) {
+  opts = opts || {};
+  var url = String(opts.url || '');
+  var title = opts.title || 'Видео';
+  var startAt = Number(opts.startAt) > 0 ? Number(opts.startAt) : 0;
+  stopTrailerBackground();
+  var po = getEl('playback-overlay');
+  if (po) {
+    po.classList.add('active');
+    var pt = po.querySelector('.playback-text');
+    if (pt) pt.textContent = 'Загрузка: ' + title + '...';
+  }
+  var replacing = !!(AppState.isYoutubePlayback && AppState.youtubeContext);
+  var ctx = replacing ? AppState.youtubeContext : {
+    currentDetailItem: AppState.currentDetailItem,
+    catalogName: catalogState.currentCatalog,
+    itemIndex: catalogState.lastSelectedIndex
+  };
+  var dv = getEl('detail-view');
+  var mc = getEl('main-container');
+  if (dv) {
+    dv.style.display = 'none';
+    dv.style.pointerEvents = 'none';
+  }
+  if (mc) mc.style.pointerEvents = 'none';
+  var old = AppState.currentStreamId;
+  if (old) {
+    fetch(SERVER_URL + '/hls/stop/' + old, {
+      method: 'POST'
+    }).catch(function () {});
+    AppState.currentStreamId = null;
+  }
+  if (window.destroyHls) window.destroyHls();
+  if (AppState.hls) {
+    try {
+      AppState.hls.destroy();
+    } catch (e) {}
+    AppState.hls = null;
+  }
+  var vp = getEl('video-player');
+  try {
+    vp.pause();
+  } catch (e) {}
+  vp.removeAttribute('src');
+  AppState.videoUrl = url;
+  AppState.isYoutubePlayback = true;
+  AppState.youtubeContext = ctx;
+  AppState.currentDetailItem = {
+    title: title,
+    hash: null,
+    isYoutube: true,
+    youtubeUrl: url,
+    fromExtension: true
+  };
+  AppState.currentScreen = 'player';
+  var isHls = typeof opts.hls === 'boolean' ? opts.hls : /\.m3u8?($|[?#])|[\/=]m3u8?\b/i.test(url);
+  return new Promise(function (resolve, reject) {
+    var settled = false;
+    var timer = setTimeout(function () {
+      fail('Источник не ответил за ' + URL_PLAYER_START_TIMEOUT_MS / 1000 + ' с');
+    }, URL_PLAYER_START_TIMEOUT_MS);
+    function show() {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (po) po.classList.remove('active');
+      if (typeof window.updatePlayerTitle === 'function') window.updatePlayerTitle(title);
+      if (startAt) {
+        try {
+          vp.currentTime = startAt;
+        } catch (e) {}
+      }
+      getEl('player-screen').style.display = 'block';
+      getEl('config-screen').style.display = 'none';
+      getEl('torrserver-section').style.display = 'none';
+      var focused = document.querySelectorAll('.focused');
+      for (var i = 0; i < focused.length; i++) focused[i].classList.remove('focused');
+      if (typeof window.resetMouseIdleTimer === 'function') window.resetMouseIdleTimer();
+      vp.play().catch(function () {
+        vp.muted = true;
+        vp.play().catch(function () {});
+        if (typeof window.updateMuteButton === 'function') window.updateMuteButton();
+      });
+      resolve(true);
+    }
+    function fail(msg) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (po) po.classList.remove('active');
+      if (AppState.hls) {
+        try {
+          AppState.hls.destroy();
+        } catch (e) {}
+        AppState.hls = null;
+      }
+      vp.removeAttribute('src');
+      try {
+        vp.load();
+      } catch (e) {}
+      restoreUrlPlayerCors();
+      if (!replacing && AppState.currentScreen === 'player') {
+        AppState.isYoutubePlayback = false;
+        AppState.youtubeContext = null;
+        AppState.currentDetailItem = ctx.currentDetailItem;
+        AppState.currentScreen = 'detail';
+        getEl('player-screen').style.display = 'none';
+        if (dv) {
+          dv.style.display = 'block';
+          dv.style.pointerEvents = 'auto';
+        }
+        if (mc) mc.style.pointerEvents = 'auto';
+      }
+      reject(new Error(msg));
+    }
+    if (isHls && trailerUsesHlsJs()) {
+      restoreUrlPlayerCors();
+      AppState.hls = new Hls({
+        maxBufferSize: 80 * 1024 * 1024,
+        maxBufferLength: 30,
+        backBufferLength: 20,
+        startLevel: -1,
+        fragLoadingTimeOut: 15000,
+        manifestLoadingTimeOut: 15000,
+        enableWorker: true
+      });
+      AppState.hls.loadSource(url);
+      AppState.hls.attachMedia(vp);
+      AppState.hls.on(Hls.Events.MANIFEST_PARSED, show);
+      AppState.hls.on(Hls.Events.ERROR, function (ev, d) {
+        if (d && d.fatal) fail('Поток не открылся (' + (d.details || d.type || 'ошибка') + ')');
+      });
+    } else {
+      var onMeta = function () {
+        vp.removeEventListener('loadedmetadata', onMeta);
+        vp.removeEventListener('error', onErr);
+        show();
+      };
+      var onErr = function () {
+        if (!vp.error) return;
+        vp.removeEventListener('loadedmetadata', onMeta);
+        vp.removeEventListener('error', onErr);
+        fail('Видео не открылось' + (vp.error && vp.error.code ? ' (код ' + vp.error.code + ')' : ''));
+      };
+      vp.addEventListener('loadedmetadata', onMeta);
+      vp.addEventListener('error', onErr);
+      if (vp.hasAttribute('crossorigin')) {
+        vp._urlPlayerCors = vp.getAttribute('crossorigin');
+        vp.removeAttribute('crossorigin');
+      }
+      vp.src = url;
+    }
+    if (typeof window.startBufferUpdates === 'function') window.startBufferUpdates();
+  });
+}
+window.openUrlInWebPlayer = openUrlInWebPlayer;
+function restoreUrlPlayerCors() {
+  var vp = getEl('video-player');
+  if (!vp || vp._urlPlayerCors == null) return;
+  vp.setAttribute('crossorigin', vp._urlPlayerCors);
+  vp._urlPlayerCors = null;
 }
 var imageLoadToken = 0;
 function _loadImageDecoded(container, src, alt) {
@@ -5766,6 +5930,7 @@ function exitYoutubePlayer() {
     AppState.hls = null;
   }
   AppState.isYoutubePlayback = false;
+  restoreUrlPlayerCors();
   var ctx = AppState.youtubeContext;
   if (ctx && ctx.currentDetailItem && ctx.currentDetailItem.id) {
     AppState.currentScreen = 'detail';

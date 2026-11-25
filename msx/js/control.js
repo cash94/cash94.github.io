@@ -982,7 +982,10 @@ function getDetailItems() {
     // '#detail-view .home-nav-btn' — кнопки шапки разделов, поднятой поверх
     // карточки (js/home.js: DetailTopbar). Селектор намеренно привязан к
     // #detail-view: пока шапка на своём месте, он не совпадает ни с чем.
-    var s = ['#detail-view .home-nav-btn', '.detail-progress-btn', '.file-item', '#catalog-resume-btn', '#catalog-watch-btn', '#catalog-best-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-favorite-btn', '#catalog-trailer-btn', '.catalog-user-rating-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-episode-card', '.catalog-actor-card', '.catalog-recommendation-card'];
+    // '#catalog-detail-actions > .ext-detail-btn' — кнопки расширений и общая
+    // «Онлайн» (js/extensions.js): встают между кнопками приложения, и без них
+    // шаг с такой кнопки уходил в ensureFocus — на «Торренты».
+    var s = ['#detail-view .home-nav-btn', '.detail-progress-btn', '.file-item', '#catalog-resume-btn', '#catalog-watch-btn', '#catalog-best-btn', '#catalog-toggle-overview-btn', '#detail-open-card-btn', '#catalog-favorite-btn', '#catalog-trailer-btn', '#catalog-detail-actions > .ext-detail-btn', '.catalog-user-rating-btn', '.catalog-trailer-link', '.catalog-trailer-play', '.catalog-trailer-card-item', '#catalog-trailer-close', '.catalog-episode-card', '.catalog-actor-card', '.catalog-recommendation-card'];
     // Сборный селектор → порядок обхода совпадает с порядком в DOM, а не с
     // порядком селекторов. Важно для торрентного detail: там ряд актёров идёт
     // ПЕРЕД файлами, и «вверх» от плитки должно попадать в него.
