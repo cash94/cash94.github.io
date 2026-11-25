@@ -1869,7 +1869,7 @@ function _addProgressToDetail() {
             if (detailView) detailView.style.pointerEvents = 'auto';
           });
         });
-        return function (_x52) {
+        return function (_x54) {
           return _ref3.apply(this, arguments);
         };
       }());
@@ -6398,19 +6398,17 @@ function _searchTMDB() {
         allResults = smart.results;
         interpreted = smart.interpreted;
       } else {
-        var combined = yield fetch('/api/tmdb/search/all?query=' + encodedQuery, {
-          signal: controller.signal
-        });
+        var variants = yoVariants(query.trim());
+        var variantsPromise = Promise.all(variants.map(function (v) {
+          return searchTMDBByTitle(encodeURIComponent(v), controller.signal)['catch'](function (e) {
+            if (e && e.name === 'AbortError') throw e;
+            return null;
+          });
+        }));
+        allResults = yield searchTMDBByTitle(encodedQuery, controller.signal);
+        var variantResults = yield variantsPromise;
         if (searchSequence !== tmdbSearchSequence) return;
-        if (combined.ok) {
-          var combinedData = yield combined.json();
-          if (combinedData && Array.isArray(combinedData.results)) allResults = combinedData.results;
-        }
-        if (allResults === null && combined.status === 404) {
-          allResults = yield searchTMDBLegacy(encodedQuery, controller.signal);
-          if (searchSequence !== tmdbSearchSequence) return;
-        }
-        if (allResults === null) throw new Error('TMDB: HTTP ' + combined.status);
+        allResults = mergeYoResults(allResults, variantResults, query);
       }
       for (var ri = 0; ri < allResults.length; ri++) allResults[ri].searchQuery = query;
       globalSearchResults = allResults;
@@ -6436,8 +6434,65 @@ function _searchTMDB() {
   });
   return _searchTMDB.apply(this, arguments);
 }
+function searchTMDBByTitle(_x47, _x48) {
+  return _searchTMDBByTitle.apply(this, arguments);
+}
+function _searchTMDBByTitle() {
+  _searchTMDBByTitle = _asyncToGenerator(function* (encodedQuery, signal) {
+    var combined = yield fetch('/api/tmdb/search/all?query=' + encodedQuery, {
+      signal: signal
+    });
+    if (combined.ok) {
+      var combinedData = yield combined.json();
+      if (combinedData && Array.isArray(combinedData.results)) return combinedData.results;
+    }
+    if (combined.status === 404) return yield searchTMDBLegacy(encodedQuery, signal);
+    throw new Error('TMDB: HTTP ' + combined.status);
+  });
+  return _searchTMDBByTitle.apply(this, arguments);
+}
+var YO_MAX_VARIANTS = 4;
+function yoVariants(query) {
+  var out = [];
+  if (/[ёЁ]/.test(query)) return [query.replace(/ё/g, 'е').replace(/Ё/g, 'Е')];
+  for (var i = 0; i < query.length && out.length < YO_MAX_VARIANTS; i++) {
+    var ch = query.charAt(i);
+    if (ch === 'е' || ch === 'Е') out.push(query.slice(0, i) + (ch === 'е' ? 'ё' : 'Ё') + query.slice(i + 1));
+  }
+  return out;
+}
+function yoFold(s) {
+  return String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^0-9a-zа-я]+/g, ' ').trim();
+}
+function yoTitleMatches(item, words) {
+  var hay = ' ' + yoFold([item.title, item.name, item.original_title, item.original_name].join(' ')) + ' ';
+  for (var i = 0; i < words.length; i++) {
+    if (hay.indexOf(' ' + words[i]) === -1) return false;
+  }
+  return true;
+}
+function mergeYoResults(main, variantLists, query) {
+  var words = yoFold(query).split(' ').filter(Boolean);
+  var seen = {};
+  var key = function (r) {
+    return (r.media_type || '') + ':' + r.id;
+  };
+  (main || []).forEach(function (r) {
+    seen[key(r)] = true;
+  });
+  var extra = [];
+  (variantLists || []).forEach(function (list) {
+    (list || []).forEach(function (r) {
+      var k = key(r);
+      if (seen[k] || !words.length || !yoTitleMatches(r, words)) return;
+      seen[k] = true;
+      extra.push(r);
+    });
+  });
+  return extra.concat(main || []);
+}
 var smartSearchModuleMissing = false;
-function fetchSmartSearch(_x47, _x48) {
+function fetchSmartSearch(_x49, _x50) {
   return _fetchSmartSearch.apply(this, arguments);
 }
 function _fetchSmartSearch() {
@@ -6468,7 +6523,7 @@ function _fetchSmartSearch() {
   });
   return _fetchSmartSearch.apply(this, arguments);
 }
-function searchTMDBLegacy(_x49, _x50) {
+function searchTMDBLegacy(_x51, _x52) {
   return _searchTMDBLegacy.apply(this, arguments);
 }
 function _searchTMDBLegacy() {
@@ -6657,7 +6712,7 @@ function renderFilteredGlobalResults(results) {
     }
   };
 }
-function showGlobalSearchDetail(_x51) {
+function showGlobalSearchDetail(_x53) {
   return _showGlobalSearchDetail.apply(this, arguments);
 }
 function _showGlobalSearchDetail() {

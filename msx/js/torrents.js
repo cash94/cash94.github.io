@@ -7996,21 +7996,18 @@ async function searchTMDB(query) {
             allResults = smart.results;
             interpreted = smart.interpreted;
         } else {
-            // Фильмы и сериалы — одним запросом: оба похода в TMDB и склейку
-            // делает сервер (/api/tmdb/search/all). Он же и сортирует.
-            var combined = await fetch('/api/tmdb/search/all?query=' + encodedQuery, { signal: controller.signal });
+            // Варианты с «ё»/«е» — параллельно с основным запросом (yoVariants)
+            var variants = yoVariants(query.trim());
+            var variantsPromise = Promise.all(variants.map(function (v) {
+                return searchTMDBByTitle(encodeURIComponent(v), controller.signal)['catch'](function (e) {
+                    if (e && e.name === 'AbortError') throw e;
+                    return null;
+                });
+            }));
+            allResults = await searchTMDBByTitle(encodedQuery, controller.signal);
+            var variantResults = await variantsPromise;
             if (searchSequence !== tmdbSearchSequence) return;
-            if (combined.ok) {
-                var combinedData = await combined.json();
-                if (combinedData && Array.isArray(combinedData.results)) allResults = combinedData.results;
-            }
-            // Маршрута нет (404) — старый серверный бинарник, а js пришёл с
-            // зеркала свежий: делаем как раньше, двумя запросами
-            if (allResults === null && combined.status === 404) {
-                allResults = await searchTMDBLegacy(encodedQuery, controller.signal);
-                if (searchSequence !== tmdbSearchSequence) return;
-            }
-            if (allResults === null) throw new Error('TMDB: HTTP ' + combined.status);
+            allResults = mergeYoResults(allResults, variantResults, query);
         }
         for (var ri = 0; ri < allResults.length; ri++) allResults[ri].searchQuery = query;
         globalSearchResults = allResults; globalSearchInterpreted = interpreted; currentSearchQuery = query;
@@ -8026,6 +8023,76 @@ async function searchTMDB(query) {
     } finally {
         if (searchSequence === tmdbSearchSequence) hideLoading();
     }
+}
+
+/**
+ * Поиск по названию: фильмы и сериалы одним запросом — оба похода в TMDB и
+ * склейку делает сервер (/api/tmdb/search/all), он же сортирует. Маршрута нет
+ * (404) — старый серверный бинарник, а js пришёл с зеркала свежий: двумя
+ * запросами, как раньше.
+ */
+async function searchTMDBByTitle(encodedQuery, signal) {
+    var combined = await fetch('/api/tmdb/search/all?query=' + encodedQuery, { signal: signal });
+    if (combined.ok) {
+        var combinedData = await combined.json();
+        if (combinedData && Array.isArray(combinedData.results)) return combinedData.results;
+    }
+    if (combined.status === 404) return await searchTMDBLegacy(encodedQuery, signal);
+    throw new Error('TMDB: HTTP ' + combined.status);
+}
+
+// «е» и «ё». TMDB их не уравнивает: «Плейлист волонтёра» находился, а
+// «Плейлист волонтера» — нет. Какая из «е» в запросе на самом деле «ё», не
+// угадать, поэтому пробуем по одной: каждая «е» по очереди → «ё» (в одном
+// названии «ё» обычно одна). Запрос с «ё» — ещё и целиком через «е»: название
+// могли записать без неё. Запросов не больше YO_MAX_VARIANTS.
+var YO_MAX_VARIANTS = 4;
+
+function yoVariants(query) {
+    var out = [];
+    // «ё» человек уже поставил сам — остальные «е» не перебираем
+    if (/[ёЁ]/.test(query)) return [query.replace(/ё/g, 'е').replace(/Ё/g, 'Е')];
+    for (var i = 0; i < query.length && out.length < YO_MAX_VARIANTS; i++) {
+        var ch = query.charAt(i);
+        if (ch === 'е' || ch === 'Е') out.push(query.slice(0, i) + (ch === 'е' ? 'ё' : 'Ё') + query.slice(i + 1));
+    }
+    return out;
+}
+
+/** Для сравнения: регистр и «ё» не важны, знаки препинания — пробелы */
+function yoFold(s) {
+    return String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^0-9a-zа-я]+/g, ' ').trim();
+}
+
+/** Все слова запроса есть в названии (русском или оригинальном), без учёта «ё» */
+function yoTitleMatches(item, words) {
+    var hay = ' ' + yoFold([item.title, item.name, item.original_title, item.original_name].join(' ')) + ' ';
+    for (var i = 0; i < words.length; i++) {
+        if (hay.indexOf(' ' + words[i]) === -1) return false;
+    }
+    return true;
+}
+
+/**
+ * Основная выдача + то, что нашли варианты с «ё»/«е». Из вариантов берём только
+ * совпавшее с запросом по названию (без учёта «ё») — остальное там шум — и
+ * ставим в начало: это то, что человек и искал. Повторы (тот же id и тип) — нет.
+ */
+function mergeYoResults(main, variantLists, query) {
+    var words = yoFold(query).split(' ').filter(Boolean);
+    var seen = {};
+    var key = function (r) { return (r.media_type || '') + ':' + r.id; };
+    (main || []).forEach(function (r) { seen[key(r)] = true; });
+    var extra = [];
+    (variantLists || []).forEach(function (list) {
+        (list || []).forEach(function (r) {
+            var k = key(r);
+            if (seen[k] || !words.length || !yoTitleMatches(r, words)) return;
+            seen[k] = true;
+            extra.push(r);
+        });
+    });
+    return extra.concat(main || []);
 }
 
 // Модуля smart-search на сервере нет (ответил 404) — до перезагрузки

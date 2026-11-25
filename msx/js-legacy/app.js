@@ -661,6 +661,9 @@ function setupNavigation() {
         key: 'config'
       });
       if (torrserverSection) torrserverSection.style.display = 'none';
+      if (configScreen && window.getComputedStyle(configScreen).display === 'none') {
+        if (typeof window.resetConfigScreenTab === 'function') window.resetConfigScreenTab();
+      }
       if (configScreen) {
         if (typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function') {
           Animations.fadeIn(configScreen, {
@@ -2244,7 +2247,8 @@ window.setPlayerScreensaver = setPlayerScreensaver;
 function setupClockVisibility() {
   var clockDisplay = getEl('clock-display');
   if (clockDisplay) {
-    clockDisplay.style.display = hideClockEnabled ? 'none' : 'block';
+    clockDisplay.style.display = '';
+    clockDisplay.classList.toggle('clock-hud-only', !!hideClockEnabled);
   }
 }
 var PLATFORM_NAMES = {

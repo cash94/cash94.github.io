@@ -3649,6 +3649,18 @@ body.detail-open {
   text-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
 }
 
+/* «Скрыть часы» (setupClockVisibility в app.js): часы только вместе с ХУДом.
+   ХУД показан — у кнопки выхода нет idle-hidden (setPlayerControlsIdle,
+   show/hidePlayerControls в control.js); гаснут так же, как панель */
+#clock-display.clock-hud-only {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+#exit-player-btn:not(.idle-hidden) ~ #clock-display.clock-hud-only {
+  opacity: 1;
+}
+
 /* Цифры одной ширины, чтобы счётчики не дёргались, но шрифт — обычный
    интерфейсный: моноширинный Courier на телевизоре читался хуже и выглядел
    чужеродно рядом с остальным интерфейсом */

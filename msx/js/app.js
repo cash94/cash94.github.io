@@ -861,6 +861,10 @@ function setupNavigation() {
       // уже открытых (ветка «сервер недоступен», torrents.js) стек склеит сам.
       if (window.Nav) Nav.push('config', { key: 'config' });
       if (torrserverSection) torrserverSection.style.display = 'none';
+      // Вкладку — до показа экрана, иначе мелькала та, с которой ушли (control.js)
+      if (configScreen && window.getComputedStyle(configScreen).display === 'none') {
+        if (typeof window.resetConfigScreenTab === 'function') window.resetConfigScreenTab();
+      }
       if (configScreen) {
         // Проявление как у вкладок (showContentScreen); fadeIn сам выставит display
         if (typeof Animations !== 'undefined' && typeof Animations.fadeIn === 'function') {
@@ -2859,10 +2863,16 @@ function setPlayerScreensaver(on) {
 }
 window.setPlayerScreensaver = setPlayerScreensaver;
 
+/**
+ * «Скрыть часы»: часы не висят на экране постоянно, но показываются на своём
+ * месте вместе с ХУДом и гаснут с ним (styles.css, .clock-hud-only). Раньше
+ * они пропадали совсем — и с открытой панелью время было не узнать.
+ */
 function setupClockVisibility() {
   var clockDisplay = getEl('clock-display');
   if (clockDisplay) {
-    clockDisplay.style.display = hideClockEnabled ? 'none' : 'block';
+    clockDisplay.style.display = '';
+    clockDisplay.classList.toggle('clock-hud-only', !!hideClockEnabled);
   }
 }
 

@@ -2146,7 +2146,7 @@ var ScreenStrategies = {
                     return true;
                 }
             }
-            if (f.id === 'search-query') { focusEl(f, { nativeFocus: true }); try { f.click(); } catch (e) { } try { f.focus(); } catch (e) { } try { if (f.select) f.select(); } catch (e) { } return true; }
+            if (f.id === 'search-query') { focusEl(f, { nativeFocus: true }); try { f.click(); } catch (e) { } try { f.focus(); } catch (e) { } placeSearchCaretAtEnd(f); return true; }
             if (f.id === 'filter-toggle') {
                 var p = getEl('search-filters-panel');
                 if (p && !p.classList.contains('active')) { openFilterPanelAndFocus(); return true; }
@@ -5242,6 +5242,19 @@ function hidePlayerPanelsOnly() {
 
 function hidePlayerUi() { var p = hidePlayerPanelsOnly(); var c = isPlayerControlsVisible(); if (c) hidePlayerControls(); var pt = getEl('player-title'); if ((p || c) && pt) pt.classList.add('hidden'); return p || c; }
 
+/**
+ * Курсор строки поиска — в конец текста, а не выделение всей строки: раньше
+ * тут был select(), и чтобы исправить одну букву, первая же нажатая клавиша
+ * стирала весь запрос. Теперь ←/Backspace правят с конца, как в обычном поле.
+ */
+function placeSearchCaretAtEnd(input) {
+    if (!input) return;
+    try {
+        var n = String(input.value || '').length;
+        if (input.setSelectionRange) input.setSelectionRange(n, n);
+    } catch (e) { }
+}
+
 function openSearchScreen(fi) {
     if (fi === undefined) fi = true;
     clickEl(getEl('tab-search') || getEl('search-btn'));
@@ -5251,7 +5264,7 @@ function openSearchScreen(fi) {
             var q = getEl('search-query');
             focusEl(q, { nativeFocus: true });
             try { if (q && q.click) q.click(); } catch (e) { }
-            try { if (q && q.select) q.select(); } catch (e) { }
+            placeSearchCaretAtEnd(q);
         }
     }, 120);
 }
@@ -5489,6 +5502,21 @@ function setConfigMenuActive(menuItemId) {
         else menuItems[i].classList.remove('active');
     }
 }
+
+/**
+ * Настройки открываются на «TorrServer» — сразу, до проявления экрана (app.js,
+ * #settings-btn). Раньше вкладка выбиралась только в ensureFocus, через
+ * NAVIGATION_DELAY_MS после показа: всё это время на экране стояла вкладка, с
+ * которой из настроек ушли, а потом её сменял «TorrServer».
+ */
+function resetConfigScreenTab() {
+    configState.initialized = true;
+    configState.activeTabId = 'torrserver-tab';
+    configState.isOnMenu = true;
+    switchConfigTab('torrserver-tab');
+    setConfigMenuActive('torrserver-tab');
+}
+window.resetConfigScreenTab = resetConfigScreenTab;
 
 /**
  * Открыть настройки сразу на нужном поле — когда без него дальше никак

@@ -1669,9 +1669,7 @@ var ScreenStrategies = {
         try {
           f.focus();
         } catch (e) {}
-        try {
-          if (f.select) f.select();
-        } catch (e) {}
+        placeSearchCaretAtEnd(f);
         return true;
       }
       if (f.id === 'filter-toggle') {
@@ -4275,6 +4273,13 @@ function hidePlayerUi() {
   if ((p || c) && pt) pt.classList.add('hidden');
   return p || c;
 }
+function placeSearchCaretAtEnd(input) {
+  if (!input) return;
+  try {
+    var n = String(input.value || '').length;
+    if (input.setSelectionRange) input.setSelectionRange(n, n);
+  } catch (e) {}
+}
 function openSearchScreen(fi) {
   if (fi === undefined) fi = true;
   clickEl(getEl('tab-search') || getEl('search-btn'));
@@ -4288,9 +4293,7 @@ function openSearchScreen(fi) {
       try {
         if (q && q.click) q.click();
       } catch (e) {}
-      try {
-        if (q && q.select) q.select();
-      } catch (e) {}
+      placeSearchCaretAtEnd(q);
     }
   }, 120);
 }
@@ -4558,6 +4561,14 @@ function setConfigMenuActive(menuItemId) {
     if (menuItems[i].id === menuItemId) menuItems[i].classList.add('active');else menuItems[i].classList.remove('active');
   }
 }
+function resetConfigScreenTab() {
+  configState.initialized = true;
+  configState.activeTabId = 'torrserver-tab';
+  configState.isOnMenu = true;
+  switchConfigTab('torrserver-tab');
+  setConfigMenuActive('torrserver-tab');
+}
+window.resetConfigScreenTab = resetConfigScreenTab;
 function openSettingsField(fieldId) {
   var field = getEl(fieldId);
   var tab = field && field.closest ? field.closest('.tab-content') : null;
