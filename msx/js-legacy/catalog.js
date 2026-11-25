@@ -5389,14 +5389,15 @@ function setupDetailResume(item) {
     return null;
   });
 }
-function playFromCard(item, resume, from) {
+function playFromCard(item, resume, from, rewatch) {
   if (typeof window.resumeWatching !== 'function') return;
   var fail = function (text) {
     if (typeof window.showToast === 'function') window.showToast(text);
     focusDetailMain();
   };
   window.resumeWatching(item, resume, {
-    card: from
+    card: from,
+    rewatch: !!rewatch
   }).then(function (res) {
     if (res === 'started' || res === 'offline') return;
     fail(res === 'last' ? 'Это последняя серия раздачи' : 'Раздачи больше нет в TorrServer — выберите её заново');
@@ -5418,7 +5419,7 @@ function playCardEpisode(card) {
     fileId: d.fileId,
     timecode: finished ? 0 : at,
     duration: duration
-  }, card);
+  }, card, true);
 }
 function focusDetailMain() {
   var rb = getEl('catalog-resume-btn'),

@@ -12,6 +12,10 @@
 //    (focusEl → scrollToElementIfNeeded, control.js), с тем же темпом шагов
 //    (acceptNavStep);
 //  - «Назад» закрывает окно, фокус возвращается на раздачу в выдаче;
+//  - то же окно открывается само, когда раздачу выбрали в поиске из карточки
+//    сериала, а серию для запуска подобрать не вышло (сериал досмотрен до конца
+//    раздачи, место просмотра неизвестно) — вместо карточки раздачи
+//    (playFromHash, torrents.js);
 //  - выбор серии добавляет раздачу в TorrServer и сразу её запускает
 //    (playSearchResultFile, torrents.js). Из плеера — в карточку фильма, если
 //    поиск открыли из неё, иначе в карточку раздачи, как в «Моих торрентах».
@@ -353,7 +357,12 @@
         if (result) open(result, itemEl);
     }
 
-    function open(result, fromEl) {
+    /**
+     * @param {Object} [opts] preExisting — была ли раздача на сервере до окна,
+     *        если её уже успели добавить (запуск из поиска не нашёл, какую серию
+     *        включить, torrents.js): тогда по списку раздач этого не понять
+     */
+    function open(result, fromEl, opts) {
         if (state.open) return;
         var hash = typeof searchResultHash === 'function' ? searchResultHash(result) : null;
         hash = String(hash || '').toLowerCase();
@@ -362,11 +371,11 @@
             return;
         }
         Promise.resolve(typeof ensureTorrserverOnline === 'function' ? ensureTorrserverOnline() : true).then(function (ok) {
-            if (ok) start(result, fromEl, hash);
+            if (ok) start(result, fromEl, hash, opts);
         });
     }
 
-    function start(result, fromEl, hash) {
+    function start(result, fromEl, hash, opts) {
         if (state.open) return;
         build();
         var gen = state.gen + 1;
@@ -377,7 +386,7 @@
         state.hash = hash;
         state.magnet = result.magnet || hash;
         state.from = fromEl || null;
-        state.preExisting = hashOnServer(hash);
+        state.preExisting = opts && typeof opts.preExisting === 'boolean' ? opts.preExisting : hashOnServer(hash);
         state.serial = isSerialResult(result) || !!(cardItem() && cardItem().media_type === 'tv');
         var card = cardItem();
         state.title = (card && (card.title || card.name)) || result.name || result.title || '';

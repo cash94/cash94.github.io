@@ -6876,13 +6876,13 @@ function setupDetailResume(item) {
     })['catch'](function () { return null; });
 }
 
-function playFromCard(item, resume, from) {
+function playFromCard(item, resume, from, rewatch) {
     if (typeof window.resumeWatching !== 'function') return;
     var fail = function (text) {
         if (typeof window.showToast === 'function') window.showToast(text);
         focusDetailMain();
     };
-    window.resumeWatching(item, resume, { card: from }).then(function (res) {
+    window.resumeWatching(item, resume, { card: from, rewatch: !!rewatch }).then(function (res) {
         if (res === 'started' || res === 'offline') return;
         // Кнопка «Торренты» рядом: ей раздачу и находят заново
         fail(res === 'last' ? 'Это последняя серия раздачи' : 'Раздачи больше нет в TorrServer — выберите её заново');
@@ -6891,14 +6891,18 @@ function playFromCard(item, resume, from) {
     });
 }
 
-/** Серия запускается с места, где остановились; досмотренная — сначала */
+/**
+ * Серия запускается с места, где остановились; досмотренная — сначала. Сериал
+ * досмотрен до конца раздачи — пересмотр: таймкоды от этой серии до последней
+ * обнуляются (prepareSeriesRewatch в player.js)
+ */
 function playCardEpisode(card) {
     var d = card.dataset;
     if (!d.hash || !detailResume.item) return;
     var at = Number(d.timecode) || 0, duration = Number(d.duration) || 0;
     var finished = typeof window.isResumeFinished === 'function' &&
         window.isResumeFinished({ timecode: at, duration: duration });
-    playFromCard(detailResume.item, { hash: d.hash, fileId: d.fileId, timecode: finished ? 0 : at, duration: duration }, card);
+    playFromCard(detailResume.item, { hash: d.hash, fileId: d.fileId, timecode: finished ? 0 : at, duration: duration }, card, true);
 }
 
 function focusDetailMain() {

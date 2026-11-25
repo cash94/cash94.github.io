@@ -340,7 +340,7 @@
     var result = typeof window.getSearchResultForItem === 'function' ? window.getSearchResultForItem(itemEl) : null;
     if (result) open(result, itemEl);
   }
-  function open(result, fromEl) {
+  function open(result, fromEl, opts) {
     if (state.open) return;
     var hash = typeof searchResultHash === 'function' ? searchResultHash(result) : null;
     hash = String(hash || '').toLowerCase();
@@ -349,10 +349,10 @@
       return;
     }
     Promise.resolve(typeof ensureTorrserverOnline === 'function' ? ensureTorrserverOnline() : true).then(function (ok) {
-      if (ok) start(result, fromEl, hash);
+      if (ok) start(result, fromEl, hash, opts);
     });
   }
-  function start(result, fromEl, hash) {
+  function start(result, fromEl, hash, opts) {
     if (state.open) return;
     build();
     var gen = state.gen + 1;
@@ -363,7 +363,7 @@
     state.hash = hash;
     state.magnet = result.magnet || hash;
     state.from = fromEl || null;
-    state.preExisting = hashOnServer(hash);
+    state.preExisting = opts && typeof opts.preExisting === 'boolean' ? opts.preExisting : hashOnServer(hash);
     state.serial = isSerialResult(result) || !!(cardItem() && cardItem().media_type === 'tv');
     var card = cardItem();
     state.title = card && (card.title || card.name) || result.name || result.title || '';

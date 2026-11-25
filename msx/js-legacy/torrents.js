@@ -1864,6 +1864,9 @@ function _addProgressToDetail() {
           getEl('playback-overlay').classList.add('active');
           var detailView = getEl('detail-view');
           if (detailView) detailView.style.pointerEvents = 'none';
+          if (!timecode && typeof window.prepareSeriesRewatch === 'function') {
+            yield window.prepareSeriesRewatch(detailTorrentFor(hash), null, fileId);
+          }
           startHLSPlayback(playUrl, timecode, false, episodeIndex).finally(function () {
             getEl('playback-overlay').classList.remove('active');
             if (detailView) detailView.style.pointerEvents = 'auto';
@@ -4067,6 +4070,10 @@ function updateDetailMetaInfo(tmdbData) {
     metaContainer.style.display = 'none';
   }
 }
+function detailTorrentFor(hash) {
+  var cur = AppState.currentDetailItem;
+  return cur && cur.hash && String(cur.hash).toLowerCase() === String(hash).toLowerCase() ? cur : String(hash);
+}
 function setupFilePlayButtonDelegation() {
   var filesList = getEl('files-list');
   if (!filesList || filesList._playDelegationBound) return;
@@ -4099,6 +4106,7 @@ function setupFilePlayButtonDelegation() {
       if (overlay) overlay.classList.add('active');
       var detailView = getEl('detail-view');
       if (detailView) detailView.style.pointerEvents = 'none';
+      if (typeof window.prepareSeriesRewatch === 'function') yield window.prepareSeriesRewatch(detailTorrentFor(hash), null, fileId);
       startHLSPlayback(playUrl, 0, false, episodeIndex).finally(function () {
         if (overlay) overlay.classList.remove('active');
         if (detailView) detailView.style.pointerEvents = 'auto';
@@ -5663,6 +5671,15 @@ function getSearchResultForItem(el) {
   return !isNaN(index) && filteredResults[index] ? filteredResults[index] : null;
 }
 window.getSearchResultForItem = getSearchResultForItem;
+function findSearchResultItem(hash) {
+  var h = String(hash || '').toLowerCase();
+  var items = document.querySelectorAll('#search-results .search-result-item');
+  for (var i = 0; i < items.length; i++) {
+    var btn = items[i].querySelector('.search-result-play');
+    if (btn && String(btn.dataset.hash || '').toLowerCase() === h) return items[i];
+  }
+  return null;
+}
 function markSearchResultPicked(hash) {
   var items = document.querySelectorAll('#search-results .search-result-item');
   for (var i = 0; i < items.length; i++) {
@@ -5780,6 +5797,8 @@ function _playSearchResultFile() {
         var idx = files[episodeIndex] && String(files[episodeIndex].id) === String(fileId) ? episodeIndex : -1;
         for (var fi = 0; idx === -1 && fi < files.length; fi++) if (String(files[fi].id) === String(fileId)) idx = fi;
         if (idx === -1) throw new Error('В раздаче нет выбранного файла');
+        if (!torrentVideoFiles(added).length) added.file_stats = files.slice();
+        if ((yield Promise.race([prepareSeriesRewatch(added, files, fileId, card.id), onCancel])) === 'cancelled') return;
         hideSearchResults({
           returnTo: 'detail'
         });
@@ -5792,6 +5811,8 @@ function _playSearchResultFile() {
         if (started === false) dropIfCancelled();
         return;
       }
+      if (Array.isArray(info.files) && info.files.length && !torrentVideoFiles(added).length) added.file_stats = info.files.slice();
+      if ((yield Promise.race([prepareSeriesRewatch(added, info.files, fileId, meta.tmdbId), onCancel])) === 'cancelled') return;
       AppState.playFromHash = false;
       AppState.isCatalogSearch = false;
       AppState.isCatalogSerials = false;
@@ -5857,6 +5878,9 @@ function _playFromHash() {
       var isSerial = ctx.mediaType === 'tv' || AppState.mediaType === 'tv' || searchResult && searchResult.types && Array.isArray(searchResult.types) && (searchResult.types.indexOf('tv') !== -1 || searchResult.types.indexOf('serial') !== -1) || searchResult && Array.isArray(searchResult.seasons) && searchResult.seasons.length > 0;
       if (isSerial) AppState.isCatalogSerials = true;
       AppState.isCatalogSearch = true;
+      var wasOnServer = AppState.torrents.some(function (t) {
+        return String(t.hash || '').toLowerCase() === hash.toLowerCase();
+      });
       var addedTorrent = yield addTorrentToServer(magnet, hash, searchResult, {
         poster: ctx.poster,
         tmdbId: ctx.id,
@@ -5964,6 +5988,15 @@ function _playFromHash() {
           }
           if (seriesStart) {
             yield playSeriesFromSearch(addedTorrent, seriesStart, restoreSearchAfterFailedStart);
+            return true;
+          }
+          if (searchResult && window.EpisodePicker && !EpisodePicker.isOpen()) {
+            AppState.isCatalogSerials = false;
+            AppState.currentDetailItem = AppState.androidBackCatalog;
+            getEl('playback-overlay').classList.remove('active');
+            EpisodePicker.open(searchResult, findSearchResultItem(hash), {
+              preExisting: wasOnServer
+            });
             return true;
           }
         }
