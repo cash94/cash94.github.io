@@ -134,7 +134,7 @@
       "js-legacy/legacy-polyfills.js": "e0e9de38",
       "js/account.js": "65c22e09",
       "js/animations.js": "f5352ec9",
-      "js/app.js": "a0b9f49f",
+      "js/app.js": "e149026c",
       "js/best-torrents-pick.js": "cd63487a",
       "js/best-torrents.js": "b0a98d04",
       "js/catalog-idb-patch.js": "72557f9c",
@@ -176,7 +176,7 @@
       "js/torrserverstats.js": "2f006d35",
       "js/ui-customizer.js": "614e6e55",
       "js/wasm-audio-worker.js": "d9628071",
-      "js/wasm-playback.js": "fefc25bd"
+      "js/wasm-playback.js": "3a1161c9"
       // ASSET_V:end
     };
     function assetV(p) {
@@ -862,6 +862,11 @@
                 <div class="checkbox-container">
                   <input type="checkbox" id="transcoding-on-off">
                   <span>Полностью отключить транскодирование видео</span>
+                </div>
+                <!-- Только где возможен WASM (браузер, VIDAA ниже 9.5) — app.js: setupWasmSetting -->
+                <div class="checkbox-container" hidden>
+                  <input type="checkbox" id="wasm-playback">
+                  <span>Обработка файла в браузере (WASM)<small class="setting-desc">При полностью отключённом транскодировании: звук Dolby и DTS, MKV, перемотка и субтитры. Выключите — файл пойдёт напрямую в плеер браузера, без обработки</small></span>
                 </div>
                 <div class="checkbox-container">
                   <input type="checkbox" id="multi-channel-audio">

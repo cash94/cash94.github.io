@@ -25,9 +25,17 @@ var WasmPlayback = (function () {
 
   var s = null;   // текущее воспроизведение (attach … detach)
 
-  /** Нужен ли WASM на этом устройстве при текущих настройках */
+  /** Нужен ли WASM сейчас: прямой режим, устройство подходит и не выключен в настройках */
   function eligible() {
-    if (!AppState.transcodingFullOnOff || window.AndroidJS) return false;
+    if (!AppState.transcodingFullOnOff) return false;
+    // «Обработка файла в браузере (WASM)» в настройках плеера (app.js: setupWasmSetting)
+    try { if (localStorage.getItem('wasmPlaybackOff') === 'true') return false; } catch (e) { }
+    return available();
+  }
+
+  /** Возможен ли WASM-путь на этом устройстве вообще (без учёта настроек) */
+  function available() {
+    if (window.AndroidJS) return false;
     var p = AppState.platform;
     // Android и Android TV — внешние плееры (и в браузере там WASM не нужен)
     if (p === 'webos' || p === 'tizen' || p === 'ios' || p === 'android' || p === 'androidtv' || AppState.tizenApp) return false;
@@ -396,6 +404,7 @@ var WasmPlayback = (function () {
 
   return {
     eligible: eligible,
+    available: available,
     attach: attach,
     detach: detach,
     switchAudio: switchAudio,

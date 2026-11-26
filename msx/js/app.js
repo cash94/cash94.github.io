@@ -2317,6 +2317,27 @@ function setupCheckboxWithStorage(elementId, storageKey, stateKey, onChange) {
   return saved;
 }
 
+/**
+ * «Обработка файла в браузере (WASM)». Видна только там, где WASM-путь возможен
+ * (браузер, VIDAA ниже 9.5 — WasmPlayback.available). Включена по умолчанию;
+ * выключили — при «Полностью отключить транскодирование» файл идёт прямо в
+ * <video>, как до WASM. Хранится наоборот («выключен»), чтобы по умолчанию
+ * — без записи — было включено; читает её WasmPlayback.eligible
+ */
+function setupWasmSetting() {
+  var box = getEl('wasm-playback');
+  if (!box || !window.WasmPlayback || !WasmPlayback.available()) return;
+  var row = box.closest('.checkbox-container');
+  if (row) row.hidden = false;
+  var off = false;
+  try { off = localStorage.getItem('wasmPlaybackOff') === 'true'; } catch (e) { }
+  box.checked = !off;
+  box.addEventListener('change', function (e) {
+    try { localStorage.setItem('wasmPlaybackOff', e.target.checked ? 'false' : 'true'); } catch (x) { }
+    console.log('🧩 WASM: ' + (e.target.checked ? 'включён' : 'выключен — прямой файл в <video>'));
+  });
+}
+
 function setupCheckboxes() {
   // 1. Внешний плеер
   setupExternalPlayerCheckbox();
@@ -2545,6 +2566,10 @@ function setupCheckboxes() {
       }
     });
   }
+
+  // Прямой файл через WASM (wasm-playback.js) — переключатель только там, где
+  // он вообще возможен
+  setupWasmSetting();
 
   // 6. Включить или отключить полностью транскодинг
   var transcodingCheckboxOnOff = getEl('transcoding-on-off');

@@ -1798,6 +1798,23 @@ function setupCheckboxWithStorage(elementId, storageKey, stateKey, onChange) {
   });
   return saved;
 }
+function setupWasmSetting() {
+  var box = getEl('wasm-playback');
+  if (!box || !window.WasmPlayback || !WasmPlayback.available()) return;
+  var row = box.closest('.checkbox-container');
+  if (row) row.hidden = false;
+  var off = false;
+  try {
+    off = localStorage.getItem('wasmPlaybackOff') === 'true';
+  } catch (e) {}
+  box.checked = !off;
+  box.addEventListener('change', function (e) {
+    try {
+      localStorage.setItem('wasmPlaybackOff', e.target.checked ? 'false' : 'true');
+    } catch (x) {}
+    console.log('🧩 WASM: ' + (e.target.checked ? 'включён' : 'выключен — прямой файл в <video>'));
+  });
+}
 function setupCheckboxes() {
   setupExternalPlayerCheckbox();
   var container = '';
@@ -1976,6 +1993,7 @@ function setupCheckboxes() {
       }
     });
   }
+  setupWasmSetting();
   var transcodingCheckboxOnOff = getEl('transcoding-on-off');
   if (tvApp) {
     container = transcodingCheckboxOnOff.closest('.checkbox-container');

@@ -5,7 +5,14 @@ var WasmPlayback = function () {
   var BEHIND_BYTES = 30e6;
   var s = null;
   function eligible() {
-    if (!AppState.transcodingFullOnOff || window.AndroidJS) return false;
+    if (!AppState.transcodingFullOnOff) return false;
+    try {
+      if (localStorage.getItem('wasmPlaybackOff') === 'true') return false;
+    } catch (e) {}
+    return available();
+  }
+  function available() {
+    if (window.AndroidJS) return false;
     var p = AppState.platform;
     if (p === 'webos' || p === 'tizen' || p === 'ios' || p === 'android' || p === 'androidtv' || AppState.tizenApp) return false;
     if (AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple') return false;
@@ -424,6 +431,7 @@ var WasmPlayback = function () {
   }
   return {
     eligible: eligible,
+    available: available,
     attach: attach,
     detach: detach,
     switchAudio: switchAudio,
