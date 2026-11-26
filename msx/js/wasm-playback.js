@@ -55,15 +55,23 @@ var WasmPlayback = (function () {
    * TrueHD…) — по-прежнему в AAC 2.0. В браузерах на ПК — всегда AAC 2.0.
    * Отладка на ПК: ?wasm=native — как на VIDAA, без проверки поддержки
    */
+  var nativeLogged = false;
   function nativeAudio() {
     var force = location.search.indexOf('wasm=native') !== -1;
-    if (AppState.platform !== 'vidaa' && !force) return {};
-    var cand = { ac3: 'ac-3', eac3: 'ec-3', aac: 'mp4a.40.2' }, out = {};
+    //if (AppState.platform !== 'vidaa' && !force) return {};
+    if (!force) return {};
+    // Проверяем связку с H.264, а не один звук: VIDAA U06 (Opera 46) на
+    // «audio/mp4; ac-3» отвечает «да», а на «video/mp4; avc1…,ac-3» — «нет», и
+    // плеер падал «Браузер не поддерживает видео avc1.640028». С другим видео
+    // (HEVC…) связку ещё раз проверит onInfo и при отказе откатит на AAC
+    var cand = { ac3: 'ac-3', eac3: 'ec-3', aac: 'mp4a.40.2' }, out = {}, seen = [];
     for (var k in cand) {
       var ok = force;
-      try { ok = ok || MediaSource.isTypeSupported('audio/mp4; codecs="' + cand[k] + '"'); } catch (e) { }
+      try { ok = ok || MediaSource.isTypeSupported('video/mp4; codecs="avc1.640028,' + cand[k] + '"'); } catch (e) { }
       if (ok) out[k] = cand[k];
+      seen.push(cand[k] + (ok ? ' да' : ' нет'));
     }
+    if (!nativeLogged) { nativeLogged = true; console.log('🧩 WASM: звук как есть (MSE, связка с H.264): ' + seen.join(', ')); }
     return out;
   }
 
@@ -134,7 +142,7 @@ var WasmPlayback = (function () {
     };
     // ?wasm=mvp — отладка: совместимая сборка libav.js, как у браузеров до Chrome 75
     st.worker.postMessage({ type: 'open', url: st.url, base: assetBase(), audio: st.opts.audio >= 0 ? st.opts.audio : 0, time: st.startTime,
-      mvp: location.search.indexOf('wasm=mvp') !== -1, native: nativeAudio() });
+      mvp: location.search.indexOf('wasm=mvp') !== -1, native: st.nativeOff ? {} : nativeAudio() });
   }
 
   /** Снять всё: воркер, MediaSource, дорожки субтитров, слушатели */
@@ -186,11 +194,29 @@ var WasmPlayback = (function () {
     } else if (m.type === 'log') console.log('🧩 WASM: ' + m.msg);
   }
 
+  function typeOk(t) { try { return MediaSource.isTypeSupported(t); } catch (e) { return false; } }
+
   function onInfo(m) {
     s.info = m;
     var mime = 'video/mp4; codecs="' + m.vCodec + (m.aCodec ? ',' + m.aCodec : '') + '"';
     console.log('🧩 WASM: ' + m.streams.map(function (x) { return x.codec + (x.channels ? ' ' + x.channels + 'ch' : ''); }).join(', ') + ' → ' + mime);
-    if (!MediaSource.isTypeSupported(mime) && location.search.indexOf('wasm=dump') === -1) { fail('video', 'Браузер не поддерживает видео ' + m.vCodec); return; }
+    if (!typeOk(mime) && location.search.indexOf('wasm=dump') === -1) {
+      var vOnly = typeOk('video/mp4; codecs="' + m.vCodec + '"');
+      var aOnly = m.aCodec ? typeOk('audio/mp4; codecs="' + m.aCodec + '"') : true;
+      console.warn('🧩 WASM: MSE не берёт ' + mime + ' — видео отдельно: ' + (vOnly ? 'да' : 'нет') + (m.aCodec ? ', звук отдельно: ' + (aOnly ? 'да' : 'нет') : ''));
+      // Звук шёл как есть (VIDAA), а связку ТВ не берёт — тот же файл с
+      // переводом звука в AAC 2.0, без ошибки и с того же места
+      if (vOnly && /^(ac-3|ec-3)$/.test(m.aCodec || '') && !s.nativeOff) {
+        console.warn('🧩 WASM: звук ' + m.aCodec + ' не в связке с видео — перевожу в AAC');
+        s.nativeOff = true;
+        s.info = null;
+        try { s.worker.terminate(); } catch (e) { }
+        startWorker(s.usedBlob);
+        return;
+      }
+      fail('video', vOnly ? 'Браузер не поддерживает связку видео и звука ' + m.vCodec + ' + ' + m.aCodec : 'Браузер не поддерживает видео ' + m.vCodec);
+      return;
+    }
     createSubTracks(m.streams);
     if (s.opts.onInfo) s.opts.onInfo(m);
     // ?wasm=dump — отладка: fMP4 не в MSE, а в WasmPlayback.dump() (ffprobe на ПК)
