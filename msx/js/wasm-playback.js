@@ -39,6 +39,26 @@ var WasmPlayback = (function () {
 
   function isLocal() { return location.search.indexOf('local=1') !== -1; }
 
+  /**
+   * Звук, который браузер принимает в MSE сам: { кодек ffmpeg: строка MSE }.
+   * Только VIDAA — телевизор декодирует Dolby сам, кодировать в AAC незачем
+   * (кодер AAC — почти вся работа воркера, на ТВ он не успевал за 4K), и
+   * многоканальный звук остаётся многоканальным. Чего ТВ не берёт (DTS,
+   * TrueHD…) — по-прежнему в AAC 2.0. В браузерах на ПК — всегда AAC 2.0.
+   * Отладка на ПК: ?wasm=native — как на VIDAA, без проверки поддержки
+   */
+  function nativeAudio() {
+    var force = location.search.indexOf('wasm=native') !== -1;
+    if (AppState.platform !== 'vidaa' && !force) return {};
+    var cand = { ac3: 'ac-3', eac3: 'ec-3', aac: 'mp4a.40.2' }, out = {};
+    for (var k in cand) {
+      var ok = force;
+      try { ok = ok || MediaSource.isTypeSupported('audio/mp4; codecs="' + cand[k] + '"'); } catch (e) { }
+      if (ok) out[k] = cand[k];
+    }
+    return out;
+  }
+
   /** Папка со сборкой libav.js: зеркало или локальный public/ при ?local=1 */
   function assetBase() {
     return (isLocal() ? location.origin + '/js/' : MIRROR_BASE) + 'wasm-audio';
@@ -70,7 +90,8 @@ var WasmPlayback = (function () {
       video: video, url: url, opts: opts || {}, worker: null, usedBlob: false, ms: null, sb: null,
       queue: [], gen: 0, info: null, ended: false, needClear: false, selfSeek: false,
       startTime: (opts && opts.time > 0) ? opts.time : 0, tickTimer: null, objectUrl: null,
-      subs: {}, listeners: []
+      subs: {}, listeners: [],
+      mse: { ms: 0, n: 0, t0: 0 }, msePrev: { ms: 0, n: 0 }, perfLine: '', perfVerdict: '', perfLogAt: 0
     };
     startWorker(false);
     on(video, 'seeking', onSeeking);
@@ -105,7 +126,7 @@ var WasmPlayback = (function () {
     };
     // ?wasm=mvp — отладка: совместимая сборка libav.js, как у браузеров до Chrome 75
     st.worker.postMessage({ type: 'open', url: st.url, base: assetBase(), audio: st.opts.audio >= 0 ? st.opts.audio : 0, time: st.startTime,
-      mvp: location.search.indexOf('wasm=mvp') !== -1 });
+      mvp: location.search.indexOf('wasm=mvp') !== -1, native: nativeAudio() });
   }
 
   /** Снять всё: воркер, MediaSource, дорожки субтитров, слушатели */
@@ -143,9 +164,14 @@ var WasmPlayback = (function () {
 
   function onWorker(m) {
     if (m.type === 'info') onInfo(m);
-    else if (m.type === 'data') { if (m.gen === s.gen) { s.queue.push(m.bytes); pump(); } }
+    else if (m.type === 'data') {
+      if (m.gen !== s.gen) return;
+      if (s.dump) { s.dump.push(m.bytes); return; }
+      s.queue.push(m.bytes); pump();
+    }
     else if (m.type === 'eof') { if (m.gen === s.gen) { s.ended = true; pump(); } }
     else if (m.type === 'cues') addCues(m.cues);
+    else if (m.type === 'perf') onPerf(m.w, m.fast);
     else if (m.type === 'error') fail(m.code || '', m.msg);
     else if (m.type === 'net') {
       if (!m.ok) console.warn('🧩 WASM: TorrServer — ' + m.error + ', повтор ' + m.attempt + ' через ' + (m.delay / 1000) + ' с');
@@ -156,9 +182,11 @@ var WasmPlayback = (function () {
     s.info = m;
     var mime = 'video/mp4; codecs="' + m.vCodec + (m.aCodec ? ',' + m.aCodec : '') + '"';
     console.log('🧩 WASM: ' + m.streams.map(function (x) { return x.codec + (x.channels ? ' ' + x.channels + 'ch' : ''); }).join(', ') + ' → ' + mime);
-    if (!MediaSource.isTypeSupported(mime)) { fail('video', 'Браузер не поддерживает видео ' + m.vCodec); return; }
+    if (!MediaSource.isTypeSupported(mime) && location.search.indexOf('wasm=dump') === -1) { fail('video', 'Браузер не поддерживает видео ' + m.vCodec); return; }
     createSubTracks(m.streams);
     if (s.opts.onInfo) s.opts.onInfo(m);
+    // ?wasm=dump — отладка: fMP4 не в MSE, а в WasmPlayback.dump() (ffprobe на ПК)
+    if (location.search.indexOf('wasm=dump') !== -1) { s.dump = []; console.log('🧩 WASM: дамп вместо MSE, ' + mime); return; }
     var ms = new MediaSource(), st = s;
     s.ms = ms;
     s.objectUrl = URL.createObjectURL(ms);
@@ -170,7 +198,11 @@ var WasmPlayback = (function () {
       st.sb.mode = 'segments';
       // воркер сдвигает все метки на +offset (fMP4 не любит отрицательные DTS)
       st.sb.timestampOffset = -(m.offset || 0);
-      st.sb.addEventListener('updateend', function () { if (s === st) { pump(); jumpStartGap(); } });
+      st.sb.addEventListener('updateend', function () {
+        if (s !== st) return;
+        if (st.mse.t0) { st.mse.ms += performance.now() - st.mse.t0; st.mse.n++; st.mse.t0 = 0; }
+        pump(); jumpStartGap();
+      });
       pump();
     });
     s.video.src = s.objectUrl;
@@ -194,7 +226,7 @@ var WasmPlayback = (function () {
     if (b.length && t - b.start(0) > keep * 2) { sb.remove(0, t - keep); return; }
     if (s.queue.length) {
       var chunk = s.queue.shift();
-      try { sb.appendBuffer(chunk); }
+      try { s.mse.t0 = performance.now(); sb.appendBuffer(chunk); }
       catch (e) {
         if (e.name === 'QuotaExceededError') { s.queue.unshift(chunk); sb.remove(0, Math.max(0.1, t - 3)); }
         else fail('video', 'appendBuffer: ' + e.message);
@@ -261,6 +293,60 @@ var WasmPlayback = (function () {
     return true;
   }
 
+  // ---------- замеры: где теряется время ----------
+  //
+  // Окно замеров от воркера (за ~2 с) + время appendBuffer в MSE. Сводка —
+  // в консоль раз в 5 с и строкой в «Диагностику» плеера (player-diag.js):
+  // сеть (скорость TorrServer → браузер и доля простоя разбора в ожидании
+  // данных), обработка (во сколько раз быстрее реального времени собирается
+  // поток и что ест процессор), плеер (MSE, запас впереди).
+  var PERF_LOG_MS = 5000;
+
+  function pct(x) { return Math.round(Math.max(0, Math.min(1, x || 0)) * 100) + ' %'; }
+
+  function aheadSeconds() {
+    var v = s.video, b = v.buffered, t = v.currentTime;
+    for (var i = 0; i < b.length; i++) if (t >= b.start(i) - 0.3 && t < b.end(i)) return b.end(i) - t;
+    return 0;
+  }
+
+  function onPerf(w, fast) {
+    var active = w.wallMs - w.sleepMs;
+    var cpu = w.readMs + w.decMs + w.encMs + w.muxMs;
+    var net = w.netBusyMs > 50 ? w.netBytes * 8 / w.netBusyMs / 1000 : null;   // Мбит/с
+    var need = s.info && s.info.duration ? s.info.size * 8 / s.info.duration / 1e6 : null;
+    var mseN = s.mse.n - s.msePrev.n, mseMs = s.mse.ms - s.msePrev.ms;
+    s.msePrev = { ms: s.mse.ms, n: s.mse.n };
+    var parts = [];
+    parts.push((w.netBytes < 65536 ? 'сеть простаивает' : 'сеть ' + (net !== null ? net.toFixed(1) + ' Мбит/с' : '—')) + (need ? ' (файлу нужно ' + need.toFixed(1) + ')' : '') +
+      ', разбор ждал данных ' + pct(active > 0 ? w.waitMs / active : 0));
+    if (cpu > 50 && w.mediaSec > 0) {
+      parts.push('обработка ×' + (w.mediaSec / (cpu / 1000)).toFixed(1) + ' (разбор ' + pct(w.readMs / cpu) +
+        ', декодер звука ' + pct(w.decMs / cpu) + ', кодер AAC ' + pct(w.encMs / cpu) + ', MP4 ' + pct(w.muxMs / cpu) + ')');
+    }
+    if (active > 200 && w.mediaSec > 0) parts.push('итого ×' + (w.mediaSec / (active / 1000)).toFixed(1));
+    if (mseN) parts.push('MSE ' + Math.round(mseMs / mseN) + ' мс/фрагмент');
+    parts.push('впереди ' + Math.round(aheadSeconds()) + ' с');
+    if (w.sleepMs > 0) parts.push('воркер спал ' + pct(w.sleepMs / w.wallMs));
+    if (!fast) parts.push('совместимая сборка');
+    s.perfLine = parts.join(' · ');
+
+    // Вывод: кто тормозит
+    var v;
+    if (w.sleepMs / w.wallMs > 0.5) v = 'запас набран — воркер ждёт, пока плеер его проиграет';
+    else if (active > 0 && w.waitMs / active > 0.4) v = 'узкое место — сеть / TorrServer: данные приходят медленнее, чем разбираются';
+    else if (cpu > 50 && w.mediaSec > 0 && w.mediaSec / (cpu / 1000) < 1.5) v = 'узкое место — процессор: WASM едва успевает за видео';
+    else if (mseN && mseMs / mseN > 300) v = 'узкое место — плеер: MSE долго принимает фрагменты';
+    else v = 'поток собирается быстрее, чем играет';
+    s.perfVerdict = v;
+
+    var now = Date.now();
+    if (now - s.perfLogAt >= PERF_LOG_MS) {
+      s.perfLogAt = now;
+      console.log('🧩 WASM: ' + s.perfLine + ' → ' + v);
+    }
+  }
+
   // ---------- субтитры ----------
   //
   // На каждую дорожку субтитров файла — <track> в порядке потоков: тогда
@@ -314,6 +400,16 @@ var WasmPlayback = (function () {
     detach: detach,
     switchAudio: switchAudio,
     active: function () { return !!s; },
+    // ?wasm=dump: собранный fMP4 одним массивом
+    dump: function () {
+      if (!s || !s.dump) return null;
+      var n = 0, i; for (i = 0; i < s.dump.length; i++) n += s.dump[i].length;
+      var all = new Uint8Array(n), off = 0;
+      for (i = 0; i < s.dump.length; i++) { all.set(s.dump[i], off); off += s.dump[i].length; }
+      return all;
+    },
+    // Строка для «Диагностики» плеера: замеры за последние ~2 с и вывод
+    statsLine: function () { return s && s.perfLine ? { line: s.perfLine, verdict: s.perfVerdict } : null; },
     // Отладка из консоли: WasmPlayback.report().then(console.log) — что
     // держит воркер (кучи WASM, кэш Range), запросы к TorrServer, позиция
     report: function () {

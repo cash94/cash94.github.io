@@ -134,6 +134,7 @@ var PlayerDiag = function () {
   function mode() {
     if (window.AndroidJS) return 'Android: нативный плеер';
     if (window.TizenAVPlay && TizenAVPlay.active()) return 'AVPlay (Tizen), файл напрямую с TorrServer';
+    if (window.AppState && AppState.wasmPlayback) return 'прямой файл через WASM (MSE)';
     if (window.AppState && AppState.hls) {
       return AppState.transcodingOnOff ? 'HLS: транскодирование TorrServer (hls.js)' : 'HLS через сервер TorrStream (hls.js)';
     }
@@ -406,6 +407,8 @@ var PlayerDiag = function () {
     if (fr) lines.push('Кадры: ' + fr);
     var hl = hlsLine();
     if (hl) lines.push(hl);
+    var ws = window.WasmPlayback && WasmPlayback.statsLine && WasmPlayback.statsLine();
+    if (ws) lines.push('WASM: ' + ws.line + ' → ' + ws.verdict);
     lines = lines.concat(tsLines());
     var v = verdict(g);
     var html = '';

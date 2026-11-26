@@ -30,6 +30,7 @@ var LIBAV_JS = 'libav-6.11.9.0.2-torrstream.js';
 // на ПК медленнее примерно на 16 % (tools/wasm-audio/build.js)
 var LIBAV_WASM_FAST = 'libav-6.11.9.0.2-torrstream.wasm.wasm';
 var LIBAV_WASM_MVP = 'libav-6.11.9.0.2-torrstream.mvp.wasm';
+var libFast = true;
 
 /** Понимает ли WebAssembly браузера memory.copy (bulk memory) */
 function wasmBulkMemory() {
@@ -58,6 +59,32 @@ var pending = null;           // {kind:'seek'|'audio', time, gen, index}
 var wake = null;
 var chunks = new Map();       // start -> Promise<Uint8Array>
 var stats = { bytes: 0, requests: 0, workMs: 0, mediaSec: 0, aFrames: 0 };
+
+// ---------- замеры скорости (диагностика: где теряется время) ----------
+// Сеть: байты и время, пока идёт хоть один запрос к TorrServer (netBusyMs) —
+// реальная скорость TorrServer → браузер. waitMs — сколько разбор файла
+// простоял, ожидая кусок. Процессор: разбор (без ожидания), декодирование
+// звука, кодирование AAC, сборка MP4. mediaSec — сколько секунд фильма
+// собрано. Страница (wasm-playback.js) сводит это с MSE и пишет в консоль.
+var perf = { netBytes: 0, netBusyMs: 0, waitMs: 0, readMs: 0, decMs: 0, encMs: 0, muxMs: 0, sleepMs: 0, mediaSec: 0 };
+var netActive = 0, netBusyFrom = 0, perfPrev = null, perfAt = 0;
+var PERF_MS = 2000;
+
+function netStart() { if (netActive++ === 0) netBusyFrom = performance.now(); }
+function netEnd() { if (--netActive === 0) perf.netBusyMs += performance.now() - netBusyFrom; }
+
+/** Раз в PERF_MS — что изменилось за окно (а не с начала: важна текущая картина) */
+function reportPerf(force) {
+  var now = performance.now();
+  if (!force && now - perfAt < PERF_MS) return;
+  var cur = {}, k;
+  for (k in perf) cur[k] = perf[k];
+  if (netActive) cur.netBusyMs += now - netBusyFrom;   // запрос ещё идёт
+  var w = { wallMs: perfPrev ? now - perfAt : 0 };
+  for (k in cur) w[k] = cur[k] - (perfPrev ? perfPrev[k] : 0);
+  perfPrev = cur; perfAt = now;
+  if (w.wallMs > 0) postMessage({ type: 'perf', w: w, fast: !!libFast });
+}
 
 function log(msg) { postMessage({ type: 'log', msg: String(msg) }); }
 function fail(e) { postMessage({ type: 'error', code: (e && e.code) || '', msg: (e && e.message) || String(e), stack: e && e.stack }); }
@@ -111,7 +138,11 @@ function memReport() {
 var yieldCh = new MessageChannel(), yieldQ = [];
 yieldCh.port1.onmessage = function () { var r = yieldQ.shift(); if (r) r(); };
 function yieldTask() { return new Promise(function (r) { yieldQ.push(r); yieldCh.port2.postMessage(0); }); }
-function sleep() { keepAlive(); return new Promise(function (r) { wake = r; setTimeout(poke, 500); }); }
+function sleep() {
+  keepAlive();
+  var ts0 = performance.now();
+  return new Promise(function (r) { wake = r; setTimeout(poke, 500); }).then(function () { perf.sleepMs += performance.now() - ts0; reportPerf(); });
+}
 
 // ---------- удержание раздачи на паузе ----------
 // <video src> на паузе держит соединение открытым, и у TorrServer остаётся
@@ -147,6 +178,8 @@ function fetchRange(start, end) {
   function once() {
     stats.requests++;
     lastNetAt = Date.now(); nextPos = end + 1;
+    netStart();
+    var netDone = false, endNet = function () { if (!netDone) { netDone = true; netEnd(); } };
     // Тайм-аут — на тишину, а не на весь запрос: с середины раздачи TorrServer
     // качает куски медленно (бывало 2 МБ дольше 30 с), и обрыв по общему
     // таймеру начинал запрос заново, хотя данные шли
@@ -159,14 +192,15 @@ function fetchRange(start, end) {
       return readBody(r, arm);
     }).then(function (b) {
       clearTimeout(timer);
+      endNet();
       // 200 вместо 206 — сервер не умеет Range; берём нужный кусок
       var u = new Uint8Array(b);
       if (u.length > end - start + 1) u = u.subarray(start, end + 1);
       if (!u.length) throw new Error('пустой ответ');
-      stats.bytes += u.length;
+      stats.bytes += u.length; perf.netBytes += u.length;
       if (attempt) postMessage({ type: 'net', ok: true, attempt: attempt });
       return u;
-    }, function (e) { clearTimeout(timer); throw e; }).catch(function (e) {
+    }, function (e) { clearTimeout(timer); endNet(); throw e; }).catch(function (e) {
       if (attempt >= RETRY_DELAYS.length) throw e;
       var delay = RETRY_DELAYS[attempt++];
       postMessage({ type: 'net', ok: false, attempt: attempt, delay: delay, error: (e && e.name === 'AbortError') ? 'тайм-аут' : String(e && e.message || e) });
@@ -200,19 +234,25 @@ function getChunk(start) {
   if (p) { chunks.delete(start); chunks.set(start, p); return p; }   // LRU
   var end = Math.min(start + CHUNK, size) - 1;
   p = fetchRange(start, end);
+  p.then(function () { p.done = true; }, function () { });
   p.catch(function () { chunks.delete(start); });
   chunks.set(start, p);
   while (chunks.size > CACHE_CHUNKS) chunks.delete(chunks.keys().next().value);
   return p;
 }
 
+// Чтение — запросами по 2 МБ (getChunk), а не одним длинным соединением:
+// на VIDAA одно соединение на весь огромный файл как раз и подвешивало
+// воспроизведение (проверено пользователем, 2026-11-26)
 function onBlockRead(name, pos, len) {
   var start = Math.floor(pos / CHUNK) * CHUNK;
   var p = getChunk(start);
   // Следующий кусок — заранее, но после текущего: на холодном старте с
   // середины раздачи они делили скорость, и нужный приходил вдвое позже
   if (start + CHUNK < size) p.then(function () { getChunk(start + CHUNK); }, function () { });
+  var tw = p.done ? 0 : performance.now();
   return p.then(function (buf) {
+    if (tw) perf.waitMs += performance.now() - tw;
     return libav.ff_block_reader_dev_send(name, start, buf);
   });
 }
@@ -267,6 +307,11 @@ function rescale(p, from, to, streamIndex) {
 // ---------- открытие ----------
 
 var COPY_OK = { aac: 'mp4a.40.2', opus: 'opus', flac: 'flac', mp3: 'mp4a.6B' };
+// Звук, который браузер принимает в MSE сам (страница проверила isTypeSupported
+// и прислала { кодек ffmpeg: строка кодека MSE }). Сейчас — только VIDAA:
+// телевизор декодирует Dolby сам, кодировать в AAC незачем, а кодер AAC —
+// почти вся работа воркера. Такой звук идёт как есть, со всеми каналами
+var nativeAudio = {};
 
 function hex2(n) { return ('0' + (n & 255).toString(16)).slice(-2).toUpperCase(); }
 
@@ -282,6 +327,7 @@ async function videoCodecString(par, name) {
 
 async function open(m) {
   url = m.url; outCodec = 'aac';
+  nativeAudio = m.native || {};
   // Сборка libav.js лежит не рядом с воркером (он идёт через маршрут сервера
   // или Blob): адрес папки wasm-audio/ присылает страница — зеркало или
   // локальный public/ при ?local=1
@@ -291,6 +337,7 @@ async function open(m) {
   // без base/wasmurl сборка ищет .wasm.js и .wasm рядом с воркером
   // m.mvp — отладка (?wasm=mvp у страницы): путь старых браузеров на ПК
   var fast = !m.mvp && wasmBulkMemory();
+  libFast = fast;
   libav = await LibAV.LibAV({ noworker: true, nothreads: true, base: base, wasmurl: base + '/' + (fast ? LIBAV_WASM_FAST : LIBAV_WASM_MVP) });
   log('libav.js ' + LibAV.VER + (fast ? '' : ' (совместимая сборка)') + ', загрузка ' + Math.round(performance.now() - tl) + ' мс');
   libav.onblockread = onBlockRead;
@@ -436,7 +483,7 @@ function subCues(list) {
 
 function aCodecString() {
   if (aIdx === undefined || aIdx < 0) return null;
-  if (copyAudio) return COPY_OK[streams[aIdx].name];
+  if (copyAudio) return nativeAudio[streams[aIdx].name] || COPY_OK[streams[aIdx].name];
   return { flac: 'flac', aac: 'mp4a.40.2', ac3: 'ac-3', opus: 'opus' }[outCodec];
 }
 
@@ -455,14 +502,16 @@ async function setupAudio() {
   // цель — AAC 2.0, а у AAC из TS (ADTS) настройки нет — mov пишет moov с
   // пустым esds, и Chrome не может разобрать поток. Остальное перекодируем.
   copyAudio = false;
-  if (COPY_OK[s.name]) {
+  if (nativeAudio[s.name] && s.name !== 'aac') copyAudio = true;
+  else if (COPY_OK[s.name] || nativeAudio[s.name]) {
     var ch = libav.AVCodecParameters_ch_layout_nb_channels ? await libav.AVCodecParameters_ch_layout_nb_channels(s.codecpar)
       : (libav.AVCodecParameters_channels ? await libav.AVCodecParameters_channels(s.codecpar) : 0);
     var ex = await libav.AVCodecParameters_extradata_size(s.codecpar);
-    copyAudio = ch > 0 && ch <= 2 && (s.name === 'mp3' || ex >= 2);
+    // AAC без настройки кодека (ADTS из TS) — только перекодировать
+    copyAudio = (ch > 0 && ch <= 2 || !!nativeAudio[s.name]) && (s.name === 'mp3' || ex >= 2);
   }
   aTb = [s.time_base_num, s.time_base_den];
-  if (copyAudio) return;
+  if (copyAudio) { log('звук ' + s.name + ' — как есть, без перекодирования'); return; }
   try {
     var r = await libav.ff_init_decoder(s.codec_id, s.codecpar);   // [codec, c, pkt, frame]
     dec = { kind: 'libav', c: r[1], pkt: r[2], frame: r[3] };
@@ -505,7 +554,14 @@ async function setupEncoder(fr) {
   };
   var name = outCodec, sfmt;
   if (name === 'flac') { sfmt = libav.AV_SAMPLE_FMT_S16; opts.options = { compression_level: '0' }; }
-  else if (name === 'aac') { sfmt = libav.AV_SAMPLE_FMT_FLTP; opts.ctx.bit_rate = channels > 2 ? 384000 : 192000; }
+  else if (name === 'aac') {
+    sfmt = libav.AV_SAMPLE_FMT_FLTP; opts.ctx.bit_rate = channels > 2 ? 384000 : 192000;
+    // Кодер AAC — 85–90 % всей работы воркера (замер wasm-playback.js:
+    // «кодер AAC 89 %»). По умолчанию у ffmpeg медленный twoloop; fast в разы
+    // быстрее, для стерео 192 кбит/с на слух то же. На ТВ (VIDAA, Chrome 59–68)
+    // именно он не успевал за 4K: буфер рос вдвое медленнее, чем шло видео
+    opts.options = { aac_coder: 'fast' };
+  }
   else if (name === 'ac3') { sfmt = libav.AV_SAMPLE_FMT_FLTP; opts.ctx.bit_rate = channels > 2 ? 640000 : 192000; }
   else if (name === 'opus') { name = 'libopus'; sfmt = libav.AV_SAMPLE_FMT_FLT; opts.ctx.bit_rate = channels > 2 ? 384000 : 160000; }
   opts.ctx.sample_fmt = sfmt;
@@ -672,7 +728,11 @@ async function openMuxer(g) {
   // frag_discont + use_editlist=0: tfdt первого фрагмента = DTS первого
   // пакета (как у сегментатора HLS в ffmpeg). Без этого mov сдвигает начало
   // каждой дорожки к нулю — рассинхрон и время «с нуля» после перемотки.
-  await libav.av_opt_set(oc, 'movflags', 'frag_keyframe+empty_moov+default_base_moof+frag_discont', 1 /* AV_OPT_SEARCH_CHILDREN */);
+  // AC3/EAC3 как есть: настройку кодека (dac3/dec3) mov берёт из первого
+  // пакета — moov пишем вместе с первым фрагментом (delay_moov), иначе
+  // «Cannot write moov atom before AC3 packets»
+  var delay = copyAudio && aIdx >= 0 && /^e?ac3$/.test(streams[aIdx].name) ? '+delay_moov' : '';
+  await libav.av_opt_set(oc, 'movflags', 'frag_keyframe+empty_moov+default_base_moof+frag_discont' + delay, 1 /* AV_OPT_SEARCH_CHILDREN */);
   await libav.av_opt_set(oc, 'use_editlist', '0', 1);
   // фрагмент не длиннее секунды (иначе ждём ключевой кадр, а GOP бывает 5–10 с)
   await libav.av_opt_set(oc, 'frag_duration', '1000000', 1);
@@ -734,8 +794,9 @@ async function run() {
     if (pending) { await doPending(); continue; }
     if (eof || outTime - playhead > AHEAD) { await sleep(); continue; }
 
-    var t0 = performance.now();
+    var t0 = performance.now(), w0 = perf.waitMs;
     var r = await libav.ff_read_frame_multi(fmt, pkt, { limit: READ_LIMIT, unify: true });
+    perf.readMs += performance.now() - t0 - (perf.waitMs - w0);
     var res = r[0], list = r[1][0] || [];
     // реплики с абсолютным временем — годятся при любом поколении
     var cues = subCues(list);
@@ -752,7 +813,9 @@ async function run() {
     var aOut = [];
     if (aIn.length && copyAudio) aOut = aIn;
     else if (aIn.length) {
+      var td = performance.now();
       var frames = await decodePackets(aIn);
+      perf.decMs += performance.now() - td;
       stats.aFrames += frames.length;
       if (frames.length) {
         if (!enc) await setupEncoder(frames[0]);
@@ -768,7 +831,9 @@ async function run() {
           if (dec.skipped) log('декодер пропустил пакетов в начале: ' + dec.skipped);
         }
         var fr = pushFrames(frames, audioStart);
+        var te = performance.now();
         aOut = fr.length ? await libav.ff_encode_multi(enc.c, enc.frame, enc.pkt, fr) : [];
+        perf.encMs += performance.now() - te;
       }
     }
     if (!mux && (vOut.length || aOut.length)) {
@@ -801,10 +866,15 @@ async function run() {
       log('порция: видео ' + vOut.length + ' (ключевых ' + vk + ', pts ' + (vOut.length ? (ts(vOut[0], 'pts') * vTb[0] / vTb[1]).toFixed(2) : '-') + '), звук ' + aIn.length + ' → ' + aOut.length +
         ', mux ' + (mux ? 'есть' : 'нет') + ', куча ' + Math.round((libav.HEAPU8 ? libav.HEAPU8.length : 0) / 1048576) + ' МБ, выход ' + out.len);
     }
+    var tm = performance.now();
     if (packets.length) await libav.ff_write_multi(mux.oc, mux.pkt, packets);
     if (pending) continue;
+    // секунды фильма, собранные этим заходом (без скачков перемотки)
+    if (lastV > outTime && lastV - outTime < 30) perf.mediaSec += lastV - outTime;
     outTime = lastV;
     flushOut(gen, outTime);
+    perf.muxMs += performance.now() - tm;
+    reportPerf();
 
     var dt = performance.now() - t0;
     stats.workMs += dt;
