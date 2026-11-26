@@ -5250,9 +5250,10 @@ async function startHLSPlaybackNow(originalUrl, initialSeek, fromSearch, episode
     } else {
       await initServerProxyPlayback(metadata, initialSeek, signal);
     }
-    // Прямой режим из-за сервера (модуль hls-off) — говорим об этом в плеере
-    if (AppState.serverHlsOff && window.SERVER_HLS_OFF_TEXT) showPlayerHint(window.SERVER_HLS_OFF_TEXT, 6000);
-    else showPlayerHint();
+    // Подсказку «на сервере транскодирование отключено» (модуль hls-off) здесь
+    // больше не показываем: она выходила на каждом видео у всех зрителей
+    // сервера, хотя им ничего делать не нужно. Пояснение — в настройках
+    showPlayerHint();
     return true;
   } catch (error) {
     if (error.name === 'AbortError') return false;

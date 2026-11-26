@@ -4663,7 +4663,7 @@ function _startHLSPlaybackNow() {
       } else {
         yield initServerProxyPlayback(metadata, initialSeek, signal);
       }
-      if (AppState.serverHlsOff && window.SERVER_HLS_OFF_TEXT) showPlayerHint(window.SERVER_HLS_OFF_TEXT, 6000);else showPlayerHint();
+      showPlayerHint();
       return true;
     } catch (error) {
       if (error.name === 'AbortError') return false;
