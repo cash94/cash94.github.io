@@ -119,7 +119,7 @@ var AppState = {
   // у страницы из пакета Tizen location.protocol — «file:»
   protocol: window.TS_SERVER ? window.TS_SERVER.split('//')[0] : window.location.protocol,
   currentTorrserverUrl: '',
-  currentVersion: 'TorrStream.1.0.67',
+  currentVersion: 'TorrStream.1.0.68',
   authEnabled: false,
   serverOnline: false,
   // Ответ /api/info, если торрент-сервер — MonoServer (checkServer в torrents.js),
@@ -206,6 +206,9 @@ var AppState = {
   vidaaOsVersion: '',
   vidaaFirmware: '',
   vidaaDirectPlay: false,
+  // Прямой файл идёт через WASM (wasm-playback.js): браузер или VIDAA ниже
+  // 9.5 при «Полностью отключить транскодирование»
+  wasmPlayback: false,
   // Запущены внутри установленного приложения VIDAA (ipk), а не в браузере ТВ —
   // по метке ?tsapp=vidaa от запускалки (detectVidaaApp); UA='vidaa' у обоих
   vidaaApp: false,

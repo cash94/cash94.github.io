@@ -91,7 +91,7 @@ function readHomeRowTransformFlag() {
 var AppState = {
   protocol: window.TS_SERVER ? window.TS_SERVER.split('//')[0] : window.location.protocol,
   currentTorrserverUrl: '',
-  currentVersion: 'TorrStream.1.0.67',
+  currentVersion: 'TorrStream.1.0.68',
   authEnabled: false,
   serverOnline: false,
   monoServer: null,
@@ -135,6 +135,7 @@ var AppState = {
   vidaaOsVersion: '',
   vidaaFirmware: '',
   vidaaDirectPlay: false,
+  wasmPlayback: false,
   vidaaApp: false,
   lastFocusedElement: null,
   isSearch: false,

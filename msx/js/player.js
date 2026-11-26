@@ -1282,6 +1282,9 @@ function destroyHls() {
   if (AppState._seekExecuted) AppState._seekExecuted = false;
   // Слушатели прямого воспроизведения (initTranscodingOffPlayback)
   if (AppState._directPlaybackDetach) { AppState._directPlaybackDetach(); AppState._directPlaybackDetach = null; }
+  // Прямой файл через WASM: воркер, MediaSource и дорожки субтитров прошлого файла
+  if (window.WasmPlayback) WasmPlayback.detach();
+  AppState.wasmPlayback = false;
 
   if (AppState.hls) {
     AppState.expectedDuration = null;
@@ -4561,6 +4564,40 @@ function updateDirectTrackDiag(videoPlayer) {
   directPlaybackDiag.kinds = kinds.join(', ');
 }
 
+/**
+ * Аудиодорожки файла, который играет WASM (wasm-playback.js): в потоке одна
+ * выбранная, а список — все дорожки файла по порядку. Названия и языки потом
+ * подставит applyDirectProbe (ответ сервера или CUB), как у прямого файла
+ */
+function wasmAudioList(info) {
+  currentAudioTracks = (info.audioTracks || []).map(function (a, i) {
+    return { title: 'Аудиодорожка ' + (i + 1), language: 'und', channels: a.channels || null, codec: (a.codec || '').toUpperCase() };
+  });
+  currentAudioTrack = info.audio >= 0 ? info.audio : 0;
+  renderAudioTracks();
+  applyDirectProbe();
+}
+
+/** Файл не сыграть через WASM: TS, кодек видео, сеть — баннер вместо чёрного экрана */
+function showWasmUnsupported(code, msg) {
+  hidePlayerLoading();
+  var title, text;
+  if (code === 'ts') {
+    title = 'Формат TS не поддерживается';
+    text = 'Файлы MPEG-TS (.ts, .m2ts) напрямую с TorrServer в браузере не воспроизводятся. ' +
+      (AppState.serverHlsOff ? 'Выберите другую раздачу.' : 'Выберите другую раздачу или включите перекодирование.');
+  } else if (code === 'video') {
+    title = 'Видео не поддерживается браузером';
+    text = (msg ? msg + '. ' : '') + (AppState.serverHlsOff ? 'Выберите другую раздачу.' : 'Выберите другую раздачу или включите перекодирование.');
+  } else {
+    title = 'Файл не воспроизводится напрямую';
+    text = (msg ? msg + '. ' : '') + 'TorrServer не отдал поток либо формат файла не поддерживается. ' +
+      (AppState.serverHlsOff ? 'Попробуйте перезапустить контент или выбрать другую раздачу.' : 'Попробуйте перезапустить контент, выбрать другую раздачу или включить перекодирование.');
+  }
+  if (typeof window.showErrorBanner === 'function') window.showErrorBanner(title, text);
+  else alert(title);
+}
+
 async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
   // Адрес как у Lampa (Torserver.stream): с именем файла в пути, если оно уже
   // известно (getFileNameByHash по списку торрентов). Отдельно у TorrServer его
@@ -4652,7 +4689,8 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
     // переключение (switchNativeAudioTrack) уже было написано.
     // На webOS список звука ведёт конвейер (webosSubsApply) — если он уже
     // пришёл, не перетираем его дорожками <video>
-    var nativeTracks = webosAudio.mode || probeAudio.on ? [] : collectNativeAudioTracks(videoPlayer);
+    // Через WASM в потоке одна дорожка — список ведёт wasmAudioList (по файлу)
+    var nativeTracks = webosAudio.mode || probeAudio.on || AppState.wasmPlayback ? [] : collectNativeAudioTracks(videoPlayer);
     if (nativeTracks.length) {
       currentAudioTracks = nativeTracks;
       // Раньше бралась включённая — то есть дорожка по умолчанию, и выбор
@@ -4712,8 +4750,32 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
   }, LOADING_TIMEOUT_MS);
 
   var staleMediaId = videoPlayer.mediaId;
-  videoPlayer.src = playURL;
-  videoPlayer.load();
+  // Браузер и VIDAA ниже 9.5: файл разбирает WASM (wasm-playback.js) — сам
+  // <video> там MKV не открывает или молчит на AC3/EAC3/DTS. Остальные — как было
+  if (window.WasmPlayback && WasmPlayback.eligible()) {
+    if (/\.(m2?ts|mts)$/i.test(fileName || '')) {
+      detachDirectListeners();
+      showWasmUnsupported('ts');
+      return;
+    }
+    AppState.wasmPlayback = true;
+    directPlaybackDiag.file = (fileName || 'без имени') + ' · WASM';
+    WasmPlayback.attach(videoPlayer, playURL, {
+      time: initialSeek > 0 ? initialSeek : 0,
+      audio: nativeAudioPref,
+      onInfo: function (info) { if (!signal.aborted) wasmAudioList(info); },
+      onError: function (code, msg) {
+        if (signal.aborted || AppState.currentScreen !== 'player') return;
+        detachDirectListeners();
+        showWasmUnsupported(code, msg);
+      }
+    });
+    // Дорожку уже передали воркеру — <video> её включать не должен
+    nativeAudioPref = -1;
+  } else {
+    videoPlayer.src = playURL;
+    videoPlayer.load();
+  }
   // webOS: mediaId и подписку ловим сразу, как Lampa (см. webosSubsStart)
   webosSubsStart(videoPlayer, staleMediaId);
   directProbeStart();
@@ -5597,6 +5659,15 @@ function applyNativeAudioPref(videoPlayer) {
 
 async function switchAudioTrack(trackIndex) {
   if (trackIndex === currentAudioTrack) { toggleAudioPanel(); return; }
+  if (AppState.transcodingFullOnOff && AppState.wasmPlayback && WasmPlayback.active()) {
+    // WASM: дорожку меняет воркер — с того же места, без перезапуска плеера
+    WasmPlayback.switchAudio(trackIndex);
+    currentAudioTrack = trackIndex;
+    if (currentTimecodeData.hash && currentTimecodeData.fileId) saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
+    renderAudioTracks();
+    toggleAudioPanel();
+    return;
+  }
   if (AppState.transcodingFullOnOff) {
     // nativeVideoPlayer обнуляет destroyHls(), а элемент <video> никуда не
     // девается — берём его напрямую, иначе тут падало на null.audioTracks

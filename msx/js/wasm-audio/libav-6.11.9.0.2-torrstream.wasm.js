@@ -1,0 +1,6286 @@
+/* libav.js 6.11.9.0.2 (torrstream), фабрика Emscripten под Chrome 57 — tools/wasm-audio/build.js. */
+if (typeof globalThis === "undefined") self.globalThis = self;
+function _defineProperty(e, r, t) { return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, { value: t, enumerable: !0, configurable: !0, writable: !0 }) : e[r] = t, e; }
+function _toPropertyKey(t) { var i = _toPrimitive(t, "string"); return "symbol" == typeof i ? i : i + ""; }
+function _toPrimitive(t, e) { if ("object" != typeof t || !t) return t; var r; if ("undefined" != typeof Symbol && void 0 !== (r = t[Symbol.toPrimitive])) { var i = r.call(t, e || "default"); if ("object" != typeof i) return i; throw new TypeError("@@toPrimitive must return a primitive value."); } return ("string" === e ? String : Number)(t); }
+/*!
+ * libav.js v6.11.9.0.2
+ *
+ * This software is compiled from several sources, the licenses for which are
+ * included herein.
+ *
+ * ---
+ *
+ * ffmpeg:
+ *
+ *  Copyright (c) 2000-2024 Fabrice Bellard et al
+ *
+ *                   GNU LESSER GENERAL PUBLIC LICENSE
+ *                        Version 2.1, February 1999
+ *
+ *  Copyright (C) 1991, 1999 Free Software Foundation, Inc.
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *  Everyone is permitted to copy and distribute verbatim copies
+ *  of this license document, but changing it is not allowed.
+ *
+ * [This is the first released version of the Lesser GPL.  It also counts
+ *  as the successor of the GNU Library Public License, version 2, hence
+ *  the version number 2.1.]
+ *
+ *                             Preamble
+ *
+ *   The licenses for most software are designed to take away your
+ * freedom to share and change it.  By contrast, the GNU General Public
+ * Licenses are intended to guarantee your freedom to share and change
+ * free software--to make sure the software is free for all its users.
+ *
+ *   This license, the Lesser General Public License, applies to some
+ * specially designated software packages--typically libraries--of the
+ * Free Software Foundation and other authors who decide to use it.  You
+ * can use it too, but we suggest you first think carefully about whether
+ * this license or the ordinary General Public License is the better
+ * strategy to use in any particular case, based on the explanations below.
+ *
+ *   When we speak of free software, we are referring to freedom of use,
+ * not price.  Our General Public Licenses are designed to make sure that
+ * you have the freedom to distribute copies of free software (and charge
+ * for this service if you wish); that you receive source code or can get
+ * it if you want it; that you can change the software and use pieces of
+ * it in new free programs; and that you are informed that you can do
+ * these things.
+ *
+ *   To protect your rights, we need to make restrictions that forbid
+ * distributors to deny you these rights or to ask you to surrender these
+ * rights.  These restrictions translate to certain responsibilities for
+ * you if you distribute copies of the library or if you modify it.
+ *
+ *   For example, if you distribute copies of the library, whether gratis
+ * or for a fee, you must give the recipients all the rights that we gave
+ * you.  You must make sure that they, too, receive or can get the source
+ * code.  If you link other code with the library, you must provide
+ * complete object files to the recipients, so that they can relink them
+ * with the library after making changes to the library and recompiling
+ * it.  And you must show them these terms so they know their rights.
+ *
+ *   We protect your rights with a two-step method: (1) we copyright the
+ * library, and (2) we offer you this license, which gives you legal
+ * permission to copy, distribute and/or modify the library.
+ *
+ *   To protect each distributor, we want to make it very clear that
+ * there is no warranty for the free library.  Also, if the library is
+ * modified by someone else and passed on, the recipients should know
+ * that what they have is not the original version, so that the original
+ * author's reputation will not be affected by problems that might be
+ * introduced by others.
+ *
+ *   Finally, software patents pose a constant threat to the existence of
+ * any free program.  We wish to make sure that a company cannot
+ * effectively restrict the users of a free program by obtaining a
+ * restrictive license from a patent holder.  Therefore, we insist that
+ * any patent license obtained for a version of the library must be
+ * consistent with the full freedom of use specified in this license.
+ *
+ *   Most GNU software, including some libraries, is covered by the
+ * ordinary GNU General Public License.  This license, the GNU Lesser
+ * General Public License, applies to certain designated libraries, and
+ * is quite different from the ordinary General Public License.  We use
+ * this license for certain libraries in order to permit linking those
+ * libraries into non-free programs.
+ *
+ *   When a program is linked with a library, whether statically or using
+ * a shared library, the combination of the two is legally speaking a
+ * combined work, a derivative of the original library.  The ordinary
+ * General Public License therefore permits such linking only if the
+ * entire combination fits its criteria of freedom.  The Lesser General
+ * Public License permits more lax criteria for linking other code with
+ * the library.
+ *
+ *   We call this license the "Lesser" General Public License because it
+ * does Less to protect the user's freedom than the ordinary General
+ * Public License.  It also provides other free software developers Less
+ * of an advantage over competing non-free programs.  These disadvantages
+ * are the reason we use the ordinary General Public License for many
+ * libraries.  However, the Lesser license provides advantages in certain
+ * special circumstances.
+ *
+ *   For example, on rare occasions, there may be a special need to
+ * encourage the widest possible use of a certain library, so that it becomes
+ * a de-facto standard.  To achieve this, non-free programs must be
+ * allowed to use the library.  A more frequent case is that a free
+ * library does the same job as widely used non-free libraries.  In this
+ * case, there is little to gain by limiting the free library to free
+ * software only, so we use the Lesser General Public License.
+ *
+ *   In other cases, permission to use a particular library in non-free
+ * programs enables a greater number of people to use a large body of
+ * free software.  For example, permission to use the GNU C Library in
+ * non-free programs enables many more people to use the whole GNU
+ * operating system, as well as its variant, the GNU/Linux operating
+ * system.
+ *
+ *   Although the Lesser General Public License is Less protective of the
+ * users' freedom, it does ensure that the user of a program that is
+ * linked with the Library has the freedom and the wherewithal to run
+ * that program using a modified version of the Library.
+ *
+ *   The precise terms and conditions for copying, distribution and
+ * modification follow.  Pay close attention to the difference between a
+ * "work based on the library" and a "work that uses the library".  The
+ * former contains code derived from the library, whereas the latter must
+ * be combined with the library in order to run.
+ *
+ *                   GNU LESSER GENERAL PUBLIC LICENSE
+ *    TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
+ *
+ *   0. This License Agreement applies to any software library or other
+ * program which contains a notice placed by the copyright holder or
+ * other authorized party saying it may be distributed under the terms of
+ * this Lesser General Public License (also called "this License").
+ * Each licensee is addressed as "you".
+ *
+ *   A "library" means a collection of software functions and/or data
+ * prepared so as to be conveniently linked with application programs
+ * (which use some of those functions and data) to form executables.
+ *
+ *   The "Library", below, refers to any such software library or work
+ * which has been distributed under these terms.  A "work based on the
+ * Library" means either the Library or any derivative work under
+ * copyright law: that is to say, a work containing the Library or a
+ * portion of it, either verbatim or with modifications and/or translated
+ * straightforwardly into another language.  (Hereinafter, translation is
+ * included without limitation in the term "modification".)
+ *
+ *   "Source code" for a work means the preferred form of the work for
+ * making modifications to it.  For a library, complete source code means
+ * all the source code for all modules it contains, plus any associated
+ * interface definition files, plus the scripts used to control compilation
+ * and installation of the library.
+ *
+ *   Activities other than copying, distribution and modification are not
+ * covered by this License; they are outside its scope.  The act of
+ * running a program using the Library is not restricted, and output from
+ * such a program is covered only if its contents constitute a work based
+ * on the Library (independent of the use of the Library in a tool for
+ * writing it).  Whether that is true depends on what the Library does
+ * and what the program that uses the Library does.
+ *
+ *   1. You may copy and distribute verbatim copies of the Library's
+ * complete source code as you receive it, in any medium, provided that
+ * you conspicuously and appropriately publish on each copy an
+ * appropriate copyright notice and disclaimer of warranty; keep intact
+ * all the notices that refer to this License and to the absence of any
+ * warranty; and distribute a copy of this License along with the
+ * Library.
+ *
+ *   You may charge a fee for the physical act of transferring a copy,
+ * and you may at your option offer warranty protection in exchange for a
+ * fee.
+ *
+ *   2. You may modify your copy or copies of the Library or any portion
+ * of it, thus forming a work based on the Library, and copy and
+ * distribute such modifications or work under the terms of Section 1
+ * above, provided that you also meet all of these conditions:
+ *
+ *     a) The modified work must itself be a software library.
+ *
+ *     b) You must cause the files modified to carry prominent notices
+ *     stating that you changed the files and the date of any change.
+ *
+ *     c) You must cause the whole of the work to be licensed at no
+ *     charge to all third parties under the terms of this License.
+ *
+ *     d) If a facility in the modified Library refers to a function or a
+ *     table of data to be supplied by an application program that uses
+ *     the facility, other than as an argument passed when the facility
+ *     is invoked, then you must make a good faith effort to ensure that,
+ *     in the event an application does not supply such function or
+ *     table, the facility still operates, and performs whatever part of
+ *     its purpose remains meaningful.
+ *
+ *     (For example, a function in a library to compute square roots has
+ *     a purpose that is entirely well-defined independent of the
+ *     application.  Therefore, Subsection 2d requires that any
+ *     application-supplied function or table used by this function must
+ *     be optional: if the application does not supply it, the square
+ *     root function must still compute square roots.)
+ *
+ * These requirements apply to the modified work as a whole.  If
+ * identifiable sections of that work are not derived from the Library,
+ * and can be reasonably considered independent and separate works in
+ * themselves, then this License, and its terms, do not apply to those
+ * sections when you distribute them as separate works.  But when you
+ * distribute the same sections as part of a whole which is a work based
+ * on the Library, the distribution of the whole must be on the terms of
+ * this License, whose permissions for other licensees extend to the
+ * entire whole, and thus to each and every part regardless of who wrote
+ * it.
+ *
+ * Thus, it is not the intent of this section to claim rights or contest
+ * your rights to work written entirely by you; rather, the intent is to
+ * exercise the right to control the distribution of derivative or
+ * collective works based on the Library.
+ *
+ * In addition, mere aggregation of another work not based on the Library
+ * with the Library (or with a work based on the Library) on a volume of
+ * a storage or distribution medium does not bring the other work under
+ * the scope of this License.
+ *
+ *   3. You may opt to apply the terms of the ordinary GNU General Public
+ * License instead of this License to a given copy of the Library.  To do
+ * this, you must alter all the notices that refer to this License, so
+ * that they refer to the ordinary GNU General Public License, version 2,
+ * instead of to this License.  (If a newer version than version 2 of the
+ * ordinary GNU General Public License has appeared, then you can specify
+ * that version instead if you wish.)  Do not make any other change in
+ * these notices.
+ *
+ *   Once this change is made in a given copy, it is irreversible for
+ * that copy, so the ordinary GNU General Public License applies to all
+ * subsequent copies and derivative works made from that copy.
+ *
+ *   This option is useful when you wish to copy part of the code of
+ * the Library into a program that is not a library.
+ *
+ *   4. You may copy and distribute the Library (or a portion or
+ * derivative of it, under Section 2) in object code or executable form
+ * under the terms of Sections 1 and 2 above provided that you accompany
+ * it with the complete corresponding machine-readable source code, which
+ * must be distributed under the terms of Sections 1 and 2 above on a
+ * medium customarily used for software interchange.
+ *
+ *   If distribution of object code is made by offering access to copy
+ * from a designated place, then offering equivalent access to copy the
+ * source code from the same place satisfies the requirement to
+ * distribute the source code, even though third parties are not
+ * compelled to copy the source along with the object code.
+ *
+ *   5. A program that contains no derivative of any portion of the
+ * Library, but is designed to work with the Library by being compiled or
+ * linked with it, is called a "work that uses the Library".  Such a
+ * work, in isolation, is not a derivative work of the Library, and
+ * therefore falls outside the scope of this License.
+ *
+ *   However, linking a "work that uses the Library" with the Library
+ * creates an executable that is a derivative of the Library (because it
+ * contains portions of the Library), rather than a "work that uses the
+ * library".  The executable is therefore covered by this License.
+ * Section 6 states terms for distribution of such executables.
+ *
+ *   When a "work that uses the Library" uses material from a header file
+ * that is part of the Library, the object code for the work may be a
+ * derivative work of the Library even though the source code is not.
+ * Whether this is true is especially significant if the work can be
+ * linked without the Library, or if the work is itself a library.  The
+ * threshold for this to be true is not precisely defined by law.
+ *
+ *   If such an object file uses only numerical parameters, data
+ * structure layouts and accessors, and small macros and small inline
+ * functions (ten lines or less in length), then the use of the object
+ * file is unrestricted, regardless of whether it is legally a derivative
+ * work.  (Executables containing this object code plus portions of the
+ * Library will still fall under Section 6.)
+ *
+ *   Otherwise, if the work is a derivative of the Library, you may
+ * distribute the object code for the work under the terms of Section 6.
+ * Any executables containing that work also fall under Section 6,
+ * whether or not they are linked directly with the Library itself.
+ *
+ *   6. As an exception to the Sections above, you may also combine or
+ * link a "work that uses the Library" with the Library to produce a
+ * work containing portions of the Library, and distribute that work
+ * under terms of your choice, provided that the terms permit
+ * modification of the work for the customer's own use and reverse
+ * engineering for debugging such modifications.
+ *
+ *   You must give prominent notice with each copy of the work that the
+ * Library is used in it and that the Library and its use are covered by
+ * this License.  You must supply a copy of this License.  If the work
+ * during execution displays copyright notices, you must include the
+ * copyright notice for the Library among them, as well as a reference
+ * directing the user to the copy of this License.  Also, you must do one
+ * of these things:
+ *
+ *     a) Accompany the work with the complete corresponding
+ *     machine-readable source code for the Library including whatever
+ *     changes were used in the work (which must be distributed under
+ *     Sections 1 and 2 above); and, if the work is an executable linked
+ *     with the Library, with the complete machine-readable "work that
+ *     uses the Library", as object code and/or source code, so that the
+ *     user can modify the Library and then relink to produce a modified
+ *     executable containing the modified Library.  (It is understood
+ *     that the user who changes the contents of definitions files in the
+ *     Library will not necessarily be able to recompile the application
+ *     to use the modified definitions.)
+ *
+ *     b) Use a suitable shared library mechanism for linking with the
+ *     Library.  A suitable mechanism is one that (1) uses at run time a
+ *     copy of the library already present on the user's computer system,
+ *     rather than copying library functions into the executable, and (2)
+ *     will operate properly with a modified version of the library, if
+ *     the user installs one, as long as the modified version is
+ *     interface-compatible with the version that the work was made with.
+ *
+ *     c) Accompany the work with a written offer, valid for at
+ *     least three years, to give the same user the materials
+ *     specified in Subsection 6a, above, for a charge no more
+ *     than the cost of performing this distribution.
+ *
+ *     d) If distribution of the work is made by offering access to copy
+ *     from a designated place, offer equivalent access to copy the above
+ *     specified materials from the same place.
+ *
+ *     e) Verify that the user has already received a copy of these
+ *     materials or that you have already sent this user a copy.
+ *
+ *   For an executable, the required form of the "work that uses the
+ * Library" must include any data and utility programs needed for
+ * reproducing the executable from it.  However, as a special exception,
+ * the materials to be distributed need not include anything that is
+ * normally distributed (in either source or binary form) with the major
+ * components (compiler, kernel, and so on) of the operating system on
+ * which the executable runs, unless that component itself accompanies
+ * the executable.
+ *
+ *   It may happen that this requirement contradicts the license
+ * restrictions of other proprietary libraries that do not normally
+ * accompany the operating system.  Such a contradiction means you cannot
+ * use both them and the Library together in an executable that you
+ * distribute.
+ *
+ *   7. You may place library facilities that are a work based on the
+ * Library side-by-side in a single library together with other library
+ * facilities not covered by this License, and distribute such a combined
+ * library, provided that the separate distribution of the work based on
+ * the Library and of the other library facilities is otherwise
+ * permitted, and provided that you do these two things:
+ *
+ *     a) Accompany the combined library with a copy of the same work
+ *     based on the Library, uncombined with any other library
+ *     facilities.  This must be distributed under the terms of the
+ *     Sections above.
+ *
+ *     b) Give prominent notice with the combined library of the fact
+ *     that part of it is a work based on the Library, and explaining
+ *     where to find the accompanying uncombined form of the same work.
+ *
+ *   8. You may not copy, modify, sublicense, link with, or distribute
+ * the Library except as expressly provided under this License.  Any
+ * attempt otherwise to copy, modify, sublicense, link with, or
+ * distribute the Library is void, and will automatically terminate your
+ * rights under this License.  However, parties who have received copies,
+ * or rights, from you under this License will not have their licenses
+ * terminated so long as such parties remain in full compliance.
+ *
+ *   9. You are not required to accept this License, since you have not
+ * signed it.  However, nothing else grants you permission to modify or
+ * distribute the Library or its derivative works.  These actions are
+ * prohibited by law if you do not accept this License.  Therefore, by
+ * modifying or distributing the Library (or any work based on the
+ * Library), you indicate your acceptance of this License to do so, and
+ * all its terms and conditions for copying, distributing or modifying
+ * the Library or works based on it.
+ *
+ *   10. Each time you redistribute the Library (or any work based on the
+ * Library), the recipient automatically receives a license from the
+ * original licensor to copy, distribute, link with or modify the Library
+ * subject to these terms and conditions.  You may not impose any further
+ * restrictions on the recipients' exercise of the rights granted herein.
+ * You are not responsible for enforcing compliance by third parties with
+ * this License.
+ *
+ *   11. If, as a consequence of a court judgment or allegation of patent
+ * infringement or for any other reason (not limited to patent issues),
+ * conditions are imposed on you (whether by court order, agreement or
+ * otherwise) that contradict the conditions of this License, they do not
+ * excuse you from the conditions of this License.  If you cannot
+ * distribute so as to satisfy simultaneously your obligations under this
+ * License and any other pertinent obligations, then as a consequence you
+ * may not distribute the Library at all.  For example, if a patent
+ * license would not permit royalty-free redistribution of the Library by
+ * all those who receive copies directly or indirectly through you, then
+ * the only way you could satisfy both it and this License would be to
+ * refrain entirely from distribution of the Library.
+ *
+ * If any portion of this section is held invalid or unenforceable under any
+ * particular circumstance, the balance of the section is intended to apply,
+ * and the section as a whole is intended to apply in other circumstances.
+ *
+ * It is not the purpose of this section to induce you to infringe any
+ * patents or other property right claims or to contest validity of any
+ * such claims; this section has the sole purpose of protecting the
+ * integrity of the free software distribution system which is
+ * implemented by public license practices.  Many people have made
+ * generous contributions to the wide range of software distributed
+ * through that system in reliance on consistent application of that
+ * system; it is up to the author/donor to decide if he or she is willing
+ * to distribute software through any other system and a licensee cannot
+ * impose that choice.
+ *
+ * This section is intended to make thoroughly clear what is believed to
+ * be a consequence of the rest of this License.
+ *
+ *   12. If the distribution and/or use of the Library is restricted in
+ * certain countries either by patents or by copyrighted interfaces, the
+ * original copyright holder who places the Library under this License may add
+ * an explicit geographical distribution limitation excluding those countries,
+ * so that distribution is permitted only in or among countries not thus
+ * excluded.  In such case, this License incorporates the limitation as if
+ * written in the body of this License.
+ *
+ *   13. The Free Software Foundation may publish revised and/or new
+ * versions of the Lesser General Public License from time to time.
+ * Such new versions will be similar in spirit to the present version,
+ * but may differ in detail to address new problems or concerns.
+ *
+ * Each version is given a distinguishing version number.  If the Library
+ * specifies a version number of this License which applies to it and
+ * "any later version", you have the option of following the terms and
+ * conditions either of that version or of any later version published by
+ * the Free Software Foundation.  If the Library does not specify a
+ * license version number, you may choose any version ever published by
+ * the Free Software Foundation.
+ *
+ *   14. If you wish to incorporate parts of the Library into other free
+ * programs whose distribution conditions are incompatible with these,
+ * write to the author to ask for permission.  For software which is
+ * copyrighted by the Free Software Foundation, write to the Free
+ * Software Foundation; we sometimes make exceptions for this.  Our
+ * decision will be guided by the two goals of preserving the free status
+ * of all derivatives of our free software and of promoting the sharing
+ * and reuse of software generally.
+ *
+ *                             NO WARRANTY
+ *
+ *   15. BECAUSE THE LIBRARY IS LICENSED FREE OF CHARGE, THERE IS NO
+ * WARRANTY FOR THE LIBRARY, TO THE EXTENT PERMITTED BY APPLICABLE LAW.
+ * EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT HOLDERS AND/OR
+ * OTHER PARTIES PROVIDE THE LIBRARY "AS IS" WITHOUT WARRANTY OF ANY
+ * KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE.  THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE
+ * LIBRARY IS WITH YOU.  SHOULD THE LIBRARY PROVE DEFECTIVE, YOU ASSUME
+ * THE COST OF ALL NECESSARY SERVICING, REPAIR OR CORRECTION.
+ *
+ *   16. IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN
+ * WRITING WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MAY MODIFY
+ * AND/OR REDISTRIBUTE THE LIBRARY AS PERMITTED ABOVE, BE LIABLE TO YOU
+ * FOR DAMAGES, INCLUDING ANY GENERAL, SPECIAL, INCIDENTAL OR
+ * CONSEQUENTIAL DAMAGES ARISING OUT OF THE USE OR INABILITY TO USE THE
+ * LIBRARY (INCLUDING BUT NOT LIMITED TO LOSS OF DATA OR DATA BEING
+ * RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD PARTIES OR A
+ * FAILURE OF THE LIBRARY TO OPERATE WITH ANY OTHER SOFTWARE), EVEN IF
+ * SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH
+ * DAMAGES.
+ *
+ *                      END OF TERMS AND CONDITIONS
+ *
+ *            How to Apply These Terms to Your New Libraries
+ *
+ *   If you develop a new library, and you want it to be of the greatest
+ * possible use to the public, we recommend making it free software that
+ * everyone can redistribute and change.  You can do so by permitting
+ * redistribution under these terms (or, alternatively, under the terms of the
+ * ordinary General Public License).
+ *
+ *   To apply these terms, attach the following notices to the library.  It is
+ * safest to attach them to the start of each source file to most effectively
+ * convey the exclusion of warranty; and each file should have at least the
+ * "copyright" line and a pointer to where the full notice is found.
+ *
+ *     <one line to give the library's name and a brief idea of what it does.>
+ *     Copyright (C) <year>  <name of author>
+ *
+ *     This library is free software; you can redistribute it and/or
+ *     modify it under the terms of the GNU Lesser General Public
+ *     License as published by the Free Software Foundation; either
+ *     version 2.1 of the License, or (at your option) any later version.
+ *
+ *     This library is distributed in the hope that it will be useful,
+ *     but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *     Lesser General Public License for more details.
+ *
+ *     You should have received a copy of the GNU Lesser General Public
+ *     License along with this library; if not, write to the Free Software
+ *     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *
+ * Also add information on how to contact you by electronic and paper mail.
+ *
+ * You should also get your employer (if you work as a programmer) or your
+ * school, if any, to sign a "copyright disclaimer" for the library, if
+ * necessary.  Here is a sample; alter the names:
+ *
+ *   Yoyodyne, Inc., hereby disclaims all copyright interest in the
+ *   library `Frob' (a library for tweaking knobs) written by James Random Hacker.
+ *
+ *   <signature of Ty Coon>, 1 April 1990
+ *   Ty Coon, President of Vice
+ *
+ * That's all there is to it!
+ *
+ *
+ * ---
+ *
+ * zlib:
+ *
+ * (C) 1995-2022 Jean-loup Gailly and Mark Adler
+ *
+ *  This software is provided 'as-is', without any express or implied
+ *  warranty.  In no event will the authors be held liable for any damages
+ *  arising from the use of this software.
+ *
+ *  Permission is granted to anyone to use this software for any purpose,
+ *  including commercial applications, and to alter it and redistribute it
+ *  freely, subject to the following restrictions:
+ *
+ *  1. The origin of this software must not be misrepresented; you must not
+ *     claim that you wrote the original software. If you use this software
+ *     in a product, an acknowledgment in the product documentation would be
+ *     appreciated but is not required.
+ *  2. Altered source versions must be plainly marked as such, and must not be
+ *     misrepresented as being the original software.
+ *  3. This notice may not be removed or altered from any source distribution.
+ *
+ *  Jean-loup Gailly        Mark Adler
+ *  jloup@gzip.org          madler@alumni.caltech.edu
+ *
+ *
+ * ---
+ *
+ * emscripten and musl:
+ *
+ * Copyright (c) 2010-2026 Emscripten authors, see AUTHORS file.
+ * Copyright © 2005-2026 Rich Felker, et al.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to
+ * deal in the Software without restriction, including without limitation the
+ * rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+ * sell copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+ * IN THE SOFTWARE.
+ *
+ * emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 7.0.1 (ac0578743420bcbe9a4f77d0b6599c25f8d43702)
+ *
+ */
+var LibAVFactory = (_globalThis$document => {
+  var _scriptName = (_globalThis$document = globalThis.document) === null || _globalThis$document === void 0 || (_globalThis$document = _globalThis$document.currentScript) === null || _globalThis$document === void 0 ? void 0 : _globalThis$document.src;
+  return async function (moduleArg = {}) {
+    var _globalThis$process, _globalThis$process2;
+    var Module = moduleArg;
+    var ENVIRONMENT_IS_WEB = !!globalThis.window;
+    var ENVIRONMENT_IS_WORKER = !!globalThis.WorkerGlobalScope;
+    var ENVIRONMENT_IS_NODE = ((_globalThis$process = globalThis.process) === null || _globalThis$process === void 0 || (_globalThis$process = _globalThis$process.versions) === null || _globalThis$process === void 0 ? void 0 : _globalThis$process.node) && ((_globalThis$process2 = globalThis.process) === null || _globalThis$process2 === void 0 ? void 0 : _globalThis$process2.type) != "renderer";
+    if (typeof _scriptName === "undefined") if (typeof LibAV === "object" && LibAV && LibAV.base) _scriptName = LibAV.base + "/libav-6.11.9.0.2-torrstream.wasm.js";else if (typeof self === "object" && self && self.location) _scriptName = self.location.href;
+    Module.locateFile = function (path, prefix) {
+      if (path.lastIndexOf(".wasm") === path.length - 5 && path.indexOf("libav-") !== -1) {
+        if (Module.wasmurl) return Module.wasmurl;
+        if (Module.variant) return prefix + "libav-6.11.9.0.2-" + Module.variant + ".wasm.wasm";
+      }
+      return prefix + path;
+    };
+    var thisProgram = "./this.program";
+    var quit_ = (status, toThrow) => {
+      throw toThrow;
+    };
+    if (typeof __filename !== "undefined") _scriptName = __filename;else if (ENVIRONMENT_IS_WORKER) _scriptName = self.location.href;
+    var scriptDirectory = "";
+    function locateFile(path) {
+      if (Module["locateFile"]) return Module["locateFile"](path, scriptDirectory);
+      return scriptDirectory + path;
+    }
+    var readAsync, readBinary;
+    if (ENVIRONMENT_IS_NODE) {
+      var fs = require("node:fs");
+      scriptDirectory = __dirname + "/";
+      readBinary = filename => {
+        filename = isFileURI(filename) ? new URL(filename) : filename;
+        var ret = fs.readFileSync(filename);
+        return ret;
+      };
+      readAsync = async (filename, binary = true) => {
+        filename = isFileURI(filename) ? new URL(filename) : filename;
+        var ret = fs.readFileSync(filename, binary ? void 0 : "utf8");
+        return ret;
+      };
+      if (process.argv.length > 1) thisProgram = process.argv[1].replace(/\\/g, "/");
+      process.argv.slice(2);
+      quit_ = (status, toThrow) => {
+        process.exitCode = status;
+        throw toThrow;
+      };
+    } else if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
+      try {
+        scriptDirectory = new URL(".", _scriptName).href;
+      } catch (_unused) {}
+      if (ENVIRONMENT_IS_WORKER) readBinary = url => {
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", url, false);
+        xhr.responseType = "arraybuffer";
+        xhr.send(null);
+        return new Uint8Array(xhr.response);
+      };
+      readAsync = async url => {
+        if (isFileURI(url)) return new Promise((resolve, reject) => {
+          var xhr = new XMLHttpRequest();
+          xhr.open("GET", url, true);
+          xhr.responseType = "arraybuffer";
+          xhr.onload = () => {
+            if (xhr.status == 200 || xhr.status == 0 && xhr.response) {
+              resolve(xhr.response);
+              return;
+            }
+            reject(xhr.status);
+          };
+          xhr.onerror = reject;
+          xhr.send(null);
+        });
+        var response = await fetch(url, {
+          credentials: "same-origin"
+        });
+        if (response.ok) return response.arrayBuffer();
+        throw new Error(response.status + " : " + response.url);
+      };
+    }
+    var out = console.log.bind(console);
+    var err = console.error.bind(console);
+    var ABORT = false;
+    var EXITSTATUS;
+    var isFileURI = filename => filename.startsWith("file://");
+    function getMemoryBuffer() {
+      return wasmMemory.buffer;
+    }
+    function updateMemoryViews() {
+      var _HEAP;
+      if ((_HEAP = HEAP8) !== null && _HEAP !== void 0 && (_HEAP = _HEAP.buffer) !== null && _HEAP !== void 0 && _HEAP.resizable) return;
+      var b = getMemoryBuffer();
+      Module["HEAP8"] = HEAP8 = new Int8Array(b);
+      Module["HEAP16"] = HEAP16 = new Int16Array(b);
+      Module["HEAPU8"] = HEAPU8 = new Uint8Array(b);
+      Module["HEAPU16"] = new Uint16Array(b);
+      Module["HEAP32"] = HEAP32 = new Int32Array(b);
+      Module["HEAPU32"] = HEAPU32 = new Uint32Array(b);
+      Module["HEAPF32"] = new Float32Array(b);
+      HEAPF64 = new Float64Array(b);
+    }
+    function preRun() {
+      var preRun = Module["preRun"];
+      if (preRun) {
+        if (typeof preRun === "function") preRun = [preRun];
+        onPreRuns.push(...preRun);
+      }
+      callRuntimeCallbacks(onPreRuns);
+    }
+    function initRuntime() {
+      0;
+      if (!Module["noFSInit"] && !FS.initialized) FS.init();
+      TTY.init();
+      wasmExports["J"]();
+      FS.ignorePermissions = false;
+    }
+    function postRun() {
+      var postRun = Module["postRun"];
+      if (postRun) {
+        if (typeof postRun === "function") postRun = [postRun];
+        onPostRuns.push(...postRun);
+      }
+      callRuntimeCallbacks(onPostRuns);
+    }
+    function abort(what) {
+      var _Module$onAbort;
+      (_Module$onAbort = Module["onAbort"]) === null || _Module$onAbort === void 0 || _Module$onAbort.call(Module, what);
+      what = `Aborted(${what})`;
+      err(what);
+      ABORT = true;
+      what += ". Build with -sASSERTIONS for more info.";
+      throw new WebAssembly.RuntimeError(what);
+    }
+    var wasmBinaryFile;
+    function findWasmBinary() {
+      return locateFile("libav-6.11.9.0.2-torrstream.wasm.wasm");
+    }
+    function getBinarySync(file) {
+      if (readBinary) return readBinary(file);
+      throw "both async and sync fetching of the wasm failed";
+    }
+    async function getWasmBinary(binaryFile) {
+      if (true) try {
+        return await readAsync(binaryFile);
+      } catch (_unused2) {}
+      return getBinarySync(binaryFile);
+    }
+    async function instantiateArrayBuffer(binaryFile, imports) {
+      try {
+        var binary = await getWasmBinary(binaryFile);
+        var instance = await WebAssembly.instantiate(binary, imports);
+        return instance;
+      } catch (reason) {
+        err(`failed to asynchronously prepare wasm: ${reason}`);
+        abort(reason);
+      }
+    }
+    async function instantiateAsync(binary, binaryFile, imports) {
+      if (!binary && !isFileURI(binaryFile) && !ENVIRONMENT_IS_NODE) try {
+        var response = fetch(binaryFile, {
+          credentials: "same-origin"
+        });
+        var instantiationResult = await WebAssembly.instantiateStreaming(response, imports);
+        return instantiationResult;
+      } catch (reason) {
+        err(`wasm streaming compile failed: ${reason}`);
+        err("falling back to ArrayBuffer instantiation");
+      }
+      return instantiateArrayBuffer(binaryFile, imports);
+    }
+    function getWasmImports() {
+      var imports = {
+        a: wasmImports
+      };
+      return imports;
+    }
+    var tempDouble;
+    var tempI64;
+    class ExitStatus {
+      constructor(status) {
+        _defineProperty(this, "name", "ExitStatus");
+        this.message = `Program terminated with exit(${status})`;
+        this.status = status;
+      }
+    }
+    var HEAP8;
+    var callRuntimeCallbacks = callbacks => {
+      while (callbacks.length > 0) callbacks.shift()(Module);
+    };
+    var onPostRuns = [];
+    var onPreRuns = [];
+    var dynCalls = {};
+    var noExitRuntime = true;
+    var stackRestore = val => __emscripten_stack_restore(val);
+    var stackSave = () => _emscripten_stack_get_current();
+    var FS_createDataFile = (...args) => FS.createDataFile(...args);
+    var preloadPlugins = [];
+    var FS_handledByPreloadPlugin = async (byteArray, fullname) => {
+      if (typeof Browser !== "undefined") Browser.init();
+      for (var plugin of preloadPlugins) if (plugin["canHandle"](fullname)) return plugin["handle"](byteArray, fullname);
+      return byteArray;
+    };
+    var PATH = {
+      isAbs: path => path.charAt(0) === "/",
+      splitPath: filename => /^(\/?|)([\s\S]*?)((?:\.{1,2}|[^\/]+?|)(\.[^.\/]*|))(?:[\/]*)$/.exec(filename).slice(1),
+      normalizeArray: (parts, allowAboveRoot) => {
+        var up = 0;
+        for (var i = parts.length - 1; i >= 0; i--) {
+          var last = parts[i];
+          if (last === ".") parts.splice(i, 1);else if (last === "..") {
+            parts.splice(i, 1);
+            up++;
+          } else if (up) {
+            parts.splice(i, 1);
+            up--;
+          }
+        }
+        if (allowAboveRoot) for (; up; up--) parts.unshift("..");
+        return parts;
+      },
+      normalize: path => {
+        var isAbsolute = PATH.isAbs(path),
+          trailingSlash = path.slice(-1) === "/";
+        path = PATH.normalizeArray(path.split("/").filter(p => !!p), !isAbsolute).join("/");
+        if (!path && !isAbsolute) path = ".";
+        if (path && trailingSlash) path += "/";
+        return (isAbsolute ? "/" : "") + path;
+      },
+      dirname: path => {
+        var result = PATH.splitPath(path),
+          root = result[0],
+          dir = result[1];
+        if (!root && !dir) return ".";
+        if (dir) dir = dir.slice(0, -1);
+        return root + dir;
+      },
+      basename: path => path && path.match(/([^\/]+|\/)\/*$/)[1],
+      join: (...paths) => PATH.normalize(paths.join("/")),
+      join2: (l, r) => PATH.normalize(l + "/" + r)
+    };
+    var PATH_FS = {
+      resolve: (...args) => {
+        var resolvedPath = "",
+          resolvedAbsolute = false;
+        for (var i = args.length - 1; i >= -1 && !resolvedAbsolute; i--) {
+          var path = i >= 0 ? args[i] : FS.cwd();
+          if (typeof path !== "string") throw new TypeError("Arguments to path.resolve must be strings");else if (!path) return "";
+          resolvedPath = path + "/" + resolvedPath;
+          resolvedAbsolute = PATH.isAbs(path);
+        }
+        resolvedPath = PATH.normalizeArray(resolvedPath.split("/").filter(p => !!p), !resolvedAbsolute).join("/");
+        return (resolvedAbsolute ? "/" : "") + resolvedPath || ".";
+      },
+      relative: (from, to) => {
+        from = PATH_FS.resolve(from).slice(1);
+        to = PATH_FS.resolve(to).slice(1);
+        function trim(arr) {
+          var start = 0;
+          for (; start < arr.length; start++) if (arr[start] !== "") break;
+          var end = arr.length - 1;
+          for (; end >= 0; end--) if (arr[end] !== "") break;
+          if (start > end) return [];
+          return arr.slice(start, end - start + 1);
+        }
+        var fromParts = trim(from.split("/"));
+        var toParts = trim(to.split("/"));
+        var length = Math.min(fromParts.length, toParts.length);
+        var samePartsLength = length;
+        for (var i = 0; i < length; i++) if (fromParts[i] !== toParts[i]) {
+          samePartsLength = i;
+          break;
+        }
+        var outputParts = [];
+        for (i = samePartsLength; i < fromParts.length; i++) outputParts.push("..");
+        outputParts = outputParts.concat(toParts.slice(samePartsLength));
+        return outputParts.join("/");
+      }
+    };
+    var dependenciesPromise = null;
+    var dependenciesPromiseResolve = null;
+    var resolveRunDependencies = async () => dependenciesPromise;
+    var runDependencies = 0;
+    var removeRunDependency = () => {
+      var _Module$monitorRunDep;
+      runDependencies--;
+      (_Module$monitorRunDep = Module["monitorRunDependencies"]) === null || _Module$monitorRunDep === void 0 || _Module$monitorRunDep.call(Module, runDependencies);
+      if (!runDependencies) dependenciesPromiseResolve();
+    };
+    var addRunDependency = () => {
+      var _Module$monitorRunDep2;
+      if (!runDependencies) dependenciesPromise = new Promise(resolve => dependenciesPromiseResolve = resolve);
+      runDependencies++;
+      (_Module$monitorRunDep2 = Module["monitorRunDependencies"]) === null || _Module$monitorRunDep2 === void 0 || _Module$monitorRunDep2.call(Module, runDependencies);
+    };
+    var asyncLoad = async url => {
+      var arrayBuffer = await readAsync(url);
+      return new Uint8Array(arrayBuffer);
+    };
+    var getUniqueRunDependency = id => id;
+    var FS_preloadFile = async (parent, name, url, canRead, canWrite, dontCreateFile, canOwn, preFinish) => {
+      var fullname = name ? PATH_FS.resolve(PATH.join2(parent, name)) : parent;
+      getUniqueRunDependency(`cp ${fullname}`);
+      addRunDependency();
+      try {
+        var byteArray = url;
+        if (typeof url === "string") byteArray = await asyncLoad(url);
+        byteArray = await FS_handledByPreloadPlugin(byteArray, fullname);
+        preFinish === null || preFinish === void 0 || preFinish();
+        if (!dontCreateFile) FS_createDataFile(parent, name, byteArray, canRead, canWrite, canOwn);
+      } finally {
+        removeRunDependency();
+      }
+    };
+    var lengthBytesUTF8 = str => {
+      var len = 0;
+      for (var i = 0; i < str.length; ++i) {
+        var u = str.codePointAt(i);
+        if (u <= 127) len++;else if (u <= 2047) len += 2;else if (u <= 65535) len += 3;else {
+          len += 4;
+          i++;
+        }
+      }
+      return len;
+    };
+    var stringToUTF8Array = (str, heap, outIdx, maxBytesToWrite) => {
+      if (!(maxBytesToWrite > 0)) return 0;
+      var startIdx = outIdx;
+      var endIdx = outIdx + maxBytesToWrite - 1;
+      for (var i = 0; i < str.length; ++i) {
+        var u = str.codePointAt(i);
+        if (u <= 127) {
+          if (outIdx >= endIdx) break;
+          heap[outIdx++] = u;
+        } else if (u <= 2047) {
+          if (outIdx + 1 >= endIdx) break;
+          heap[outIdx++] = 192 | u >> 6;
+          heap[outIdx++] = 128 | u & 63;
+        } else if (u <= 65535) {
+          if (outIdx + 2 >= endIdx) break;
+          heap[outIdx++] = 224 | u >> 12;
+          heap[outIdx++] = 128 | u >> 6 & 63;
+          heap[outIdx++] = 128 | u & 63;
+        } else {
+          if (outIdx + 3 >= endIdx) break;
+          heap[outIdx++] = 240 | u >> 18;
+          heap[outIdx++] = 128 | u >> 12 & 63;
+          heap[outIdx++] = 128 | u >> 6 & 63;
+          heap[outIdx++] = 128 | u & 63;
+          i++;
+        }
+      }
+      heap[outIdx] = 0;
+      return outIdx - startIdx;
+    };
+    var intArrayFromString = (stringy, dontAddNull, length) => {
+      var len = length > 0 ? length : lengthBytesUTF8(stringy) + 1;
+      var u8array = new Array(len);
+      var numBytesWritten = stringToUTF8Array(stringy, u8array, 0, u8array.length);
+      if (dontAddNull) u8array.length = numBytesWritten;
+      return u8array;
+    };
+    var FS_fileDataToTypedArray = data => {
+      if (typeof data === "string") data = intArrayFromString(data, true);
+      if (!data.subarray) data = new Uint8Array(data);
+      return data;
+    };
+    var FS_getMode = (canRead, canWrite) => {
+      var mode = 0;
+      if (canRead) mode |= 365;
+      if (canWrite) mode |= 146;
+      return mode;
+    };
+    var FS_modeStringToFlags = str => {
+      if (typeof str !== "string") return str;
+      var flagModes = {
+        r: 0,
+        "r+": 2,
+        w: 577,
+        "w+": 578,
+        a: 1089,
+        "a+": 1090
+      };
+      var flags = flagModes[str];
+      if (typeof flags === "undefined") throw new Error(`Unknown file open mode: ${str}`);
+      return flags;
+    };
+    var mmapAlloc = () => {
+      abort();
+    };
+    var MEMFS = {
+      ops_table: null,
+      mount(mount) {
+        return MEMFS.createNode(null, "/", 16895, 0);
+      },
+      createNode(parent, name, mode, dev) {
+        if (FS.isBlkdev(mode) || FS.isFIFO(mode)) throw new FS.ErrnoError(63);
+        MEMFS.ops_table || (MEMFS.ops_table = {
+          dir: {
+            node: {
+              getattr: MEMFS.node_ops.getattr,
+              setattr: MEMFS.node_ops.setattr,
+              lookup: MEMFS.node_ops.lookup,
+              mknod: MEMFS.node_ops.mknod,
+              rename: MEMFS.node_ops.rename,
+              unlink: MEMFS.node_ops.unlink,
+              rmdir: MEMFS.node_ops.rmdir,
+              readdir: MEMFS.node_ops.readdir,
+              symlink: MEMFS.node_ops.symlink
+            },
+            stream: {
+              llseek: MEMFS.stream_ops.llseek
+            }
+          },
+          file: {
+            node: {
+              getattr: MEMFS.node_ops.getattr,
+              setattr: MEMFS.node_ops.setattr
+            },
+            stream: {
+              llseek: MEMFS.stream_ops.llseek,
+              read: MEMFS.stream_ops.read,
+              write: MEMFS.stream_ops.write,
+              mmap: MEMFS.stream_ops.mmap,
+              msync: MEMFS.stream_ops.msync
+            }
+          },
+          link: {
+            node: {
+              getattr: MEMFS.node_ops.getattr,
+              setattr: MEMFS.node_ops.setattr,
+              readlink: MEMFS.node_ops.readlink
+            },
+            stream: {}
+          },
+          chrdev: {
+            node: {
+              getattr: MEMFS.node_ops.getattr,
+              setattr: MEMFS.node_ops.setattr
+            },
+            stream: FS.chrdev_stream_ops
+          }
+        });
+        var node = FS.createNode(parent, name, mode, dev);
+        if (FS.isDir(node.mode)) {
+          node.node_ops = MEMFS.ops_table.dir.node;
+          node.stream_ops = MEMFS.ops_table.dir.stream;
+          node.contents = {};
+        } else if (FS.isFile(node.mode)) {
+          var _MEMFS$emptyFileConte;
+          node.node_ops = MEMFS.ops_table.file.node;
+          node.stream_ops = MEMFS.ops_table.file.stream;
+          node.usedBytes = 0;
+          node.contents = (_MEMFS$emptyFileConte = MEMFS.emptyFileContents) !== null && _MEMFS$emptyFileConte !== void 0 ? _MEMFS$emptyFileConte : MEMFS.emptyFileContents = new Uint8Array(0);
+        } else if (FS.isLink(node.mode)) {
+          node.node_ops = MEMFS.ops_table.link.node;
+          node.stream_ops = MEMFS.ops_table.link.stream;
+        } else if (FS.isChrdev(node.mode)) {
+          node.node_ops = MEMFS.ops_table.chrdev.node;
+          node.stream_ops = MEMFS.ops_table.chrdev.stream;
+        }
+        node.atime = node.mtime = node.ctime = Date.now();
+        if (parent) {
+          parent.contents[name] = node;
+          parent.atime = parent.mtime = parent.ctime = node.atime;
+        }
+        return node;
+      },
+      getFileDataAsTypedArray(node) {
+        return node.contents.subarray(0, node.usedBytes);
+      },
+      expandFileStorage(node, newCapacity) {
+        var prevCapacity = node.contents.length;
+        if (prevCapacity >= newCapacity) return;
+        newCapacity = Math.max(newCapacity, prevCapacity * (prevCapacity < 1048576 ? 2 : 1.125) >>> 0);
+        if (prevCapacity) newCapacity = Math.max(newCapacity, 256);
+        var oldContents = MEMFS.getFileDataAsTypedArray(node);
+        node.contents = new Uint8Array(newCapacity);
+        node.contents.set(oldContents);
+      },
+      resizeFileStorage(node, newSize) {
+        if (node.usedBytes == newSize) return;
+        var oldContents = node.contents;
+        node.contents = new Uint8Array(newSize);
+        node.contents.set(oldContents.subarray(0, Math.min(newSize, node.usedBytes)));
+        node.usedBytes = newSize;
+      },
+      node_ops: {
+        getattr(node) {
+          var attr = {};
+          attr.dev = FS.isChrdev(node.mode) ? node.id : 1;
+          attr.ino = node.id;
+          attr.mode = node.mode;
+          attr.nlink = 1;
+          attr.uid = 0;
+          attr.gid = 0;
+          attr.rdev = node.rdev;
+          if (FS.isDir(node.mode)) attr.size = 4096;else if (FS.isFile(node.mode)) attr.size = node.usedBytes;else if (FS.isLink(node.mode)) attr.size = node.link.length;else attr.size = 0;
+          attr.atime = new Date(node.atime);
+          attr.mtime = new Date(node.mtime);
+          attr.ctime = new Date(node.ctime);
+          attr.blksize = 4096;
+          attr.blocks = Math.ceil(attr.size / attr.blksize);
+          return attr;
+        },
+        setattr(node, attr) {
+          for (const key of ["mode", "atime", "mtime", "ctime"]) if (attr[key] != null) node[key] = attr[key];
+          if (attr.size !== void 0) MEMFS.resizeFileStorage(node, attr.size);
+        },
+        lookup(parent, name) {
+          if (!MEMFS.doesNotExistError) {
+            MEMFS.doesNotExistError = new FS.ErrnoError(44);
+            MEMFS.doesNotExistError.stack = "<generic error, no stack>";
+          }
+          throw MEMFS.doesNotExistError;
+        },
+        mknod(parent, name, mode, dev) {
+          return MEMFS.createNode(parent, name, mode, dev);
+        },
+        rename(old_node, new_dir, new_name) {
+          var new_node;
+          try {
+            new_node = FS.lookupNode(new_dir, new_name);
+          } catch (e) {}
+          if (new_node && FS.isDir(old_node.mode)) for (var i in new_node.contents) throw new FS.ErrnoError(55);
+          delete old_node.parent.contents[old_node.name];
+          new_dir.contents[new_name] = old_node;
+          old_node.name = new_name;
+          new_dir.ctime = new_dir.mtime = old_node.parent.ctime = old_node.parent.mtime = Date.now();
+        },
+        unlink(parent, name) {
+          delete parent.contents[name];
+          parent.ctime = parent.mtime = Date.now();
+        },
+        rmdir(parent, name) {
+          var node = FS.lookupNode(parent, name);
+          for (var i in node.contents) throw new FS.ErrnoError(55);
+          delete parent.contents[name];
+          parent.ctime = parent.mtime = Date.now();
+        },
+        readdir(node) {
+          return [".", "..", ...Object.keys(node.contents)];
+        },
+        symlink(parent, newname, oldpath) {
+          var node = MEMFS.createNode(parent, newname, 41471, 0);
+          node.link = oldpath;
+          return node;
+        },
+        readlink(node) {
+          if (!FS.isLink(node.mode)) throw new FS.ErrnoError(28);
+          return node.link;
+        }
+      },
+      stream_ops: {
+        read(stream, buffer, offset, length, position) {
+          var contents = stream.node.contents;
+          if (position >= stream.node.usedBytes) return 0;
+          var size = Math.min(stream.node.usedBytes - position, length);
+          buffer.set(contents.subarray(position, position + size), offset);
+          return size;
+        },
+        write(stream, buffer, offset, length, position, canOwn) {
+          if (buffer.buffer === HEAP8.buffer) canOwn = false;
+          if (!length) return 0;
+          var node = stream.node;
+          node.mtime = node.ctime = Date.now();
+          if (canOwn) {
+            node.contents = buffer.subarray(offset, offset + length);
+            node.usedBytes = length;
+          } else if (!node.usedBytes && !position) {
+            node.contents = buffer.slice(offset, offset + length);
+            node.usedBytes = length;
+          } else {
+            MEMFS.expandFileStorage(node, position + length);
+            node.contents.set(buffer.subarray(offset, offset + length), position);
+            node.usedBytes = Math.max(node.usedBytes, position + length);
+          }
+          return length;
+        },
+        llseek(stream, offset, whence) {
+          var position = offset;
+          if (whence === 1) position += stream.position;else if (whence === 2) if (FS.isFile(stream.node.mode)) position += stream.node.usedBytes;
+          if (position < 0) throw new FS.ErrnoError(28);
+          return position;
+        },
+        mmap(stream, length, position, prot, flags) {
+          if (!FS.isFile(stream.node.mode)) throw new FS.ErrnoError(43);
+          var ptr;
+          var allocated;
+          var contents = stream.node.contents;
+          if (!(flags & 2) && contents.buffer === HEAP8.buffer) {
+            allocated = false;
+            ptr = contents.byteOffset;
+          } else {
+            allocated = true;
+            ptr = mmapAlloc();
+            if (!ptr) throw new FS.ErrnoError(48);
+            if (contents) {
+              if (position > 0 || position + length < contents.length) if (contents.subarray) contents = contents.subarray(position, position + length);else contents = contents.slice(position, position + length);
+              HEAP8.set(contents, ptr);
+            }
+          }
+          return {
+            ptr,
+            allocated
+          };
+        },
+        msync(stream, buffer, offset, length, mmapFlags) {
+          MEMFS.stream_ops.write(stream, buffer, 0, length, offset, false);
+          return 0;
+        }
+      }
+    };
+    var FS_stdin_getChar_buffer = [];
+    var FS_stdin_getChar = () => {
+      if (!FS_stdin_getChar_buffer.length) {
+        var _globalThis$window;
+        var result = null;
+        if (ENVIRONMENT_IS_NODE) {
+          var buf = Buffer.alloc(256);
+          var bytesRead = 0;
+          try {
+            bytesRead = fs.readSync(process.stdin.fd, buf, 0, 256);
+          } catch (e) {
+            if (e.toString().includes("EOF")) bytesRead = 0;else throw e;
+          }
+          if (bytesRead > 0) result = buf.toString("utf-8", 0, bytesRead);
+        } else if ((_globalThis$window = globalThis.window) !== null && _globalThis$window !== void 0 && _globalThis$window.prompt) {
+          result = window.prompt("Input: ");
+          if (result !== null) result += "\n";
+        }
+        if (!result) return null;
+        FS_stdin_getChar_buffer = intArrayFromString(result, true);
+      }
+      return FS_stdin_getChar_buffer.shift();
+    };
+    var UTF8Decoder = new TextDecoder();
+    var findStringEnd = (heapOrArray, idx, maxBytesToRead, ignoreNul) => {
+      var maxIdx = idx + maxBytesToRead;
+      if (ignoreNul) return maxIdx;
+      while (heapOrArray[idx] && !(idx >= maxIdx)) ++idx;
+      return idx;
+    };
+    var UTF8ArrayToString = (heapOrArray, idx = 0, maxBytesToRead, ignoreNul) => {
+      var endPtr = findStringEnd(heapOrArray, idx, maxBytesToRead, ignoreNul);
+      return UTF8Decoder.decode(heapOrArray.buffer ? heapOrArray.subarray(idx, endPtr) : new Uint8Array(heapOrArray.slice(idx, endPtr)));
+    };
+    var TTY = {
+      ttys: [],
+      init() {},
+      shutdown() {},
+      register(dev, ops) {
+        TTY.ttys[dev] = {
+          input: [],
+          output: [],
+          ops
+        };
+        FS.registerDevice(dev, TTY.stream_ops);
+      },
+      stream_ops: {
+        open(stream) {
+          var tty = TTY.ttys[stream.node.rdev];
+          if (!tty) throw new FS.ErrnoError(43);
+          stream.tty = tty;
+          stream.seekable = false;
+        },
+        close(stream) {
+          stream.tty.ops.fsync(stream.tty);
+        },
+        fsync(stream) {
+          stream.tty.ops.fsync(stream.tty);
+        },
+        read(stream, buffer, offset, length, pos) {
+          if (!stream.tty || !stream.tty.ops.get_char) throw new FS.ErrnoError(60);
+          var bytesRead = 0;
+          for (var i = 0; i < length; i++) {
+            var result;
+            try {
+              result = stream.tty.ops.get_char(stream.tty);
+            } catch (e) {
+              throw new FS.ErrnoError(29);
+            }
+            if (result === void 0 && !bytesRead) throw new FS.ErrnoError(6);
+            if (result === null || result === void 0) break;
+            bytesRead++;
+            buffer[offset + i] = result;
+            if (result === 10) break;
+          }
+          if (bytesRead) stream.node.atime = Date.now();
+          return bytesRead;
+        },
+        write(stream, buffer, offset, length, pos) {
+          if (!stream.tty || !stream.tty.ops.put_char) throw new FS.ErrnoError(60);
+          try {
+            for (var i = 0; i < length; i++) stream.tty.ops.put_char(stream.tty, buffer[offset + i]);
+          } catch (e) {
+            throw new FS.ErrnoError(29);
+          }
+          if (length) stream.node.mtime = stream.node.ctime = Date.now();
+          return i;
+        }
+      },
+      default_tty_ops: {
+        get_char(tty) {
+          return FS_stdin_getChar();
+        },
+        put_char(tty, val) {
+          if (val === null || val === 10) {
+            out(UTF8ArrayToString(tty.output));
+            tty.output = [];
+          } else if (val != 0) tty.output.push(val);
+        },
+        fsync(tty) {
+          var _tty$output;
+          if (((_tty$output = tty.output) === null || _tty$output === void 0 ? void 0 : _tty$output.length) > 0) {
+            out(UTF8ArrayToString(tty.output));
+            tty.output = [];
+          }
+        },
+        ioctl_tcgets(tty) {
+          return {
+            c_iflag: 25856,
+            c_oflag: 5,
+            c_cflag: 191,
+            c_lflag: 35387,
+            c_cc: [3, 28, 127, 21, 4, 0, 1, 0, 17, 19, 26, 0, 18, 15, 23, 22, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+          };
+        },
+        ioctl_tcsets(tty, optional_actions, data) {
+          return 0;
+        },
+        ioctl_tiocgwinsz(tty) {
+          return [24, 80];
+        }
+      },
+      default_tty1_ops: {
+        put_char(tty, val) {
+          if (val === null || val === 10) {
+            err(UTF8ArrayToString(tty.output));
+            tty.output = [];
+          } else if (val != 0) tty.output.push(val);
+        },
+        fsync(tty) {
+          var _tty$output2;
+          if (((_tty$output2 = tty.output) === null || _tty$output2 === void 0 ? void 0 : _tty$output2.length) > 0) {
+            err(UTF8ArrayToString(tty.output));
+            tty.output = [];
+          }
+        }
+      }
+    };
+    var initRandomFill = () => {
+      if (ENVIRONMENT_IS_NODE) {
+        var nodeCrypto = require("node:crypto");
+        return view => (nodeCrypto.randomFillSync(view), 0);
+      }
+      return view => (crypto.getRandomValues(view), 0);
+    };
+    var randomFill = view => (randomFill = initRandomFill())(view);
+    var FS = {
+      root: null,
+      mounts: [],
+      devices: {},
+      streams: [],
+      nextInode: 1,
+      nameTable: [],
+      currentPath: "/",
+      initialized: false,
+      ignorePermissions: true,
+      syncFSRequests: 0,
+      ErrnoError: class ErrnoError {
+        constructor(errno) {
+          _defineProperty(this, "name", "ErrnoError");
+          this.errno = errno;
+        }
+      },
+      FSStream: class FSStream {
+        constructor() {
+          _defineProperty(this, "shared", {});
+        }
+        get object() {
+          return this.node;
+        }
+        set object(val) {
+          this.node = val;
+        }
+        get isRead() {
+          return (this.flags & 2097155) !== 1;
+        }
+        get isWrite() {
+          return (this.flags & 2097155) !== 0;
+        }
+        get isAppend() {
+          return this.flags & 1024;
+        }
+        get flags() {
+          return this.shared.flags;
+        }
+        set flags(val) {
+          this.shared.flags = val;
+        }
+        get position() {
+          return this.shared.position;
+        }
+        set position(val) {
+          this.shared.position = val;
+        }
+      },
+      FSNode: class FSNode {
+        constructor(parent, name, mode, rdev) {
+          _defineProperty(this, "node_ops", {});
+          _defineProperty(this, "stream_ops", {});
+          _defineProperty(this, "readMode", 365);
+          _defineProperty(this, "writeMode", 146);
+          _defineProperty(this, "mounted", null);
+          if (!parent) parent = this;
+          this.parent = parent;
+          this.mount = parent.mount;
+          this.id = FS.nextInode++;
+          this.name = name;
+          this.mode = mode;
+          this.rdev = rdev;
+          this.atime = this.mtime = this.ctime = Date.now();
+        }
+        get read() {
+          return (this.mode & this.readMode) === this.readMode;
+        }
+        set read(val) {
+          val ? this.mode |= this.readMode : this.mode &= ~this.readMode;
+        }
+        get write() {
+          return (this.mode & this.writeMode) === this.writeMode;
+        }
+        set write(val) {
+          val ? this.mode |= this.writeMode : this.mode &= ~this.writeMode;
+        }
+        get isFolder() {
+          return FS.isDir(this.mode);
+        }
+        get isDevice() {
+          return FS.isChrdev(this.mode);
+        }
+        addListener(cb, exclusive = false) {
+          var _this$listeners;
+          var entry = {
+            cb,
+            exclusive
+          };
+          var listeners = (_this$listeners = this.listeners) !== null && _this$listeners !== void 0 ? _this$listeners : this.listeners = new Set();
+          listeners.add(entry);
+          return {
+            listeners,
+            entry
+          };
+        }
+        notifyListeners(flags) {
+          if (!this.listeners) return;
+          var excl;
+          for (var entry of this.listeners) if (entry.exclusive) (excl || (excl = [])).push(entry);else entry.cb(flags);
+          if (excl) {
+            var i = (this.exclTurn || 0) % excl.length;
+            this.exclTurn = i + 1;
+            excl[i].cb(flags);
+          }
+        }
+      },
+      lookupPath(path, opts = {}) {
+        var _opts$follow_mount;
+        if (!path) throw new FS.ErrnoError(44);
+        (_opts$follow_mount = opts.follow_mount) !== null && _opts$follow_mount !== void 0 ? _opts$follow_mount : opts.follow_mount = true;
+        if (!PATH.isAbs(path)) path = FS.cwd() + "/" + path;
+        linkloop: for (var nlinks = 0; nlinks < 40; nlinks++) {
+          var parts = path.split("/").filter(p => !!p);
+          var current = FS.root;
+          var current_path = "/";
+          for (var i = 0; i < parts.length; i++) {
+            var islast = i === parts.length - 1;
+            if (islast && opts.parent) break;
+            if (parts[i] === ".") continue;
+            if (parts[i] === "..") {
+              current_path = PATH.dirname(current_path);
+              if (FS.isRoot(current)) {
+                path = current_path + "/" + parts.slice(i + 1).join("/");
+                nlinks--;
+                continue linkloop;
+              } else current = current.parent;
+              continue;
+            }
+            current_path = PATH.join2(current_path, parts[i]);
+            try {
+              current = FS.lookupNode(current, parts[i]);
+            } catch (e) {
+              if ((e === null || e === void 0 ? void 0 : e.errno) === 44 && islast && opts.noent_okay) return {
+                path: current_path
+              };
+              throw e;
+            }
+            if (FS.isMountpoint(current) && (!islast || opts.follow_mount)) current = current.mounted.root;
+            if (FS.isLink(current.mode) && (!islast || opts.follow)) {
+              if (!current.node_ops.readlink) throw new FS.ErrnoError(52);
+              var link = current.node_ops.readlink(current);
+              if (!PATH.isAbs(link)) link = PATH.dirname(current_path) + "/" + link;
+              path = link + "/" + parts.slice(i + 1).join("/");
+              continue linkloop;
+            }
+          }
+          return {
+            path: current_path,
+            node: current
+          };
+        }
+        throw new FS.ErrnoError(32);
+      },
+      getPath(node) {
+        var path;
+        while (true) {
+          if (FS.isRoot(node)) {
+            var mount = node.mount.mountpoint;
+            if (!path) return mount;
+            return mount[mount.length - 1] !== "/" ? `${mount}/${path}` : mount + path;
+          }
+          path = path ? `${node.name}/${path}` : node.name;
+          node = node.parent;
+        }
+      },
+      hashName(parentid, name) {
+        var hash = 0;
+        for (var i = 0; i < name.length; i++) hash = (hash << 5) - hash + name.charCodeAt(i) | 0;
+        return (parentid + hash >>> 0) % FS.nameTable.length;
+      },
+      hashAddNode(node) {
+        var hash = FS.hashName(node.parent.id, node.name);
+        node.name_next = FS.nameTable[hash];
+        FS.nameTable[hash] = node;
+      },
+      hashRemoveNode(node) {
+        var hash = FS.hashName(node.parent.id, node.name);
+        if (FS.nameTable[hash] === node) FS.nameTable[hash] = node.name_next;else {
+          var current = FS.nameTable[hash];
+          while (current) {
+            if (current.name_next === node) {
+              current.name_next = node.name_next;
+              break;
+            }
+            current = current.name_next;
+          }
+        }
+      },
+      lookupNode(parent, name) {
+        var errCode = FS.mayLookup(parent);
+        if (errCode) throw new FS.ErrnoError(errCode);
+        var hash = FS.hashName(parent.id, name);
+        for (var node = FS.nameTable[hash]; node; node = node.name_next) {
+          var nodeName = node.name;
+          if (node.parent.id === parent.id && nodeName === name) return node;
+        }
+        return FS.lookup(parent, name);
+      },
+      createNode(parent, name, mode, rdev) {
+        var node = new FS.FSNode(parent, name, mode, rdev);
+        FS.hashAddNode(node);
+        return node;
+      },
+      destroyNode(node) {
+        FS.hashRemoveNode(node);
+      },
+      isRoot(node) {
+        return node === node.parent;
+      },
+      isMountpoint(node) {
+        return !!node.mounted;
+      },
+      isFile(mode) {
+        return (mode & 61440) === 32768;
+      },
+      isDir(mode) {
+        return (mode & 61440) === 16384;
+      },
+      isLink(mode) {
+        return (mode & 61440) === 40960;
+      },
+      isChrdev(mode) {
+        return (mode & 61440) === 8192;
+      },
+      isBlkdev(mode) {
+        return (mode & 61440) === 24576;
+      },
+      isFIFO(mode) {
+        return (mode & 61440) === 4096;
+      },
+      isSocket(mode) {
+        return (mode & 49152) === 49152;
+      },
+      flagsToPermissionString(flag) {
+        var perms = ["r", "w", "rw"][flag & 3];
+        if (flag & 512) perms += "w";
+        return perms;
+      },
+      nodePermissions(node, perms) {
+        if (FS.ignorePermissions) return 0;
+        if (perms.includes("r") && !(node.mode & 292)) return 2;
+        if (perms.includes("w") && !(node.mode & 146)) return 2;
+        if (perms.includes("x") && !(node.mode & 73)) return 2;
+        return 0;
+      },
+      mayLookup(dir) {
+        if (!FS.isDir(dir.mode)) return 54;
+        var errCode = FS.nodePermissions(dir, "x");
+        if (errCode) return errCode;
+        if (!dir.node_ops.lookup) return 2;
+        return 0;
+      },
+      mayCreate(dir, name) {
+        if (!FS.isDir(dir.mode)) return 54;
+        try {
+          FS.lookupNode(dir, name);
+          return 20;
+        } catch (e) {}
+        return FS.nodePermissions(dir, "wx");
+      },
+      mayDelete(dir, name, isdir) {
+        var node;
+        try {
+          node = FS.lookupNode(dir, name);
+        } catch (e) {
+          return e.errno;
+        }
+        var errCode = FS.nodePermissions(dir, "wx");
+        if (errCode) return errCode;
+        if (isdir) {
+          if (!FS.isDir(node.mode)) return 54;
+          if (FS.isRoot(node) || FS.getPath(node) === FS.cwd()) return 10;
+        } else if (FS.isDir(node.mode)) return 31;
+        return 0;
+      },
+      mayOpen(node, flags) {
+        if (!node) return 44;
+        if (FS.isLink(node.mode)) return 32;
+        var mode = FS.flagsToPermissionString(flags);
+        if (FS.isDir(node.mode)) if (mode !== "r" || flags & 576) return 31;
+        return FS.nodePermissions(node, mode);
+      },
+      checkOpExists(op, err) {
+        if (!op) throw new FS.ErrnoError(err);
+        return op;
+      },
+      nextfd() {
+        for (var fd = 0; fd <= 4096; fd++) if (!FS.streams[fd]) return fd;
+        throw new FS.ErrnoError(33);
+      },
+      getStreamChecked(fd) {
+        var stream = FS.getStream(fd);
+        if (!stream) throw new FS.ErrnoError(8);
+        return stream;
+      },
+      getStream: fd => FS.streams[fd],
+      createStream(stream, fd = -1) {
+        stream = Object.assign(new FS.FSStream(), stream);
+        if (fd == -1) fd = FS.nextfd();
+        stream.fd = fd;
+        FS.streams[fd] = stream;
+        return stream;
+      },
+      closeStream(fd) {
+        FS.streams[fd] = null;
+      },
+      dupStream(origStream, fd = -1) {
+        var _stream$stream_ops, _stream$stream_ops$du;
+        var stream = FS.createStream(origStream, fd);
+        (_stream$stream_ops = stream.stream_ops) === null || _stream$stream_ops === void 0 || (_stream$stream_ops$du = _stream$stream_ops.dup) === null || _stream$stream_ops$du === void 0 || _stream$stream_ops$du.call(_stream$stream_ops, stream);
+        return stream;
+      },
+      doSetAttr(stream, node, attr) {
+        var setattr = stream === null || stream === void 0 ? void 0 : stream.stream_ops.setattr;
+        var arg = setattr ? stream : node;
+        setattr !== null && setattr !== void 0 ? setattr : setattr = node.node_ops.setattr;
+        FS.checkOpExists(setattr, 63);
+        try {
+          setattr(arg, attr);
+        } catch (e) {
+          if (e instanceof RangeError) throw new FS.ErrnoError(22);
+          throw e;
+        }
+      },
+      chrdev_stream_ops: {
+        open(stream) {
+          var _stream$stream_ops$op, _stream$stream_ops2;
+          var device = FS.getDevice(stream.node.rdev);
+          stream.stream_ops = device.stream_ops;
+          (_stream$stream_ops$op = (_stream$stream_ops2 = stream.stream_ops).open) === null || _stream$stream_ops$op === void 0 || _stream$stream_ops$op.call(_stream$stream_ops2, stream);
+        },
+        llseek() {
+          throw new FS.ErrnoError(70);
+        }
+      },
+      major: dev => dev >> 8,
+      minor: dev => dev & 255,
+      makedev: (ma, mi) => ma << 8 | mi,
+      registerDevice(dev, ops) {
+        FS.devices[dev] = {
+          stream_ops: ops
+        };
+      },
+      getDevice: dev => FS.devices[dev],
+      getMounts(mount) {
+        var mounts = [];
+        var check = [mount];
+        while (check.length) {
+          var m = check.pop();
+          mounts.push(m);
+          check.push(...m.mounts);
+        }
+        return mounts;
+      },
+      syncfs(populate, callback) {
+        if (typeof populate === "function") {
+          callback = populate;
+          populate = false;
+        }
+        FS.syncFSRequests++;
+        if (FS.syncFSRequests > 1) err(`warning: ${FS.syncFSRequests} FS.syncfs operations in flight at once, probably just doing extra work`);
+        var mounts = FS.getMounts(FS.root.mount);
+        var completed = 0;
+        function doCallback(errCode) {
+          FS.syncFSRequests--;
+          return callback(errCode);
+        }
+        function done(errCode) {
+          if (errCode) {
+            if (!done.errored) {
+              done.errored = true;
+              return doCallback(errCode);
+            }
+            return;
+          }
+          if (++completed >= mounts.length) doCallback(null);
+        }
+        for (var mount of mounts) if (mount.type.syncfs) mount.type.syncfs(mount, populate, done);else done(null);
+      },
+      mount(type, opts, mountpoint) {
+        var root = mountpoint === "/";
+        var pseudo = !mountpoint;
+        var node;
+        if (root && FS.root) throw new FS.ErrnoError(10);else if (!root && !pseudo) {
+          var lookup = FS.lookupPath(mountpoint, {
+            follow_mount: false
+          });
+          mountpoint = lookup.path;
+          node = lookup.node;
+          if (FS.isMountpoint(node)) throw new FS.ErrnoError(10);
+          if (!FS.isDir(node.mode)) throw new FS.ErrnoError(54);
+        }
+        var mount = {
+          type,
+          opts,
+          mountpoint,
+          mounts: []
+        };
+        var mountRoot = type.mount(mount);
+        mountRoot.mount = mount;
+        mount.root = mountRoot;
+        if (root) FS.root = mountRoot;else if (node) {
+          node.mounted = mount;
+          if (node.mount) node.mount.mounts.push(mount);
+        }
+        return mountRoot;
+      },
+      unmount(mountpoint) {
+        var lookup = FS.lookupPath(mountpoint, {
+          follow_mount: false
+        });
+        if (!FS.isMountpoint(lookup.node)) throw new FS.ErrnoError(28);
+        var node = lookup.node;
+        var mount = node.mounted;
+        var mounts = FS.getMounts(mount);
+        for (var [hash, current] of Object.entries(FS.nameTable)) while (current) {
+          var next = current.name_next;
+          if (mounts.includes(current.mount)) FS.destroyNode(current);
+          current = next;
+        }
+        node.mounted = null;
+        var idx = node.mount.mounts.indexOf(mount);
+        node.mount.mounts.splice(idx, 1);
+      },
+      lookup(parent, name) {
+        return parent.node_ops.lookup(parent, name);
+      },
+      mknod(path, mode, dev) {
+        var lookup = FS.lookupPath(path, {
+          parent: true
+        });
+        var parent = lookup.node;
+        var name = PATH.basename(path);
+        if (!name) throw new FS.ErrnoError(28);
+        if (name === "." || name === "..") throw new FS.ErrnoError(20);
+        var errCode = FS.mayCreate(parent, name);
+        if (errCode) throw new FS.ErrnoError(errCode);
+        if (!parent.node_ops.mknod) throw new FS.ErrnoError(63);
+        return parent.node_ops.mknod(parent, name, mode, dev);
+      },
+      statfs(path) {
+        return FS.statfsNode(FS.lookupPath(path, {
+          follow: true
+        }).node);
+      },
+      statfsStream(stream) {
+        return FS.statfsNode(stream.node);
+      },
+      statfsNode(node) {
+        var rtn = {
+          bsize: 4096,
+          frsize: 4096,
+          blocks: 1e6,
+          bfree: 5e5,
+          bavail: 5e5,
+          files: FS.nextInode,
+          ffree: FS.nextInode - 1,
+          fsid: 42,
+          flags: 2,
+          namelen: 255
+        };
+        if (node.node_ops.statfs) Object.assign(rtn, node.node_ops.statfs(node.mount.opts.root));
+        return rtn;
+      },
+      create(path, mode = 438) {
+        mode &= 4095;
+        mode |= 32768;
+        return FS.mknod(path, mode, 0);
+      },
+      mkdir(path, mode = 511) {
+        mode &= 1023;
+        mode |= 16384;
+        return FS.mknod(path, mode, 0);
+      },
+      mkdirTree(path, mode = 511) {
+        var dirs = path.split("/");
+        var d = "";
+        for (var dir of dirs) {
+          if (!dir) continue;
+          if (d || PATH.isAbs(path)) d += "/";
+          d += dir;
+          try {
+            FS.mkdir(d, mode);
+          } catch (e) {
+            if (e.errno != 20) throw e;
+          }
+        }
+      },
+      mkdev(path, mode, dev) {
+        if (typeof dev === "undefined") {
+          dev = mode;
+          mode = 438;
+        }
+        mode |= 8192;
+        return FS.mknod(path, mode, dev);
+      },
+      symlink(oldpath, newpath) {
+        if (!PATH_FS.resolve(oldpath)) throw new FS.ErrnoError(44);
+        var lookup = FS.lookupPath(newpath, {
+          parent: true
+        });
+        var parent = lookup.node;
+        if (!parent) throw new FS.ErrnoError(44);
+        var newname = PATH.basename(newpath);
+        var errCode = FS.mayCreate(parent, newname);
+        if (errCode) throw new FS.ErrnoError(errCode);
+        if (!parent.node_ops.symlink) throw new FS.ErrnoError(63);
+        return parent.node_ops.symlink(parent, newname, oldpath);
+      },
+      link(oldpath, newpath, flags) {
+        var lookup = FS.lookupPath(newpath, {
+          parent: true
+        });
+        var parent = lookup.node;
+        if (!parent) throw new FS.ErrnoError(44);
+        var newname = PATH.basename(newpath);
+        var errCode = FS.mayCreate(parent, newname);
+        if (errCode) throw new FS.ErrnoError(errCode);
+        if (!parent.node_ops.link) throw new FS.ErrnoError(34);
+        return parent.node_ops.link(parent, newname, oldpath, flags);
+      },
+      rename(old_path, new_path) {
+        var old_dirname = PATH.dirname(old_path);
+        var new_dirname = PATH.dirname(new_path);
+        var old_name = PATH.basename(old_path);
+        var new_name = PATH.basename(new_path);
+        var lookup, old_dir, new_dir;
+        lookup = FS.lookupPath(old_path, {
+          parent: true
+        });
+        old_dir = lookup.node;
+        lookup = FS.lookupPath(new_path, {
+          parent: true
+        });
+        new_dir = lookup.node;
+        if (!old_dir || !new_dir) throw new FS.ErrnoError(44);
+        if (old_dir.mount !== new_dir.mount) throw new FS.ErrnoError(75);
+        var old_node = FS.lookupNode(old_dir, old_name);
+        var relative = PATH_FS.relative(old_path, new_dirname);
+        if (relative.charAt(0) !== ".") throw new FS.ErrnoError(28);
+        relative = PATH_FS.relative(new_path, old_dirname);
+        if (relative.charAt(0) !== ".") throw new FS.ErrnoError(55);
+        var new_node;
+        try {
+          new_node = FS.lookupNode(new_dir, new_name);
+        } catch (e) {}
+        if (old_node === new_node) return;
+        var isdir = FS.isDir(old_node.mode);
+        var errCode = FS.mayDelete(old_dir, old_name, isdir);
+        if (errCode) throw new FS.ErrnoError(errCode);
+        errCode = new_node ? FS.mayDelete(new_dir, new_name, isdir) : FS.mayCreate(new_dir, new_name);
+        if (errCode) throw new FS.ErrnoError(errCode);
+        if (!old_dir.node_ops.rename) throw new FS.ErrnoError(63);
+        if (FS.isMountpoint(old_node) || new_node && FS.isMountpoint(new_node)) throw new FS.ErrnoError(10);
+        if (new_dir !== old_dir) {
+          errCode = FS.nodePermissions(old_dir, "w");
+          if (errCode) throw new FS.ErrnoError(errCode);
+        }
+        FS.hashRemoveNode(old_node);
+        try {
+          old_dir.node_ops.rename(old_node, new_dir, new_name);
+          if (new_node) FS.hashRemoveNode(new_node);
+          old_node.parent = new_dir;
+        } catch (e) {
+          throw e;
+        } finally {
+          FS.hashAddNode(old_node);
+        }
+      },
+      rmdir(path) {
+        var lookup = FS.lookupPath(path, {
+          parent: true
+        });
+        var parent = lookup.node;
+        var name = PATH.basename(path);
+        var node = FS.lookupNode(parent, name);
+        var errCode = FS.mayDelete(parent, name, true);
+        if (errCode) throw new FS.ErrnoError(errCode);
+        if (!parent.node_ops.rmdir) throw new FS.ErrnoError(63);
+        if (FS.isMountpoint(node)) throw new FS.ErrnoError(10);
+        parent.node_ops.rmdir(parent, name);
+        FS.destroyNode(node);
+      },
+      readdir(path) {
+        var lookup = FS.lookupPath(path, {
+          follow: true
+        });
+        var node = lookup.node;
+        var readdir = FS.checkOpExists(node.node_ops.readdir, 54);
+        return readdir(node);
+      },
+      unlink(path) {
+        var lookup = FS.lookupPath(path, {
+          parent: true
+        });
+        var parent = lookup.node;
+        if (!parent) throw new FS.ErrnoError(44);
+        var name = PATH.basename(path);
+        var node = FS.lookupNode(parent, name);
+        var errCode = FS.mayDelete(parent, name, false);
+        if (errCode) throw new FS.ErrnoError(errCode);
+        if (!parent.node_ops.unlink) throw new FS.ErrnoError(63);
+        if (FS.isMountpoint(node)) throw new FS.ErrnoError(10);
+        parent.node_ops.unlink(parent, name);
+        FS.destroyNode(node);
+      },
+      readlink(path) {
+        var lookup = FS.lookupPath(path);
+        var link = lookup.node;
+        if (!link) throw new FS.ErrnoError(44);
+        if (!link.node_ops.readlink) throw new FS.ErrnoError(28);
+        return link.node_ops.readlink(link);
+      },
+      stat(path, dontFollow = false) {
+        var lookup = FS.lookupPath(path, {
+          follow: !dontFollow
+        });
+        var node = lookup.node;
+        var getattr = FS.checkOpExists(node.node_ops.getattr, 63);
+        return getattr(node);
+      },
+      fstat(fd) {
+        var stream = FS.getStreamChecked(fd);
+        var node = stream.node;
+        var getattr = stream.stream_ops.getattr;
+        var arg = getattr ? stream : node;
+        getattr !== null && getattr !== void 0 ? getattr : getattr = node.node_ops.getattr;
+        FS.checkOpExists(getattr, 63);
+        return getattr(arg);
+      },
+      lstat(path) {
+        return FS.stat(path, true);
+      },
+      doChmod(stream, node, mode, dontFollow = false) {
+        FS.doSetAttr(stream, node, {
+          mode: mode & 4095 | node.mode & -4096,
+          ctime: Date.now(),
+          dontFollow
+        });
+      },
+      chmod(path, mode, dontFollow = false) {
+        var node;
+        if (typeof path === "string") {
+          var lookup = FS.lookupPath(path, {
+            follow: !dontFollow
+          });
+          node = lookup.node;
+        } else node = path;
+        FS.doChmod(null, node, mode, dontFollow);
+      },
+      lchmod(path, mode) {
+        FS.chmod(path, mode, true);
+      },
+      fchmod(fd, mode) {
+        var stream = FS.getStreamChecked(fd);
+        FS.doChmod(stream, stream.node, mode, false);
+      },
+      doChown(stream, node, dontFollow = false) {
+        FS.doSetAttr(stream, node, {
+          timestamp: Date.now(),
+          dontFollow
+        });
+      },
+      chown(path, uid, gid, dontFollow = false) {
+        var node;
+        if (typeof path === "string") {
+          var lookup = FS.lookupPath(path, {
+            follow: !dontFollow
+          });
+          node = lookup.node;
+        } else node = path;
+        FS.doChown(null, node, dontFollow);
+      },
+      lchown(path, uid, gid) {
+        FS.chown(path, uid, gid, true);
+      },
+      fchown(fd, uid, gid) {
+        var stream = FS.getStreamChecked(fd);
+        FS.doChown(stream, stream.node, false);
+      },
+      doTruncate(stream, node, len) {
+        if (FS.isDir(node.mode)) throw new FS.ErrnoError(31);
+        if (!FS.isFile(node.mode)) throw new FS.ErrnoError(28);
+        var errCode = FS.nodePermissions(node, "w");
+        if (errCode) throw new FS.ErrnoError(errCode);
+        FS.doSetAttr(stream, node, {
+          size: len,
+          timestamp: Date.now()
+        });
+      },
+      truncate(path, len) {
+        if (len < 0) throw new FS.ErrnoError(28);
+        var node;
+        if (typeof path === "string") {
+          var lookup = FS.lookupPath(path, {
+            follow: true
+          });
+          node = lookup.node;
+        } else node = path;
+        FS.doTruncate(null, node, len);
+      },
+      ftruncate(fd, len) {
+        var stream = FS.getStreamChecked(fd);
+        if (len < 0 || (stream.flags & 2097155) === 0) throw new FS.ErrnoError(28);
+        FS.doTruncate(stream, stream.node, len);
+      },
+      utime(path, atime, mtime, dontFollow = false) {
+        var lookup = FS.lookupPath(path, {
+          follow: !dontFollow
+        });
+        FS.doSetAttr(null, lookup.node, {
+          atime,
+          mtime,
+          dontFollow
+        });
+      },
+      open(path, flags, mode = 438) {
+        if (path === "") throw new FS.ErrnoError(44);
+        flags = FS_modeStringToFlags(flags);
+        if (flags & 64) mode = mode & 4095 | 32768;else mode = 0;
+        var node;
+        var isDirPath;
+        if (typeof path === "object") node = path;else {
+          isDirPath = path.endsWith("/");
+          var lookup = FS.lookupPath(path, {
+            follow: !(flags & 131072),
+            noent_okay: true
+          });
+          node = lookup.node;
+          path = lookup.path;
+        }
+        var created = false;
+        if (flags & 64) if (node) {
+          if (flags & 128) throw new FS.ErrnoError(20);
+        } else if (isDirPath) throw new FS.ErrnoError(31);else {
+          node = FS.mknod(path, mode | 511, 0);
+          created = true;
+        }
+        if (!node) throw new FS.ErrnoError(44);
+        if (FS.isChrdev(node.mode)) flags &= -513;
+        if (flags & 65536 && !FS.isDir(node.mode)) throw new FS.ErrnoError(54);
+        if (!created) {
+          var errCode = FS.mayOpen(node, flags);
+          if (errCode) throw new FS.ErrnoError(errCode);
+        }
+        if (flags & 512 && !created) FS.truncate(node, 0);
+        flags &= -131713;
+        var stream = FS.createStream({
+          node,
+          path: FS.getPath(node),
+          flags,
+          seekable: true,
+          position: 0,
+          stream_ops: node.stream_ops,
+          ungotten: [],
+          error: false
+        });
+        if (stream.stream_ops.open) stream.stream_ops.open(stream);
+        if (created) FS.chmod(node, mode & 511);
+        return stream;
+      },
+      close(stream) {
+        var _stream$node;
+        if (FS.isClosed(stream)) throw new FS.ErrnoError(8);
+        if (stream.getdents) stream.getdents = null;
+        (_stream$node = stream.node) === null || _stream$node === void 0 || _stream$node.notifyListeners(32);
+        try {
+          if (stream.stream_ops.close) stream.stream_ops.close(stream);
+        } catch (e) {
+          throw e;
+        } finally {
+          FS.closeStream(stream.fd);
+        }
+        stream.fd = null;
+      },
+      isClosed(stream) {
+        return stream.fd === null;
+      },
+      llseek(stream, offset, whence) {
+        if (FS.isClosed(stream)) throw new FS.ErrnoError(8);
+        if (!stream.seekable || !stream.stream_ops.llseek) throw new FS.ErrnoError(70);
+        if (whence != 0 && whence != 1 && whence != 2) throw new FS.ErrnoError(28);
+        stream.position = stream.stream_ops.llseek(stream, offset, whence);
+        stream.ungotten = [];
+        return stream.position;
+      },
+      read(stream, buffer, offset, length, position) {
+        if (length < 0 || position < 0) throw new FS.ErrnoError(28);
+        if (FS.isClosed(stream)) throw new FS.ErrnoError(8);
+        if ((stream.flags & 2097155) === 1) throw new FS.ErrnoError(8);
+        if (FS.isDir(stream.node.mode)) throw new FS.ErrnoError(31);
+        if (!stream.stream_ops.read) throw new FS.ErrnoError(28);
+        var seeking = typeof position !== "undefined";
+        if (!seeking) position = stream.position;else if (!stream.seekable) throw new FS.ErrnoError(70);
+        var bytesRead = stream.stream_ops.read(stream, buffer, offset, length, position);
+        if (!seeking) stream.position += bytesRead;
+        return bytesRead;
+      },
+      write(stream, buffer, offset, length, position, canOwn) {
+        if (length < 0 || position < 0) throw new FS.ErrnoError(28);
+        if (FS.isClosed(stream)) throw new FS.ErrnoError(8);
+        if ((stream.flags & 2097155) === 0) throw new FS.ErrnoError(8);
+        if (FS.isDir(stream.node.mode)) throw new FS.ErrnoError(31);
+        if (!stream.stream_ops.write) throw new FS.ErrnoError(28);
+        if (stream.seekable && stream.flags & 1024) FS.llseek(stream, 0, 2);
+        var seeking = typeof position !== "undefined";
+        if (!seeking) position = stream.position;else if (!stream.seekable) throw new FS.ErrnoError(70);
+        var bytesWritten = stream.stream_ops.write(stream, buffer, offset, length, position, canOwn);
+        if (!seeking) stream.position += bytesWritten;
+        return bytesWritten;
+      },
+      mmap(stream, length, position, prot, flags) {
+        if (prot & 2 && !(flags & 2) && (stream.flags & 2097155) !== 2) throw new FS.ErrnoError(2);
+        if ((stream.flags & 2097155) === 1) throw new FS.ErrnoError(2);
+        if (!stream.stream_ops.mmap) throw new FS.ErrnoError(43);
+        if (!length) throw new FS.ErrnoError(28);
+        return stream.stream_ops.mmap(stream, length, position, prot, flags);
+      },
+      msync(stream, buffer, offset, length, mmapFlags) {
+        if (!stream.stream_ops.msync) return 0;
+        return stream.stream_ops.msync(stream, buffer, offset, length, mmapFlags);
+      },
+      ioctl(stream, cmd, arg) {
+        if (!stream.stream_ops.ioctl) throw new FS.ErrnoError(59);
+        return stream.stream_ops.ioctl(stream, cmd, arg);
+      },
+      readFile(path, opts = {}) {
+        var _opts$flags, _opts$encoding;
+        (_opts$flags = opts.flags) !== null && _opts$flags !== void 0 ? _opts$flags : opts.flags = 0;
+        (_opts$encoding = opts.encoding) !== null && _opts$encoding !== void 0 ? _opts$encoding : opts.encoding = "binary";
+        if (opts.encoding !== "utf8" && opts.encoding !== "binary") abort(`Invalid encoding type "${opts.encoding}"`);
+        var stream = FS.open(path, opts.flags);
+        var stat = FS.stat(path);
+        var length = stat.size;
+        var buf = new Uint8Array(length);
+        FS.read(stream, buf, 0, length, 0);
+        if (opts.encoding === "utf8") buf = UTF8ArrayToString(buf);
+        FS.close(stream);
+        return buf;
+      },
+      writeFile(path, data, opts = {}) {
+        var _opts$flags2;
+        (_opts$flags2 = opts.flags) !== null && _opts$flags2 !== void 0 ? _opts$flags2 : opts.flags = 577;
+        var stream = FS.open(path, opts.flags, opts.mode);
+        data = FS_fileDataToTypedArray(data);
+        FS.write(stream, data, 0, data.byteLength, void 0, opts.canOwn);
+        FS.close(stream);
+      },
+      cwd: () => FS.currentPath,
+      chdir(path) {
+        var lookup = FS.lookupPath(path, {
+          follow: true
+        });
+        if (lookup.node === null) throw new FS.ErrnoError(44);
+        if (!FS.isDir(lookup.node.mode)) throw new FS.ErrnoError(54);
+        var errCode = FS.nodePermissions(lookup.node, "x");
+        if (errCode) throw new FS.ErrnoError(errCode);
+        FS.currentPath = lookup.path;
+      },
+      createDefaultDirectories() {
+        FS.mkdir("/tmp");
+        FS.mkdir("/home");
+        FS.mkdir("/home/web_user");
+      },
+      createDefaultDevices() {
+        FS.mkdir("/dev");
+        FS.registerDevice(FS.makedev(1, 3), {
+          read: () => 0,
+          write: (stream, buffer, offset, length) => length,
+          llseek: () => 0
+        });
+        FS.mkdev("/dev/null", FS.makedev(1, 3));
+        TTY.register(FS.makedev(5, 0), TTY.default_tty_ops);
+        TTY.register(FS.makedev(6, 0), TTY.default_tty1_ops);
+        FS.mkdev("/dev/tty", FS.makedev(5, 0));
+        FS.mkdev("/dev/tty1", FS.makedev(6, 0));
+        var randomBuffer = new Uint8Array(1024),
+          randomLeft = 0;
+        var randomByte = () => {
+          if (!randomLeft) {
+            randomFill(randomBuffer);
+            randomLeft = randomBuffer.byteLength;
+          }
+          return randomBuffer[--randomLeft];
+        };
+        FS.createDevice("/dev", "random", randomByte);
+        FS.createDevice("/dev", "urandom", randomByte);
+        FS.mkdir("/dev/shm");
+        FS.mkdir("/dev/shm/tmp");
+      },
+      createSpecialDirectories() {
+        FS.mkdir("/proc");
+        var proc_self = FS.mkdir("/proc/self");
+        FS.mkdir("/proc/self/fd");
+        FS.mount({
+          mount() {
+            var node = FS.createNode(proc_self, "fd", 16895, 73);
+            node.stream_ops = {
+              llseek: MEMFS.stream_ops.llseek
+            };
+            node.node_ops = {
+              lookup(parent, name) {
+                var fd = +name;
+                var stream = FS.getStreamChecked(fd);
+                var ret = {
+                  parent: null,
+                  mount: {
+                    mountpoint: "fake"
+                  },
+                  node_ops: {
+                    readlink: () => stream.path
+                  },
+                  id: fd + 1
+                };
+                ret.parent = ret;
+                return ret;
+              },
+              readdir() {
+                return Array.from(FS.streams.entries()).filter(([k, v]) => v).map(([k, v]) => k.toString());
+              }
+            };
+            return node;
+          }
+        }, {}, "/proc/self/fd");
+      },
+      createStandardStreams(input, output, error) {
+        if (input) FS.createDevice("/dev", "stdin", input);else FS.symlink("/dev/tty", "/dev/stdin");
+        if (output) FS.createDevice("/dev", "stdout", null, output);else FS.symlink("/dev/tty", "/dev/stdout");
+        if (error) FS.createDevice("/dev", "stderr", null, error);else FS.symlink("/dev/tty1", "/dev/stderr");
+        FS.open("/dev/stdin", 0);
+        FS.open("/dev/stdout", 1);
+        FS.open("/dev/stderr", 1);
+      },
+      staticInit() {
+        FS.nameTable.length = 4096;
+        FS.mount(MEMFS, {}, "/");
+        FS.createDefaultDirectories();
+        FS.createDefaultDevices();
+        FS.createSpecialDirectories();
+      },
+      init(input, output, error) {
+        FS.initialized = true;
+        input !== null && input !== void 0 ? input : input = Module["stdin"];
+        output !== null && output !== void 0 ? output : output = Module["stdout"];
+        error !== null && error !== void 0 ? error : error = Module["stderr"];
+        FS.createStandardStreams(input, output, error);
+      },
+      quit() {
+        FS.initialized = false;
+        for (var stream of FS.streams) if (stream) FS.close(stream);
+      },
+      analyzePath(path, dontResolveLastLink = false) {
+        try {
+          var lookup = FS.lookupPath(path, {
+            follow: !dontResolveLastLink
+          });
+          path = lookup.path;
+        } catch (e) {}
+        var ret = {
+          isRoot: false,
+          exists: false,
+          error: 0,
+          name: null,
+          path: null,
+          object: null,
+          parentExists: false,
+          parentPath: null,
+          parentObject: null
+        };
+        try {
+          lookup = FS.lookupPath(path, {
+            parent: true
+          });
+          ret.parentExists = true;
+          ret.parentPath = lookup.path;
+          ret.parentObject = lookup.node;
+          ret.name = PATH.basename(path);
+          lookup = FS.lookupPath(path, {
+            follow: !dontResolveLastLink
+          });
+          ret.exists = true;
+          ret.path = lookup.path;
+          ret.object = lookup.node;
+          ret.name = lookup.node.name;
+          ret.isRoot = lookup.path === "/";
+        } catch (e) {
+          ret.error = e.errno;
+        }
+        return ret;
+      },
+      createPath(parent, path, canRead, canWrite) {
+        parent = typeof parent === "string" ? parent : FS.getPath(parent);
+        var parts = path.split("/").reverse();
+        while (parts.length) {
+          var part = parts.pop();
+          if (!part) continue;
+          var current = PATH.join2(parent, part);
+          try {
+            FS.mkdir(current);
+          } catch (e) {
+            if (e.errno != 20) throw e;
+          }
+          parent = current;
+        }
+        return current;
+      },
+      createFile(parent, name, properties, canRead, canWrite) {
+        var path = PATH.join2(typeof parent === "string" ? parent : FS.getPath(parent), name);
+        var mode = FS_getMode(canRead, canWrite);
+        return FS.create(path, mode);
+      },
+      createDataFile(parent, name, data, canRead, canWrite, canOwn) {
+        var path = name;
+        if (parent) {
+          parent = typeof parent === "string" ? parent : FS.getPath(parent);
+          path = name ? PATH.join2(parent, name) : parent;
+        }
+        var mode = FS_getMode(canRead, canWrite);
+        var node = FS.create(path, mode);
+        if (data) {
+          data = FS_fileDataToTypedArray(data);
+          FS.chmod(node, mode | 146);
+          var stream = FS.open(node, 577);
+          FS.write(stream, data, 0, data.length, 0, canOwn);
+          FS.close(stream);
+          FS.chmod(node, mode);
+        }
+      },
+      createDevice(parent, name, input, output) {
+        var _FS$createDevice, _FS$createDevice$majo;
+        var path = PATH.join2(typeof parent === "string" ? parent : FS.getPath(parent), name);
+        var mode = FS_getMode(!!input, !!output);
+        (_FS$createDevice$majo = (_FS$createDevice = FS.createDevice).major) !== null && _FS$createDevice$majo !== void 0 ? _FS$createDevice$majo : _FS$createDevice.major = 64;
+        var dev = FS.makedev(FS.createDevice.major++, 0);
+        FS.registerDevice(dev, {
+          open(stream) {
+            stream.seekable = false;
+          },
+          close(stream) {
+            var _output$buffer;
+            if (output !== null && output !== void 0 && (_output$buffer = output.buffer) !== null && _output$buffer !== void 0 && _output$buffer.length) output(10);
+          },
+          read(stream, buffer, offset, length, pos) {
+            var bytesRead = 0;
+            for (var i = 0; i < length; i++) {
+              var result;
+              try {
+                result = input();
+              } catch (e) {
+                throw new FS.ErrnoError(29);
+              }
+              if (result === void 0 && !bytesRead) throw new FS.ErrnoError(6);
+              if (result === null || result === void 0) break;
+              bytesRead++;
+              buffer[offset + i] = result;
+            }
+            if (bytesRead) stream.node.atime = Date.now();
+            return bytesRead;
+          },
+          write(stream, buffer, offset, length, pos) {
+            for (var i = 0; i < length; i++) try {
+              output(buffer[offset + i]);
+            } catch (e) {
+              throw new FS.ErrnoError(29);
+            }
+            if (length) stream.node.mtime = stream.node.ctime = Date.now();
+            return i;
+          }
+        });
+        return FS.mkdev(path, mode, dev);
+      },
+      forceLoadFile(obj) {
+        if (obj.isDevice || obj.isFolder || obj.link || obj.contents) return true;
+        if (globalThis.XMLHttpRequest) abort("Lazy loading should have been performed (contents set) in createLazyFile, but it was not. Lazy loading only works in web workers. Use --embed-file or --preload-file in emcc on the main thread.");else try {
+          obj.contents = readBinary(obj.url);
+        } catch (e) {
+          throw new FS.ErrnoError(29);
+        }
+      },
+      createLazyFile(parent, name, url, canRead, canWrite) {
+        class LazyUint8Array {
+          constructor() {
+            _defineProperty(this, "lengthKnown", false);
+            _defineProperty(this, "chunks", []);
+          }
+          get(idx) {
+            if (idx > this.length - 1 || idx < 0) return;
+            var chunkOffset = idx % this.chunkSize;
+            var chunkNum = idx / this.chunkSize | 0;
+            return this.getter(chunkNum)[chunkOffset];
+          }
+          setDataGetter(getter) {
+            this.getter = getter;
+          }
+          cacheLength() {
+            var xhr = new XMLHttpRequest();
+            xhr.open("HEAD", url, false);
+            xhr.send(null);
+            if (!(xhr.status >= 200 && xhr.status < 300 || xhr.status === 304)) abort(`Couldn't load ${url}. Status: ${xhr.status}`);
+            var datalength = Number(xhr.getResponseHeader("Content-length"));
+            var header;
+            var hasByteServing = (header = xhr.getResponseHeader("Accept-Ranges")) && header === "bytes";
+            var usesGzip = (header = xhr.getResponseHeader("Content-Encoding")) && header === "gzip";
+            var chunkSize = 1048576;
+            if (!hasByteServing) chunkSize = datalength;
+            var doXHR = (from, to) => {
+              var _xhr$responseText;
+              if (from > to) abort(`invalid range (${from}, ${to}) or no bytes requested!`);
+              if (to > datalength - 1) abort(`only ${datalength} bytes available! programmer error!`);
+              var xhr = new XMLHttpRequest();
+              xhr.open("GET", url, false);
+              if (datalength !== chunkSize) xhr.setRequestHeader("Range", `bytes=${from}-${to}`);
+              xhr.responseType = "arraybuffer";
+              if (xhr.overrideMimeType) xhr.overrideMimeType("text/plain; charset=x-user-defined");
+              xhr.send(null);
+              if (!(xhr.status >= 200 && xhr.status < 300 || xhr.status === 304)) abort(`Couldn't load ${url}. Status: ${xhr.status}`);
+              if (xhr.response !== void 0) return new Uint8Array(xhr.response || []);
+              return intArrayFromString((_xhr$responseText = xhr.responseText) !== null && _xhr$responseText !== void 0 ? _xhr$responseText : "", true);
+            };
+            var lazyArray = this;
+            lazyArray.setDataGetter(chunkNum => {
+              var start = chunkNum * chunkSize;
+              var end = (chunkNum + 1) * chunkSize - 1;
+              end = Math.min(end, datalength - 1);
+              if (typeof lazyArray.chunks[chunkNum] === "undefined") lazyArray.chunks[chunkNum] = doXHR(start, end);
+              if (typeof lazyArray.chunks[chunkNum] === "undefined") abort("doXHR failed!");
+              return lazyArray.chunks[chunkNum];
+            });
+            if (usesGzip || !datalength) {
+              chunkSize = datalength = 1;
+              datalength = this.getter(0).length;
+              chunkSize = datalength;
+              out("LazyFiles on gzip forces download of the whole file when length is accessed");
+            }
+            this._length = datalength;
+            this._chunkSize = chunkSize;
+            this.lengthKnown = true;
+          }
+          get length() {
+            if (!this.lengthKnown) this.cacheLength();
+            return this._length;
+          }
+          get chunkSize() {
+            if (!this.lengthKnown) this.cacheLength();
+            return this._chunkSize;
+          }
+        }
+        if (globalThis.XMLHttpRequest) {
+          if (!ENVIRONMENT_IS_WORKER) abort("Cannot do synchronous binary XHRs outside webworkers in modern browsers. Use --embed-file or --preload-file in emcc");
+          var lazyArray = new LazyUint8Array();
+          var properties = {
+            isDevice: false,
+            contents: lazyArray
+          };
+        } else properties = {
+          isDevice: false,
+          url
+        };
+        var node = FS.createFile(parent, name, properties, canRead, canWrite);
+        if (properties.contents) node.contents = properties.contents;else if (properties.url) {
+          node.contents = null;
+          node.url = properties.url;
+        }
+        Object.defineProperties(node, {
+          usedBytes: {
+            get: function () {
+              return this.contents.length;
+            }
+          }
+        });
+        var stream_ops = {};
+        for (const [key, fn] of Object.entries(node.stream_ops)) stream_ops[key] = (...args) => {
+          FS.forceLoadFile(node);
+          return fn(...args);
+        };
+        function writeChunks(stream, buffer, offset, length, position) {
+          var contents = stream.node.contents;
+          if (position >= contents.length) return 0;
+          var size = Math.min(contents.length - position, length);
+          if (contents.slice) for (var i = 0; i < size; i++) buffer[offset + i] = contents[position + i];else for (i = 0; i < size; i++) buffer[offset + i] = contents.get(position + i);
+          return size;
+        }
+        stream_ops.read = (stream, buffer, offset, length, position) => {
+          FS.forceLoadFile(node);
+          return writeChunks(stream, buffer, offset, length, position);
+        };
+        stream_ops.mmap = (stream, length, position) => {
+          FS.forceLoadFile(node);
+          var ptr = mmapAlloc();
+          if (!ptr) throw new FS.ErrnoError(48);
+          writeChunks(stream, HEAP8, ptr, length, position);
+          return {
+            ptr,
+            allocated: true
+          };
+        };
+        node.stream_ops = stream_ops;
+        return node;
+      }
+    };
+    var HEAP32;
+    var HEAPU32;
+    var HEAPU8;
+    var UTF8ToString = (ptr, maxBytesToRead, ignoreNul) => {
+      if (!ptr) return "";
+      var end = findStringEnd(HEAPU8, ptr, maxBytesToRead, ignoreNul);
+      var rtn = UTF8Decoder.decode(HEAPU8.subarray(ptr, end));
+      return rtn;
+    };
+    var SYSCALLS = {
+      currentUmask: 18,
+      calculateAt(dirfd, path, allowEmpty = false) {
+        if (PATH.isAbs(path)) return path;
+        var dir;
+        if (dirfd === -100) dir = FS.cwd();else {
+          var dirstream = SYSCALLS.getStreamFromFD(dirfd);
+          dir = dirstream.path;
+        }
+        if (path.length == 0) {
+          if (!allowEmpty) throw new FS.ErrnoError(44);
+          return dir;
+        }
+        return dir + "/" + path;
+      },
+      writeStat(buf, stat) {
+        HEAPU32[buf >> 2] = stat.dev;
+        HEAPU32[buf + 4 >> 2] = stat.mode;
+        HEAPU32[buf + 8 >> 2] = stat.nlink;
+        HEAPU32[buf + 12 >> 2] = stat.uid;
+        HEAPU32[buf + 16 >> 2] = stat.gid;
+        HEAPU32[buf + 20 >> 2] = stat.rdev;
+        tempI64 = [stat.size >>> 0, (tempDouble = stat.size, +Math.abs(tempDouble) >= 1 ? tempDouble > 0 ? +Math.floor(tempDouble / 4294967296) >>> 0 : ~~+Math.ceil((tempDouble - +(~~tempDouble >>> 0)) / 4294967296) >>> 0 : 0)], HEAP32[buf + 24 >> 2] = tempI64[0], HEAP32[buf + 28 >> 2] = tempI64[1];
+        HEAP32[buf + 32 >> 2] = 4096;
+        HEAP32[buf + 36 >> 2] = stat.blocks;
+        var atime = stat.atime.getTime();
+        var mtime = stat.mtime.getTime();
+        var ctime = stat.ctime.getTime();
+        tempI64 = [Math.floor(atime / 1e3) >>> 0, (tempDouble = Math.floor(atime / 1e3), +Math.abs(tempDouble) >= 1 ? tempDouble > 0 ? +Math.floor(tempDouble / 4294967296) >>> 0 : ~~+Math.ceil((tempDouble - +(~~tempDouble >>> 0)) / 4294967296) >>> 0 : 0)], HEAP32[buf + 40 >> 2] = tempI64[0], HEAP32[buf + 44 >> 2] = tempI64[1];
+        HEAPU32[buf + 48 >> 2] = atime % 1e3 * 1e3 * 1e3;
+        tempI64 = [Math.floor(mtime / 1e3) >>> 0, (tempDouble = Math.floor(mtime / 1e3), +Math.abs(tempDouble) >= 1 ? tempDouble > 0 ? +Math.floor(tempDouble / 4294967296) >>> 0 : ~~+Math.ceil((tempDouble - +(~~tempDouble >>> 0)) / 4294967296) >>> 0 : 0)], HEAP32[buf + 56 >> 2] = tempI64[0], HEAP32[buf + 60 >> 2] = tempI64[1];
+        HEAPU32[buf + 64 >> 2] = mtime % 1e3 * 1e3 * 1e3;
+        tempI64 = [Math.floor(ctime / 1e3) >>> 0, (tempDouble = Math.floor(ctime / 1e3), +Math.abs(tempDouble) >= 1 ? tempDouble > 0 ? +Math.floor(tempDouble / 4294967296) >>> 0 : ~~+Math.ceil((tempDouble - +(~~tempDouble >>> 0)) / 4294967296) >>> 0 : 0)], HEAP32[buf + 72 >> 2] = tempI64[0], HEAP32[buf + 76 >> 2] = tempI64[1];
+        HEAPU32[buf + 80 >> 2] = ctime % 1e3 * 1e3 * 1e3;
+        tempI64 = [stat.ino >>> 0, (tempDouble = stat.ino, +Math.abs(tempDouble) >= 1 ? tempDouble > 0 ? +Math.floor(tempDouble / 4294967296) >>> 0 : ~~+Math.ceil((tempDouble - +(~~tempDouble >>> 0)) / 4294967296) >>> 0 : 0)], HEAP32[buf + 88 >> 2] = tempI64[0], HEAP32[buf + 92 >> 2] = tempI64[1];
+        return 0;
+      },
+      writeStatFs(buf, stats) {
+        HEAPU32[buf + 4 >> 2] = stats.bsize;
+        HEAPU32[buf + 60 >> 2] = stats.bsize;
+        tempI64 = [stats.blocks >>> 0, (tempDouble = stats.blocks, +Math.abs(tempDouble) >= 1 ? tempDouble > 0 ? +Math.floor(tempDouble / 4294967296) >>> 0 : ~~+Math.ceil((tempDouble - +(~~tempDouble >>> 0)) / 4294967296) >>> 0 : 0)], HEAP32[buf + 8 >> 2] = tempI64[0], HEAP32[buf + 12 >> 2] = tempI64[1];
+        tempI64 = [stats.bfree >>> 0, (tempDouble = stats.bfree, +Math.abs(tempDouble) >= 1 ? tempDouble > 0 ? +Math.floor(tempDouble / 4294967296) >>> 0 : ~~+Math.ceil((tempDouble - +(~~tempDouble >>> 0)) / 4294967296) >>> 0 : 0)], HEAP32[buf + 16 >> 2] = tempI64[0], HEAP32[buf + 20 >> 2] = tempI64[1];
+        tempI64 = [stats.bavail >>> 0, (tempDouble = stats.bavail, +Math.abs(tempDouble) >= 1 ? tempDouble > 0 ? +Math.floor(tempDouble / 4294967296) >>> 0 : ~~+Math.ceil((tempDouble - +(~~tempDouble >>> 0)) / 4294967296) >>> 0 : 0)], HEAP32[buf + 24 >> 2] = tempI64[0], HEAP32[buf + 28 >> 2] = tempI64[1];
+        tempI64 = [stats.files >>> 0, (tempDouble = stats.files, +Math.abs(tempDouble) >= 1 ? tempDouble > 0 ? +Math.floor(tempDouble / 4294967296) >>> 0 : ~~+Math.ceil((tempDouble - +(~~tempDouble >>> 0)) / 4294967296) >>> 0 : 0)], HEAP32[buf + 32 >> 2] = tempI64[0], HEAP32[buf + 36 >> 2] = tempI64[1];
+        tempI64 = [stats.ffree >>> 0, (tempDouble = stats.ffree, +Math.abs(tempDouble) >= 1 ? tempDouble > 0 ? +Math.floor(tempDouble / 4294967296) >>> 0 : ~~+Math.ceil((tempDouble - +(~~tempDouble >>> 0)) / 4294967296) >>> 0 : 0)], HEAP32[buf + 40 >> 2] = tempI64[0], HEAP32[buf + 44 >> 2] = tempI64[1];
+        HEAPU32[buf + 48 >> 2] = stats.fsid;
+        HEAPU32[buf + 64 >> 2] = stats.flags;
+        HEAPU32[buf + 56 >> 2] = stats.namelen;
+      },
+      doMsync(addr, stream, len, flags, offset) {
+        if (!FS.isFile(stream.node.mode)) throw new FS.ErrnoError(43);
+        if (flags & 2) return 0;
+        var buffer = HEAPU8.subarray(addr, addr + len);
+        FS.msync(stream, buffer, offset, len, flags);
+      },
+      getStreamFromFD(fd) {
+        var stream = FS.getStreamChecked(fd);
+        return stream;
+      },
+      varargs: void 0,
+      getStr(ptr) {
+        var ret = UTF8ToString(ptr);
+        return ret;
+      }
+    };
+    var HEAP16;
+    var syscallGetVarargI = () => {
+      var ret = HEAP32[+SYSCALLS.varargs >> 2];
+      SYSCALLS.varargs += 4;
+      return ret;
+    };
+    var stringToUTF8 = (str, outPtr, maxBytesToWrite) => stringToUTF8Array(str, HEAPU8, outPtr, maxBytesToWrite);
+    var convertI32PairToI53Checked = (lo, hi) => hi + 2097152 >>> 0 < 4194305 - !!lo ? (lo >>> 0) + hi * 4294967296 : NaN;
+    var MONTH_DAYS_LEAP_CUMULATIVE = [0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335];
+    var MONTH_DAYS_REGULAR_CUMULATIVE = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+    var isLeapYear = year => year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    var ydayFromDate = date => {
+      var leap = isLeapYear(date.getFullYear());
+      var monthDaysCumulative = leap ? MONTH_DAYS_LEAP_CUMULATIVE : MONTH_DAYS_REGULAR_CUMULATIVE;
+      var yday = monthDaysCumulative[date.getMonth()] + date.getDate() - 1;
+      return yday;
+    };
+    var setTempRet0 = val => __emscripten_tempret_set(val);
+    var checkWasiClock = clock_id => clock_id >= 0 && clock_id <= 3;
+    var _emscripten_date_now = () => Date.now();
+    var _emscripten_get_now = () => performance.now();
+    var HEAPF64;
+    var readEmAsmArgsArray = [];
+    var readEmAsmArgs = (sigPtr, buf) => {
+      readEmAsmArgsArray.length = 0;
+      var ch;
+      while (ch = HEAPU8[sigPtr++]) {
+        var wide = ch != 105;
+        wide &= ch != 112;
+        buf += wide && buf % 8 ? 4 : 0;
+        readEmAsmArgsArray.push(ch == 112 ? HEAPU32[buf >> 2] : ch == 105 ? HEAP32[buf >> 2] : HEAPF64[buf >> 3]);
+        buf += wide ? 8 : 4;
+      }
+      return readEmAsmArgsArray;
+    };
+    var runEmAsmFunction = (code, sigPtr, argbuf) => {
+      var args = readEmAsmArgs(sigPtr, argbuf);
+      return ASM_CONSTS[code](...args);
+    };
+    var handleException = e => {
+      if (e instanceof ExitStatus || e == "unwind") return EXITSTATUS;
+      quit_(1, e);
+    };
+    var runtimeKeepaliveCounter = 0;
+    var keepRuntimeAlive = () => noExitRuntime || runtimeKeepaliveCounter > 0;
+    var _proc_exit = code => {
+      EXITSTATUS = code;
+      if (!keepRuntimeAlive()) {
+        var _Module$onExit;
+        (_Module$onExit = Module["onExit"]) === null || _Module$onExit === void 0 || _Module$onExit.call(Module, code);
+        ABORT = true;
+      }
+      quit_(code, new ExitStatus(code));
+    };
+    var maybeExit = () => {
+      if (!keepRuntimeAlive()) try {
+        _exit(EXITSTATUS);
+      } catch (e) {
+        handleException(e);
+      }
+    };
+    var callUserCallback = (func, ...args) => {
+      if (ABORT) return;
+      try {
+        return func(...args);
+      } catch (e) {
+        handleException(e);
+      } finally {
+        maybeExit();
+      }
+    };
+    var runAndAbortIfError = func => {
+      try {
+        return func();
+      } catch (e) {
+        abort(e);
+      }
+    };
+    var Asyncify = {
+      instrumentWasmImports(imports) {
+        var importPattern = /^(libavjs_wait_reader|jsfetch_open_js|jsfetch_read_js|jsfetch_seek_js|invoke_.*|__asyncjs__.*)$/;
+        for (let [x, original] of Object.entries(imports)) if (typeof original === "function") {
+          original.isAsync || importPattern.test(x);
+        }
+      },
+      instrumentFunction(original) {
+        var wrapper = (...args) => {
+          Asyncify.exportCallStack.push(original);
+          try {
+            return original(...args);
+          } finally {
+            if (!ABORT) {
+              Asyncify.exportCallStack.pop();
+              Asyncify.maybeStopUnwind();
+            }
+          }
+        };
+        Asyncify.funcWrappers.set(original, wrapper);
+        return wrapper;
+      },
+      instrumentWasmExports(exports) {
+        var ret = {};
+        for (let [x, original] of Object.entries(exports)) if (typeof original === "function") {
+          var wrapper = Asyncify.instrumentFunction(original);
+          ret[x] = wrapper;
+        } else ret[x] = original;
+        return ret;
+      },
+      State: {
+        Normal: 0,
+        Unwinding: 1,
+        Rewinding: 2,
+        Disabled: 3
+      },
+      state: 0,
+      currData: null,
+      handleSleepReturnValue: 0,
+      exportCallStack: [],
+      callstackFuncToId: new Map(),
+      callStackIdToFunc: new Map(),
+      funcWrappers: new Map(),
+      callStackId: 0,
+      asyncPromiseHandlers: null,
+      sleepCallbacks: [],
+      getCallStackId(func) {
+        if (!Asyncify.callstackFuncToId.has(func)) {
+          var id = Asyncify.callStackId++;
+          Asyncify.callstackFuncToId.set(func, id);
+          Asyncify.callStackIdToFunc.set(id, func);
+        }
+        return Asyncify.callstackFuncToId.get(func);
+      },
+      maybeStopUnwind() {
+        if (Asyncify.currData && Asyncify.state === Asyncify.State.Unwinding && !Asyncify.exportCallStack.length) {
+          Asyncify.state = Asyncify.State.Normal;
+          runAndAbortIfError(_asyncify_stop_unwind);
+          if (typeof Fibers !== "undefined") Fibers.trampoline();
+        }
+      },
+      whenDone() {
+        return new Promise((resolve, reject) => {
+          Asyncify.asyncPromiseHandlers = {
+            resolve,
+            reject
+          };
+        });
+      },
+      allocateData() {
+        var ptr = _malloc(4108);
+        Asyncify.setDataHeader(ptr, ptr + 12, 4096);
+        Asyncify.setDataRewindFunc(ptr);
+        return ptr;
+      },
+      setDataHeader(ptr, stack, stackSize) {
+        HEAPU32[ptr >> 2] = stack;
+        HEAPU32[ptr + 4 >> 2] = stack + stackSize;
+      },
+      setDataRewindFunc(ptr) {
+        var bottomOfCallStack = Asyncify.exportCallStack[0];
+        var rewindId = Asyncify.getCallStackId(bottomOfCallStack);
+        HEAP32[ptr + 8 >> 2] = rewindId;
+      },
+      getDataRewindFunc(ptr) {
+        var id = HEAP32[ptr + 8 >> 2];
+        var func = Asyncify.callStackIdToFunc.get(id);
+        return func;
+      },
+      doRewind(ptr) {
+        var original = Asyncify.getDataRewindFunc(ptr);
+        var func = Asyncify.funcWrappers.get(original);
+        return callUserCallback(func);
+      },
+      handleSleep(startAsync) {
+        if (ABORT) return;
+        if (Asyncify.state === Asyncify.State.Normal) {
+          var reachedCallback = false;
+          var reachedAfterCallback = false;
+          startAsync((handleSleepReturnValue = 0) => {
+            if (ABORT) return;
+            Asyncify.handleSleepReturnValue = handleSleepReturnValue;
+            reachedCallback = true;
+            if (!reachedAfterCallback) return;
+            Asyncify.state = Asyncify.State.Rewinding;
+            runAndAbortIfError(() => _asyncify_start_rewind(Asyncify.currData));
+            if (typeof MainLoop !== "undefined" && MainLoop.func) MainLoop.resume();
+            var asyncWasmReturnValue,
+              isError = false;
+            try {
+              asyncWasmReturnValue = Asyncify.doRewind(Asyncify.currData);
+            } catch (err) {
+              asyncWasmReturnValue = err;
+              isError = true;
+            }
+            var handled = false;
+            if (!Asyncify.currData) {
+              var asyncPromiseHandlers = Asyncify.asyncPromiseHandlers;
+              if (asyncPromiseHandlers) {
+                Asyncify.asyncPromiseHandlers = null;
+                (isError ? asyncPromiseHandlers.reject : asyncPromiseHandlers.resolve)(asyncWasmReturnValue);
+                handled = true;
+              }
+            }
+            if (isError && !handled) throw asyncWasmReturnValue;
+          });
+          reachedAfterCallback = true;
+          if (!reachedCallback) {
+            Asyncify.state = Asyncify.State.Unwinding;
+            Asyncify.currData = Asyncify.allocateData();
+            if (typeof MainLoop !== "undefined" && MainLoop.func) MainLoop.pause();
+            runAndAbortIfError(() => _asyncify_start_unwind(Asyncify.currData));
+          }
+        } else if (Asyncify.state === Asyncify.State.Rewinding) {
+          Asyncify.state = Asyncify.State.Normal;
+          runAndAbortIfError(_asyncify_stop_rewind);
+          _free(Asyncify.currData);
+          Asyncify.currData = null;
+          for (var cb of Asyncify.sleepCallbacks) callUserCallback(cb);
+        } else abort(`invalid state: ${Asyncify.state}`);
+        return Asyncify.handleSleepReturnValue;
+      },
+      handleAsync: startAsync => Asyncify.handleSleep(async wakeUp => {
+        wakeUp(await startAsync());
+      })
+    };
+    var Fibers = {
+      nextFiber: 0,
+      trampolineRunning: false,
+      trampoline() {
+        if (!Fibers.trampolineRunning && Fibers.nextFiber) {
+          Fibers.trampolineRunning = true;
+          do {
+            var fiber = Fibers.nextFiber;
+            Fibers.nextFiber = 0;
+            Fibers.finishContextSwitch(fiber);
+          } while (Fibers.nextFiber);
+          Fibers.trampolineRunning = false;
+        }
+      },
+      finishContextSwitch(newFiber) {
+        var stack_base = HEAPU32[newFiber >> 2];
+        var stack_max = HEAPU32[newFiber + 4 >> 2];
+        _emscripten_stack_set_limits(stack_base, stack_max);
+        stackRestore(HEAPU32[newFiber + 8 >> 2]);
+        var entryPoint = HEAPU32[newFiber + 12 >> 2];
+        if (entryPoint) {
+          Asyncify.currData = null;
+          HEAPU32[newFiber + 12 >> 2] = 0;
+          var userData = HEAPU32[newFiber + 16 >> 2];
+          (a1 => dynCall_vi(entryPoint, a1))(userData);
+        } else {
+          var asyncifyData = newFiber + 20;
+          Asyncify.currData = asyncifyData;
+          Asyncify.state = Asyncify.State.Rewinding;
+          _asyncify_start_rewind(asyncifyData);
+          Asyncify.doRewind(asyncifyData);
+        }
+      }
+    };
+    var _emscripten_fiber_swap = (oldFiber, newFiber) => {
+      if (ABORT) return;
+      if (Asyncify.state === Asyncify.State.Normal) {
+        Asyncify.state = Asyncify.State.Unwinding;
+        var asyncifyData = oldFiber + 20;
+        Asyncify.setDataRewindFunc(asyncifyData);
+        Asyncify.currData = asyncifyData;
+        _asyncify_start_unwind(asyncifyData);
+        var stackTop = stackSave();
+        HEAPU32[oldFiber + 8 >> 2] = stackTop;
+        Fibers.nextFiber = newFiber;
+      } else {
+        Asyncify.state = Asyncify.State.Normal;
+        _asyncify_stop_rewind();
+        Asyncify.currData = null;
+      }
+    };
+    _emscripten_fiber_swap.isAsync = true;
+    var getHeapMax = () => 2147483648;
+    var alignMemory = (size, alignment) => Math.ceil(size / alignment) * alignment;
+    var growMemory = size => {
+      var oldHeapSize = wasmMemory.buffer.byteLength;
+      var pages = (size - oldHeapSize + 65535) / 65536 | 0;
+      try {
+        wasmMemory.grow(pages);
+        updateMemoryViews();
+        return 1;
+      } catch (e) {}
+    };
+    var ENV = {};
+    var getExecutableName = () => thisProgram;
+    var getEnvStrings = () => {
+      if (!getEnvStrings.strings) {
+        var _globalThis$navigator, _globalThis$navigator2;
+        var lang = ((_globalThis$navigator = (_globalThis$navigator2 = globalThis.navigator) === null || _globalThis$navigator2 === void 0 ? void 0 : _globalThis$navigator2.language) !== null && _globalThis$navigator !== void 0 ? _globalThis$navigator : "C").replace("-", "_") + ".UTF-8";
+        var env = {
+          USER: "web_user",
+          LOGNAME: "web_user",
+          PATH: "/",
+          PWD: "/",
+          HOME: "/home/web_user",
+          LANG: lang,
+          _: getExecutableName()
+        };
+        for (var x in ENV) if (ENV[x] === void 0) delete env[x];else env[x] = ENV[x];
+        var strings = [];
+        for (var x in env) strings.push(`${x}=${env[x]}`);
+        getEnvStrings.strings = strings;
+      }
+      return getEnvStrings.strings;
+    };
+    var doReadv = (stream, iov, iovcnt, offset) => {
+      var ret = 0;
+      for (var i = 0; i < iovcnt; i++) {
+        var ptr = HEAPU32[iov >> 2];
+        var len = HEAPU32[iov + 4 >> 2];
+        iov += 8;
+        try {
+          var curr = FS.read(stream, HEAP8, ptr, len, offset);
+        } catch (e) {
+          if (ret > 0 && e instanceof FS.ErrnoError && (e.errno == 6 || e.errno == 6)) break;
+          throw e;
+        }
+        if (curr < 0) return -1;
+        ret += curr;
+        if (curr < len) break;
+        if (typeof offset !== "undefined") offset += curr;
+      }
+      return ret;
+    };
+    var doWritev = (stream, iov, iovcnt, offset) => {
+      if (iovcnt == 1) return FS.write(stream, HEAP8, HEAPU32[iov >> 2], HEAPU32[iov + 4 >> 2], offset);
+      var total = 0;
+      for (var i = 0, p = iov; i < iovcnt; i++, p += 8) total += HEAPU32[p + 4 >> 2];
+      var view = new Uint8Array(total);
+      var voff = 0;
+      for (i = 0; i < iovcnt; i++, iov += 8) {
+        var ptr = HEAPU32[iov >> 2];
+        var len = HEAPU32[iov + 4 >> 2];
+        view.set(HEAPU8.subarray(ptr, ptr + len), voff);
+        voff += len;
+      }
+      return FS.write(stream, view, 0, total, offset);
+    };
+    var getCFunc = ident => {
+      var func = Module["_" + ident];
+      return func;
+    };
+    var runtimeKeepalivePop = () => {
+      runtimeKeepaliveCounter -= 1;
+    };
+    var runtimeKeepalivePush = () => {
+      runtimeKeepaliveCounter += 1;
+    };
+    var stackAlloc = sz => __emscripten_stack_alloc(sz);
+    var stringToUTF8OnStack = str => {
+      var size = lengthBytesUTF8(str) + 1;
+      var ret = stackAlloc(size);
+      stringToUTF8(str, ret, size);
+      return ret;
+    };
+    var writeArrayToMemory = (array, buffer) => {
+      HEAP8.set(array, buffer);
+    };
+    var ccall = (ident, returnType, argTypes, args, opts) => {
+      var toC = {
+        string: str => {
+          var ret = 0;
+          if (str !== null && str !== void 0 && str !== 0) ret = stringToUTF8OnStack(str);
+          return ret;
+        },
+        array: arr => {
+          var ret = stackAlloc(arr.length);
+          writeArrayToMemory(arr, ret);
+          return ret;
+        }
+      };
+      function convertReturnValue(ret) {
+        if (returnType === "string") return UTF8ToString(ret);
+        if (returnType === "boolean") return Boolean(ret);
+        return ret;
+      }
+      var func = getCFunc(ident);
+      var cArgs = [];
+      var stack = 0;
+      if (args) for (var i = 0; i < args.length; i++) {
+        var converter = toC[argTypes[i]];
+        if (converter) {
+          if (!stack) stack = stackSave();
+          cArgs[i] = converter(args[i]);
+        } else cArgs[i] = args[i];
+      }
+      var previousAsync = Asyncify.currData;
+      var ret = func(...cArgs);
+      function onDone(ret) {
+        runtimeKeepalivePop();
+        if (stack) stackRestore(stack);
+        return convertReturnValue(ret);
+      }
+      var asyncMode = opts === null || opts === void 0 ? void 0 : opts.async;
+      runtimeKeepalivePush();
+      if (Asyncify.currData != previousAsync) return Asyncify.whenDone().then(onDone);
+      ret = onDone(ret);
+      if (asyncMode) return Promise.resolve(ret);
+      return ret;
+    };
+    var syscallGetVarargP = syscallGetVarargI;
+    var _exit = status => {
+      EXITSTATUS = status;
+      _proc_exit(status);
+    };
+    FS.createPreloadedFile = (parent, name, url, canRead, canWrite, onload, onerror, dontCreateFile, canOwn, preFinish) => {
+      FS_preloadFile(parent, name, url, canRead, canWrite, dontCreateFile, canOwn, preFinish).then(onload).catch(onerror);
+    };
+    FS.preloadFile = FS_preloadFile;
+    FS.staticInit();
+    if (Module["noExitRuntime"]) noExitRuntime = Module["noExitRuntime"];
+    if (Module["print"]) out = Module["print"];
+    if (Module["printErr"]) err = Module["printErr"];
+    if (Module["arguments"]) Module["arguments"];
+    if (Module["thisProgram"]) thisProgram = Module["thisProgram"];
+    var preInit = Module["preInit"];
+    if (preInit) {
+      if (typeof preInit === "function") Module["preInit"] = preInit = [preInit];
+      while (preInit.length > 0) preInit.shift()();
+    }
+    Module["ccall"] = ccall;
+    Module["cwrap"] = (ident, returnType, argTypes, opts) => {
+      var numericArgs = !argTypes || argTypes.every(type => type === "number" || type === "boolean");
+      var numericRet = returnType !== "string";
+      if (numericRet && numericArgs && !opts) return getCFunc(ident);
+      return (...args) => ccall(ident, returnType, argTypes, args, opts);
+    };
+    var ASM_CONSTS = {
+      657923: () => {
+        Fibers.trampolineRunning = false;
+      }
+    };
+    var _free, _malloc, __emscripten_tempret_set, _emscripten_stack_set_limits, __emscripten_stack_restore, __emscripten_stack_alloc, _emscripten_stack_get_current, dynCall_vi, _asyncify_start_unwind, _asyncify_stop_unwind, _asyncify_start_rewind, _asyncify_stop_rewind, wasmMemory;
+    function assignWasmExports(wasmExports) {
+      Module["_AVDictionaryEntry_key"] = wasmExports["K"];
+      Module["_AVDictionaryEntry_value"] = wasmExports["L"];
+      Module["_ff_nothing"] = wasmExports["M"];
+      Module["_AVFrame_crop_bottom"] = wasmExports["N"];
+      Module["_AVFrame_crop_bottom_s"] = wasmExports["O"];
+      Module["_AVFrame_crop_left"] = wasmExports["P"];
+      Module["_AVFrame_crop_left_s"] = wasmExports["Q"];
+      Module["_AVFrame_crop_right"] = wasmExports["R"];
+      Module["_AVFrame_crop_right_s"] = wasmExports["S"];
+      Module["_AVFrame_crop_top"] = wasmExports["T"];
+      Module["_AVFrame_crop_top_s"] = wasmExports["U"];
+      Module["_AVFrame_data_a"] = wasmExports["V"];
+      Module["_AVFrame_data_a_s"] = wasmExports["W"];
+      Module["_AVFrame_duration"] = wasmExports["X"];
+      Module["_AVFrame_duration_s"] = wasmExports["Y"];
+      Module["_AVFrame_flags"] = wasmExports["Z"];
+      Module["_AVFrame_flags_s"] = wasmExports["_"];
+      Module["_AVFrame_format"] = wasmExports["$"];
+      Module["_AVFrame_format_s"] = wasmExports["aa"];
+      Module["_AVFrame_height"] = wasmExports["ba"];
+      Module["_AVFrame_height_s"] = wasmExports["ca"];
+      Module["_AVFrame_linesize_a"] = wasmExports["da"];
+      Module["_AVFrame_linesize_a_s"] = wasmExports["ea"];
+      Module["_AVFrame_nb_samples"] = wasmExports["fa"];
+      Module["_AVFrame_nb_samples_s"] = wasmExports["ga"];
+      Module["_AVFrame_pict_type"] = wasmExports["ha"];
+      Module["_AVFrame_pict_type_s"] = wasmExports["ia"];
+      Module["_AVFrame_pts"] = wasmExports["ja"];
+      Module["_AVFrame_ptshi"] = wasmExports["ka"];
+      Module["_AVFrame_pts_s"] = wasmExports["la"];
+      Module["_AVFrame_ptshi_s"] = wasmExports["ma"];
+      Module["_AVFrame_best_effort_timestamp"] = wasmExports["na"];
+      Module["_AVFrame_best_effort_timestamphi"] = wasmExports["oa"];
+      Module["_AVFrame_best_effort_timestamp_s"] = wasmExports["pa"];
+      Module["_AVFrame_best_effort_timestamphi_s"] = wasmExports["qa"];
+      Module["_AVFrame_sample_rate"] = wasmExports["ra"];
+      Module["_AVFrame_sample_rate_s"] = wasmExports["sa"];
+      Module["_AVFrame_width"] = wasmExports["ta"];
+      Module["_AVFrame_width_s"] = wasmExports["ua"];
+      Module["_AVFrame_sample_aspect_ratio_num"] = wasmExports["va"];
+      Module["_AVFrame_sample_aspect_ratio_den"] = wasmExports["wa"];
+      Module["_AVFrame_sample_aspect_ratio_num_s"] = wasmExports["xa"];
+      Module["_AVFrame_sample_aspect_ratio_den_s"] = wasmExports["ya"];
+      Module["_AVFrame_sample_aspect_ratio_s"] = wasmExports["za"];
+      Module["_AVFrame_time_base_num"] = wasmExports["Aa"];
+      Module["_AVFrame_time_base_den"] = wasmExports["Ba"];
+      Module["_AVFrame_time_base_num_s"] = wasmExports["Ca"];
+      Module["_AVFrame_time_base_den_s"] = wasmExports["Da"];
+      Module["_AVFrame_time_base_s"] = wasmExports["Ea"];
+      Module["_AVFrame_key_frame"] = wasmExports["Fa"];
+      Module["_AVFrame_key_frame_s"] = wasmExports["Ga"];
+      Module["_AVFrame_channel_layoutmask_s"] = wasmExports["Ha"];
+      Module["_AVFrame_channel_layoutmask"] = wasmExports["Ia"];
+      Module["_AVFrame_channels"] = wasmExports["Ja"];
+      Module["_AVFrame_channels_s"] = wasmExports["Ka"];
+      Module["_AVFrame_ch_layout_nb_channels"] = wasmExports["La"];
+      Module["_AVFrame_ch_layout_nb_channels_s"] = wasmExports["Ma"];
+      Module["_AVFrame_channel_layout"] = wasmExports["Na"];
+      Module["_AVFrame_channel_layouthi"] = wasmExports["Oa"];
+      Module["_AVFrame_channel_layout_s"] = wasmExports["Pa"];
+      Module["_AVFrame_channel_layouthi_s"] = wasmExports["Qa"];
+      Module["_ff_frame_rescale_ts_js"] = wasmExports["Ra"];
+      Module["_AVPixFmtDescriptor_flags"] = wasmExports["Sa"];
+      Module["_AVPixFmtDescriptor_flags_s"] = wasmExports["Ta"];
+      Module["_AVPixFmtDescriptor_nb_components"] = wasmExports["Ua"];
+      Module["_AVPixFmtDescriptor_nb_components_s"] = wasmExports["Va"];
+      Module["_AVPixFmtDescriptor_log2_chroma_h"] = wasmExports["Wa"];
+      Module["_AVPixFmtDescriptor_log2_chroma_h_s"] = wasmExports["Xa"];
+      Module["_AVPixFmtDescriptor_log2_chroma_w"] = wasmExports["Ya"];
+      Module["_AVPixFmtDescriptor_log2_chroma_w_s"] = wasmExports["Za"];
+      Module["_AVPixFmtDescriptor_comp_depth"] = wasmExports["_a"];
+      Module["_av_opt_set_int_list_js"] = wasmExports["$a"];
+      Module["_av_dict_copy_js"] = wasmExports["ab"];
+      Module["_av_dict_set_js"] = wasmExports["bb"];
+      Module["_av_compare_ts_js"] = wasmExports["cb"];
+      Module["_AVCodec_name"] = wasmExports["db"];
+      Module["_AVCodec_type"] = wasmExports["eb"];
+      Module["_AVCodec_type_s"] = wasmExports["fb"];
+      Module["_AVCodec_sample_fmts"] = wasmExports["gb"];
+      Module["_AVCodec_sample_fmts_s"] = wasmExports["hb"];
+      Module["_AVCodec_sample_fmts_a"] = wasmExports["ib"];
+      Module["_AVCodec_sample_fmts_a_s"] = wasmExports["jb"];
+      Module["_AVCodec_supported_samplerates"] = wasmExports["kb"];
+      Module["_AVCodec_supported_samplerates_s"] = wasmExports["lb"];
+      Module["_AVCodec_supported_samplerates_a"] = wasmExports["mb"];
+      Module["_AVCodec_supported_samplerates_a_s"] = wasmExports["nb"];
+      Module["_AVCodecContext_codec_id"] = wasmExports["ob"];
+      Module["_AVCodecContext_codec_id_s"] = wasmExports["pb"];
+      Module["_AVCodecContext_codec_type"] = wasmExports["qb"];
+      Module["_AVCodecContext_codec_type_s"] = wasmExports["rb"];
+      Module["_AVCodecContext_bit_rate"] = wasmExports["sb"];
+      Module["_AVCodecContext_bit_ratehi"] = wasmExports["tb"];
+      Module["_AVCodecContext_bit_rate_s"] = wasmExports["ub"];
+      Module["_AVCodecContext_bit_ratehi_s"] = wasmExports["vb"];
+      Module["_AVCodecContext_coded_side_data"] = wasmExports["wb"];
+      Module["_AVCodecContext_coded_side_data_s"] = wasmExports["xb"];
+      Module["_AVCodecContext_compression_level"] = wasmExports["yb"];
+      Module["_AVCodecContext_compression_level_s"] = wasmExports["zb"];
+      Module["_AVCodecContext_extradata"] = wasmExports["Ab"];
+      Module["_AVCodecContext_extradata_s"] = wasmExports["Bb"];
+      Module["_AVCodecContext_extradata_size"] = wasmExports["Cb"];
+      Module["_AVCodecContext_extradata_size_s"] = wasmExports["Db"];
+      Module["_AVCodecContext_frame_size"] = wasmExports["Eb"];
+      Module["_AVCodecContext_frame_size_s"] = wasmExports["Fb"];
+      Module["_AVCodecContext_gop_size"] = wasmExports["Gb"];
+      Module["_AVCodecContext_gop_size_s"] = wasmExports["Hb"];
+      Module["_AVCodecContext_height"] = wasmExports["Ib"];
+      Module["_AVCodecContext_height_s"] = wasmExports["Jb"];
+      Module["_AVCodecContext_keyint_min"] = wasmExports["Kb"];
+      Module["_AVCodecContext_keyint_min_s"] = wasmExports["Lb"];
+      Module["_AVCodecContext_level"] = wasmExports["Mb"];
+      Module["_AVCodecContext_level_s"] = wasmExports["Nb"];
+      Module["_AVCodecContext_max_b_frames"] = wasmExports["Ob"];
+      Module["_AVCodecContext_max_b_frames_s"] = wasmExports["Pb"];
+      Module["_AVCodecContext_nb_coded_side_data"] = wasmExports["Qb"];
+      Module["_AVCodecContext_nb_coded_side_data_s"] = wasmExports["Rb"];
+      Module["_AVCodecContext_pix_fmt"] = wasmExports["Sb"];
+      Module["_AVCodecContext_pix_fmt_s"] = wasmExports["Tb"];
+      Module["_AVCodecContext_profile"] = wasmExports["Ub"];
+      Module["_AVCodecContext_profile_s"] = wasmExports["Vb"];
+      Module["_AVCodecContext_rc_max_rate"] = wasmExports["Wb"];
+      Module["_AVCodecContext_rc_max_ratehi"] = wasmExports["Xb"];
+      Module["_AVCodecContext_rc_max_rate_s"] = wasmExports["Yb"];
+      Module["_AVCodecContext_rc_max_ratehi_s"] = wasmExports["Zb"];
+      Module["_AVCodecContext_rc_min_rate"] = wasmExports["_b"];
+      Module["_AVCodecContext_rc_min_ratehi"] = wasmExports["$b"];
+      Module["_AVCodecContext_rc_min_rate_s"] = wasmExports["ac"];
+      Module["_AVCodecContext_rc_min_ratehi_s"] = wasmExports["bc"];
+      Module["_AVCodecContext_sample_fmt"] = wasmExports["cc"];
+      Module["_AVCodecContext_sample_fmt_s"] = wasmExports["dc"];
+      Module["_AVCodecContext_sample_rate"] = wasmExports["ec"];
+      Module["_AVCodecContext_sample_rate_s"] = wasmExports["fc"];
+      Module["_AVCodecContext_strict_std_compliance"] = wasmExports["gc"];
+      Module["_AVCodecContext_strict_std_compliance_s"] = wasmExports["hc"];
+      Module["_AVCodecContext_qmax"] = wasmExports["ic"];
+      Module["_AVCodecContext_qmax_s"] = wasmExports["jc"];
+      Module["_AVCodecContext_qmin"] = wasmExports["kc"];
+      Module["_AVCodecContext_qmin_s"] = wasmExports["lc"];
+      Module["_AVCodecContext_width"] = wasmExports["mc"];
+      Module["_AVCodecContext_width_s"] = wasmExports["nc"];
+      Module["_AVCodecContext_framerate_num"] = wasmExports["oc"];
+      Module["_AVCodecContext_framerate_den"] = wasmExports["pc"];
+      Module["_AVCodecContext_framerate_num_s"] = wasmExports["qc"];
+      Module["_AVCodecContext_framerate_den_s"] = wasmExports["rc"];
+      Module["_AVCodecContext_framerate_s"] = wasmExports["sc"];
+      Module["_AVCodecContext_sample_aspect_ratio_num"] = wasmExports["tc"];
+      Module["_AVCodecContext_sample_aspect_ratio_den"] = wasmExports["uc"];
+      Module["_AVCodecContext_sample_aspect_ratio_num_s"] = wasmExports["vc"];
+      Module["_AVCodecContext_sample_aspect_ratio_den_s"] = wasmExports["wc"];
+      Module["_AVCodecContext_sample_aspect_ratio_s"] = wasmExports["xc"];
+      Module["_AVCodecContext_time_base_num"] = wasmExports["yc"];
+      Module["_AVCodecContext_time_base_den"] = wasmExports["zc"];
+      Module["_AVCodecContext_time_base_num_s"] = wasmExports["Ac"];
+      Module["_AVCodecContext_time_base_den_s"] = wasmExports["Bc"];
+      Module["_AVCodecContext_time_base_s"] = wasmExports["Cc"];
+      Module["_AVCodecContext_pkt_timebase_num"] = wasmExports["Dc"];
+      Module["_AVCodecContext_pkt_timebase_den"] = wasmExports["Ec"];
+      Module["_AVCodecContext_pkt_timebase_num_s"] = wasmExports["Fc"];
+      Module["_AVCodecContext_pkt_timebase_den_s"] = wasmExports["Gc"];
+      Module["_AVCodecContext_pkt_timebase_s"] = wasmExports["Hc"];
+      Module["_AVCodecContext_channel_layoutmask_s"] = wasmExports["Ic"];
+      Module["_AVCodecContext_channel_layoutmask"] = wasmExports["Jc"];
+      Module["_AVCodecContext_channels"] = wasmExports["Kc"];
+      Module["_AVCodecContext_channels_s"] = wasmExports["Lc"];
+      Module["_AVCodecContext_ch_layout_nb_channels"] = wasmExports["Mc"];
+      Module["_AVCodecContext_ch_layout_nb_channels_s"] = wasmExports["Nc"];
+      Module["_AVCodecContext_channel_layout"] = wasmExports["Oc"];
+      Module["_AVCodecContext_channel_layouthi"] = wasmExports["Pc"];
+      Module["_AVCodecContext_channel_layout_s"] = wasmExports["Qc"];
+      Module["_AVCodecContext_channel_layouthi_s"] = wasmExports["Rc"];
+      Module["_AVCodecDescriptor_id"] = wasmExports["Sc"];
+      Module["_AVCodecDescriptor_id_s"] = wasmExports["Tc"];
+      Module["_AVCodecDescriptor_long_name"] = wasmExports["Uc"];
+      Module["_AVCodecDescriptor_mime_types_a"] = wasmExports["Vc"];
+      Module["_AVCodecDescriptor_mime_types_a_s"] = wasmExports["Wc"];
+      Module["_AVCodecDescriptor_name"] = wasmExports["Xc"];
+      Module["_AVCodecDescriptor_props"] = wasmExports["Yc"];
+      Module["_AVCodecDescriptor_props_s"] = wasmExports["Zc"];
+      Module["_AVCodecDescriptor_type"] = wasmExports["_c"];
+      Module["_AVCodecDescriptor_type_s"] = wasmExports["$c"];
+      Module["_AVCodecParameters_codec_id"] = wasmExports["ad"];
+      Module["_AVCodecParameters_codec_id_s"] = wasmExports["bd"];
+      Module["_AVCodecParameters_codec_tag"] = wasmExports["cd"];
+      Module["_AVCodecParameters_codec_tag_s"] = wasmExports["dd"];
+      Module["_AVCodecParameters_codec_type"] = wasmExports["ed"];
+      Module["_AVCodecParameters_codec_type_s"] = wasmExports["fd"];
+      Module["_AVCodecParameters_extradata"] = wasmExports["gd"];
+      Module["_AVCodecParameters_extradata_s"] = wasmExports["hd"];
+      Module["_AVCodecParameters_extradata_size"] = wasmExports["id"];
+      Module["_AVCodecParameters_extradata_size_s"] = wasmExports["jd"];
+      Module["_AVCodecParameters_format"] = wasmExports["kd"];
+      Module["_AVCodecParameters_format_s"] = wasmExports["ld"];
+      Module["_AVCodecParameters_bit_rate"] = wasmExports["md"];
+      Module["_AVCodecParameters_bit_rate_s"] = wasmExports["nd"];
+      Module["_AVCodecParameters_profile"] = wasmExports["od"];
+      Module["_AVCodecParameters_profile_s"] = wasmExports["pd"];
+      Module["_AVCodecParameters_level"] = wasmExports["qd"];
+      Module["_AVCodecParameters_level_s"] = wasmExports["rd"];
+      Module["_AVCodecParameters_width"] = wasmExports["sd"];
+      Module["_AVCodecParameters_width_s"] = wasmExports["td"];
+      Module["_AVCodecParameters_height"] = wasmExports["ud"];
+      Module["_AVCodecParameters_height_s"] = wasmExports["vd"];
+      Module["_AVCodecParameters_color_range"] = wasmExports["wd"];
+      Module["_AVCodecParameters_color_range_s"] = wasmExports["xd"];
+      Module["_AVCodecParameters_color_primaries"] = wasmExports["yd"];
+      Module["_AVCodecParameters_color_primaries_s"] = wasmExports["zd"];
+      Module["_AVCodecParameters_color_trc"] = wasmExports["Ad"];
+      Module["_AVCodecParameters_color_trc_s"] = wasmExports["Bd"];
+      Module["_AVCodecParameters_color_space"] = wasmExports["Cd"];
+      Module["_AVCodecParameters_color_space_s"] = wasmExports["Dd"];
+      Module["_AVCodecParameters_chroma_location"] = wasmExports["Ed"];
+      Module["_AVCodecParameters_chroma_location_s"] = wasmExports["Fd"];
+      Module["_AVCodecParameters_sample_rate"] = wasmExports["Gd"];
+      Module["_AVCodecParameters_sample_rate_s"] = wasmExports["Hd"];
+      Module["_AVCodecParameters_coded_side_data"] = wasmExports["Id"];
+      Module["_AVCodecParameters_coded_side_data_s"] = wasmExports["Jd"];
+      Module["_AVCodecParameters_nb_coded_side_data"] = wasmExports["Kd"];
+      Module["_AVCodecParameters_nb_coded_side_data_s"] = wasmExports["Ld"];
+      Module["_AVCodecParameters_framerate_num"] = wasmExports["Md"];
+      Module["_AVCodecParameters_framerate_den"] = wasmExports["Nd"];
+      Module["_AVCodecParameters_framerate_num_s"] = wasmExports["Od"];
+      Module["_AVCodecParameters_framerate_den_s"] = wasmExports["Pd"];
+      Module["_AVCodecParameters_framerate_s"] = wasmExports["Qd"];
+      Module["_AVCodecParameters_channel_layoutmask_s"] = wasmExports["Rd"];
+      Module["_AVCodecParameters_channel_layoutmask"] = wasmExports["Sd"];
+      Module["_AVCodecParameters_channels"] = wasmExports["Td"];
+      Module["_AVCodecParameters_channels_s"] = wasmExports["Ud"];
+      Module["_AVCodecParameters_ch_layout_nb_channels"] = wasmExports["Vd"];
+      Module["_AVCodecParameters_ch_layout_nb_channels_s"] = wasmExports["Wd"];
+      Module["_ff_codecpar_new_side_data"] = wasmExports["Xd"];
+      Module["_AVPacket_data"] = wasmExports["Yd"];
+      Module["_AVPacket_data_s"] = wasmExports["Zd"];
+      Module["_AVPacket_dts"] = wasmExports["_d"];
+      Module["_AVPacket_dtshi"] = wasmExports["$d"];
+      Module["_AVPacket_dts_s"] = wasmExports["ae"];
+      Module["_AVPacket_dtshi_s"] = wasmExports["be"];
+      Module["_AVPacket_duration"] = wasmExports["ce"];
+      Module["_AVPacket_durationhi"] = wasmExports["de"];
+      Module["_AVPacket_duration_s"] = wasmExports["ee"];
+      Module["_AVPacket_durationhi_s"] = wasmExports["fe"];
+      Module["_AVPacket_flags"] = wasmExports["ge"];
+      Module["_AVPacket_flags_s"] = wasmExports["he"];
+      Module["_AVPacket_pos"] = wasmExports["ie"];
+      Module["_AVPacket_poshi"] = wasmExports["je"];
+      Module["_AVPacket_pos_s"] = wasmExports["ke"];
+      Module["_AVPacket_poshi_s"] = wasmExports["le"];
+      Module["_AVPacket_pts"] = wasmExports["me"];
+      Module["_AVPacket_ptshi"] = wasmExports["ne"];
+      Module["_AVPacket_pts_s"] = wasmExports["oe"];
+      Module["_AVPacket_ptshi_s"] = wasmExports["pe"];
+      Module["_AVPacket_side_data"] = wasmExports["qe"];
+      Module["_AVPacket_side_data_s"] = wasmExports["re"];
+      Module["_AVPacket_side_data_elems"] = wasmExports["se"];
+      Module["_AVPacket_side_data_elems_s"] = wasmExports["te"];
+      Module["_AVPacket_size"] = wasmExports["ue"];
+      Module["_AVPacket_size_s"] = wasmExports["ve"];
+      Module["_AVPacket_stream_index"] = wasmExports["we"];
+      Module["_AVPacket_stream_index_s"] = wasmExports["xe"];
+      Module["_AVPacket_time_base_num"] = wasmExports["ye"];
+      Module["_AVPacket_time_base_den"] = wasmExports["ze"];
+      Module["_AVPacket_time_base_num_s"] = wasmExports["Ae"];
+      Module["_AVPacket_time_base_den_s"] = wasmExports["Be"];
+      Module["_AVPacket_time_base_s"] = wasmExports["Ce"];
+      Module["_AVPacketSideData_data"] = wasmExports["De"];
+      Module["_AVPacketSideData_size"] = wasmExports["Ee"];
+      Module["_AVPacketSideData_type"] = wasmExports["Fe"];
+      Module["_avcodec_open2_js"] = wasmExports["Ge"];
+      Module["_avcodec_open2"] = wasmExports["He"];
+      Module["_av_packet_rescale_ts_js"] = wasmExports["Ie"];
+      Module["_LIBAVCODEC_VERSION_INT"] = wasmExports["Je"];
+      Module["_AVFormatContext_chapters_a"] = wasmExports["Ke"];
+      Module["_AVFormatContext_chapters_a_s"] = wasmExports["Le"];
+      Module["_AVFormatContext_duration"] = wasmExports["Me"];
+      Module["_AVFormatContext_durationhi"] = wasmExports["Ne"];
+      Module["_AVFormatContext_duration_s"] = wasmExports["Oe"];
+      Module["_AVFormatContext_durationhi_s"] = wasmExports["Pe"];
+      Module["_AVFormatContext_flags"] = wasmExports["Qe"];
+      Module["_AVFormatContext_flags_s"] = wasmExports["Re"];
+      Module["_AVFormatContext_metadata"] = wasmExports["Se"];
+      Module["_AVFormatContext_metadata_s"] = wasmExports["Te"];
+      Module["_AVFormatContext_nb_chapters"] = wasmExports["Ue"];
+      Module["_AVFormatContext_nb_chapters_s"] = wasmExports["Ve"];
+      Module["_AVFormatContext_nb_streams"] = wasmExports["We"];
+      Module["_AVFormatContext_nb_streams_s"] = wasmExports["Xe"];
+      Module["_AVFormatContext_oformat"] = wasmExports["Ye"];
+      Module["_AVFormatContext_oformat_s"] = wasmExports["Ze"];
+      Module["_AVFormatContext_pb"] = wasmExports["_e"];
+      Module["_AVFormatContext_pb_s"] = wasmExports["$e"];
+      Module["_AVFormatContext_start_time"] = wasmExports["af"];
+      Module["_AVFormatContext_start_timehi"] = wasmExports["bf"];
+      Module["_AVFormatContext_start_time_s"] = wasmExports["cf"];
+      Module["_AVFormatContext_start_timehi_s"] = wasmExports["df"];
+      Module["_AVFormatContext_streams_a"] = wasmExports["ef"];
+      Module["_AVFormatContext_streams_a_s"] = wasmExports["ff"];
+      Module["_AVStream_codecpar"] = wasmExports["gf"];
+      Module["_AVStream_codecpar_s"] = wasmExports["hf"];
+      Module["_AVStream_discard"] = wasmExports["jf"];
+      Module["_AVStream_discard_s"] = wasmExports["kf"];
+      Module["_AVStream_duration"] = wasmExports["lf"];
+      Module["_AVStream_durationhi"] = wasmExports["mf"];
+      Module["_AVStream_duration_s"] = wasmExports["nf"];
+      Module["_AVStream_durationhi_s"] = wasmExports["of"];
+      Module["_AVStream_metadata"] = wasmExports["pf"];
+      Module["_AVStream_metadata_s"] = wasmExports["qf"];
+      Module["_AVStream_time_base_num"] = wasmExports["rf"];
+      Module["_AVStream_time_base_den"] = wasmExports["sf"];
+      Module["_AVStream_time_base_num_s"] = wasmExports["tf"];
+      Module["_AVStream_time_base_den_s"] = wasmExports["uf"];
+      Module["_AVStream_time_base_s"] = wasmExports["vf"];
+      Module["_AVChapter_end"] = wasmExports["wf"];
+      Module["_AVChapter_endhi"] = wasmExports["xf"];
+      Module["_AVChapter_end_s"] = wasmExports["yf"];
+      Module["_AVChapter_endhi_s"] = wasmExports["zf"];
+      Module["_AVChapter_id"] = wasmExports["Af"];
+      Module["_AVChapter_id_s"] = wasmExports["Bf"];
+      Module["_AVChapter_metadata"] = wasmExports["Cf"];
+      Module["_AVChapter_metadata_s"] = wasmExports["Df"];
+      Module["_AVChapter_start"] = wasmExports["Ef"];
+      Module["_AVChapter_starthi"] = wasmExports["Ff"];
+      Module["_AVChapter_start_s"] = wasmExports["Gf"];
+      Module["_AVChapter_starthi_s"] = wasmExports["Hf"];
+      Module["_AVChapter_time_base_num"] = wasmExports["If"];
+      Module["_AVChapter_time_base_den"] = wasmExports["Jf"];
+      Module["_AVChapter_time_base_num_s"] = wasmExports["Kf"];
+      Module["_AVChapter_time_base_den_s"] = wasmExports["Lf"];
+      Module["_AVChapter_time_base_s"] = wasmExports["Mf"];
+      Module["_avformat_seek_file_min"] = wasmExports["Nf"];
+      Module["_avformat_seek_file"] = wasmExports["Of"];
+      Module["_avformat_seek_file_max"] = wasmExports["Pf"];
+      Module["_avformat_seek_file_approx"] = wasmExports["Qf"];
+      Module["_avformat_alloc_output_context2_js"] = wasmExports["Rf"];
+      Module["_avformat_open_input_js"] = wasmExports["Sf"];
+      Module["_avformat_open_input"] = wasmExports["Tf"];
+      Module["_avio_open2_js"] = wasmExports["Uf"];
+      Module["_LIBAVFORMAT_VERSION_INT"] = wasmExports["Vf"];
+      Module["_libavjs_with_swscale"] = wasmExports["Wf"];
+      Module["_libavjs_create_main_thread"] = wasmExports["Xf"];
+      Module["_ff_error"] = wasmExports["Yf"];
+      Module["_mallinfo_uordblks"] = wasmExports["Zf"];
+      Module["_LIBAVUTIL_VERSION_INT"] = wasmExports["_f"];
+      Module["_av_strdup"] = wasmExports["$f"];
+      Module["_av_dict_iterate"] = wasmExports["ag"];
+      Module["_av_dict_free"] = wasmExports["bg"];
+      Module["_av_frame_alloc"] = wasmExports["cg"];
+      Module["_av_frame_free"] = wasmExports["dg"];
+      Module["_av_frame_unref"] = wasmExports["eg"];
+      Module["_av_frame_get_buffer"] = wasmExports["fg"];
+      Module["_av_frame_ref"] = wasmExports["gg"];
+      Module["_av_frame_clone"] = wasmExports["hg"];
+      Module["_av_frame_make_writable"] = wasmExports["ig"];
+      Module["_av_log_get_level"] = wasmExports["jg"];
+      Module["_av_log_set_level"] = wasmExports["kg"];
+      _free = Module["_free"] = wasmExports["lg"];
+      Module["_av_opt_set"] = wasmExports["mg"];
+      Module["_av_get_sample_fmt_name"] = wasmExports["ng"];
+      Module["_av_pix_fmt_desc_get"] = wasmExports["og"];
+      Module["_open"] = wasmExports["pg"];
+      Module["_av_get_bytes_per_sample"] = wasmExports["qg"];
+      Module["_avformat_free_context"] = wasmExports["rg"];
+      Module["_av_find_best_stream"] = wasmExports["sg"];
+      Module["_avio_close"] = wasmExports["tg"];
+      Module["_avio_flush"] = wasmExports["ug"];
+      Module["_avformat_alloc_context"] = wasmExports["vg"];
+      Module["_av_packet_unref"] = wasmExports["wg"];
+      Module["_avcodec_free_context"] = wasmExports["xg"];
+      Module["_av_packet_free"] = wasmExports["yg"];
+      Module["_avcodec_parameters_free"] = wasmExports["zg"];
+      Module["_avformat_new_stream"] = wasmExports["Ag"];
+      Module["_avcodec_parameters_copy"] = wasmExports["Bg"];
+      Module["_av_packet_ref"] = wasmExports["Cg"];
+      Module["_avcodec_find_decoder"] = wasmExports["Dg"];
+      Module["_avcodec_descriptor_get"] = wasmExports["Eg"];
+      Module["_avcodec_parameters_to_context"] = wasmExports["Fg"];
+      Module["_avformat_close_input"] = wasmExports["Gg"];
+      Module["_av_read_frame"] = wasmExports["Hg"];
+      Module["_av_packet_new_side_data"] = wasmExports["Ig"];
+      Module["_avcodec_get_name"] = wasmExports["Jg"];
+      Module["_avformat_find_stream_info"] = wasmExports["Kg"];
+      Module["_avcodec_parameters_alloc"] = wasmExports["Lg"];
+      Module["_avcodec_parameters_from_context"] = wasmExports["Mg"];
+      Module["_avcodec_find_decoder_by_name"] = wasmExports["Ng"];
+      Module["_avcodec_send_packet"] = wasmExports["Og"];
+      Module["_avcodec_receive_frame"] = wasmExports["Pg"];
+      Module["_avcodec_alloc_context3"] = wasmExports["Qg"];
+      Module["_av_find_input_format"] = wasmExports["Rg"];
+      Module["_av_packet_alloc"] = wasmExports["Sg"];
+      Module["_av_shrink_packet"] = wasmExports["Tg"];
+      Module["_av_grow_packet"] = wasmExports["Ug"];
+      Module["_av_packet_make_writable"] = wasmExports["Vg"];
+      Module["_avformat_write_header"] = wasmExports["Wg"];
+      Module["_av_write_trailer"] = wasmExports["Xg"];
+      Module["_av_write_frame"] = wasmExports["Yg"];
+      Module["_av_interleaved_write_frame"] = wasmExports["Zg"];
+      Module["_close"] = wasmExports["_g"];
+      Module["_av_seek_frame"] = wasmExports["$g"];
+      Module["_avformat_flush"] = wasmExports["ah"];
+      Module["_avcodec_find_encoder"] = wasmExports["bh"];
+      Module["_avcodec_find_encoder_by_name"] = wasmExports["ch"];
+      Module["_avcodec_flush_buffers"] = wasmExports["dh"];
+      Module["_avcodec_descriptor_next"] = wasmExports["fh"];
+      Module["_avcodec_descriptor_get_by_name"] = wasmExports["gh"];
+      Module["_avcodec_send_frame"] = wasmExports["hh"];
+      Module["_avcodec_receive_packet"] = wasmExports["ih"];
+      Module["_av_packet_clone"] = wasmExports["jh"];
+      _malloc = Module["_malloc"] = wasmExports["kh"];
+      Module["_calloc"] = wasmExports["lh"];
+      Module["_emfiberthreads_timeout_expiry"] = wasmExports["mh"];
+      Module["_dup2"] = wasmExports["nh"];
+      Module["_strerror"] = wasmExports["oh"];
+      __emscripten_tempret_set = wasmExports["ph"];
+      _emscripten_stack_set_limits = wasmExports["qh"];
+      __emscripten_stack_restore = wasmExports["rh"];
+      __emscripten_stack_alloc = wasmExports["sh"];
+      _emscripten_stack_get_current = wasmExports["th"];
+      dynCalls["iiii"] = wasmExports["uh"];
+      dynCalls["ii"] = wasmExports["vh"];
+      dynCalls["viiii"] = wasmExports["wh"];
+      dynCalls["dd"] = wasmExports["xh"];
+      dynCalls["iiiiii"] = wasmExports["yh"];
+      dynCalls["iii"] = wasmExports["zh"];
+      dynCalls["vii"] = wasmExports["Ah"];
+      dynCalls["jiji"] = wasmExports["Bh"];
+      dynCalls["v"] = wasmExports["Ch"];
+      dynCall_vi = dynCalls["vi"] = wasmExports["Dh"];
+      dynCalls["viiiiii"] = wasmExports["Eh"];
+      dynCalls["iiiji"] = wasmExports["Fh"];
+      dynCalls["iiiii"] = wasmExports["Gh"];
+      dynCalls["viii"] = wasmExports["Hh"];
+      dynCalls["iiiiij"] = wasmExports["Ih"];
+      dynCalls["jiiij"] = wasmExports["Jh"];
+      dynCalls["ijii"] = wasmExports["Kh"];
+      dynCalls["iiiiiii"] = wasmExports["Lh"];
+      dynCalls["fiiiiiiiiffii"] = wasmExports["Mh"];
+      dynCalls["viiif"] = wasmExports["Nh"];
+      dynCalls["viiiif"] = wasmExports["Oh"];
+      dynCalls["viiiiiiifi"] = wasmExports["Ph"];
+      dynCalls["viifi"] = wasmExports["Qh"];
+      dynCalls["diii"] = wasmExports["Rh"];
+      dynCalls["fiii"] = wasmExports["Sh"];
+      dynCalls["viiiii"] = wasmExports["Th"];
+      dynCalls["viidi"] = wasmExports["Uh"];
+      dynCalls["iiijiiii"] = wasmExports["Vh"];
+      dynCalls["viiiiiiff"] = wasmExports["Wh"];
+      dynCalls["viiiiiifi"] = wasmExports["Xh"];
+      dynCalls["iiiiiiii"] = wasmExports["Yh"];
+      dynCalls["viiiiiiii"] = wasmExports["Zh"];
+      dynCalls["viiiiij"] = wasmExports["_h"];
+      dynCalls["viiiiiiiiii"] = wasmExports["$h"];
+      dynCalls["viiiiiiiiiiif"] = wasmExports["ai"];
+      dynCalls["viiiiiii"] = wasmExports["bi"];
+      dynCalls["viiiiiiiii"] = wasmExports["ci"];
+      dynCalls["viiiiiiiiiiii"] = wasmExports["di"];
+      dynCalls["viiiiiiiiiiiiii"] = wasmExports["ei"];
+      dynCalls["viiiiiiiiiii"] = wasmExports["fi"];
+      dynCalls["iiiiiiiii"] = wasmExports["gi"];
+      dynCalls["viiiifii"] = wasmExports["hi"];
+      dynCalls["fii"] = wasmExports["ii"];
+      dynCalls["iidiiiii"] = wasmExports["ji"];
+      _asyncify_start_unwind = wasmExports["ki"];
+      _asyncify_stop_unwind = wasmExports["li"];
+      _asyncify_start_rewind = wasmExports["mi"];
+      _asyncify_stop_rewind = wasmExports["ni"];
+      wasmMemory = wasmExports["I"];
+      wasmExports["__indirect_function_table"];
+      Module["_ff_h264_cabac_tables"] = wasmExports["eh"].value;
+    }
+    var wasmImports = {
+      o: function (fd, newfd, flags) {
+        try {
+          if (fd === newfd) return -28;
+          if (flags & -524289) return -28;
+          var old = SYSCALLS.getStreamFromFD(fd);
+          if (newfd < 0 || newfd >= 4096) return -8;
+          var existing = FS.getStream(newfd);
+          if (existing) FS.close(existing);
+          var stream = FS.dupStream(old, newfd);
+          if (flags & 524288) stream.flags |= 524288;
+          return stream.fd;
+        } catch (e) {
+          if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+          return -e.errno;
+        }
+      },
+      F: function (dirfd, path, amode) {
+        try {
+          path = SYSCALLS.getStr(path);
+          path = SYSCALLS.calculateAt(dirfd, path);
+          if (amode & -8) return -28;
+          var lookup = FS.lookupPath(path, {
+            follow: true
+          });
+          var node = lookup.node;
+          if (!node) return -44;
+          var perms = "";
+          if (amode & 4) perms += "r";
+          if (amode & 2) perms += "w";
+          if (amode & 1) perms += "x";
+          if (perms && FS.nodePermissions(node, perms)) return -2;
+          return 0;
+        } catch (e) {
+          if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+          return -e.errno;
+        }
+      },
+      c: function (fd, cmd, varargs) {
+        SYSCALLS.varargs = varargs;
+        try {
+          var stream = SYSCALLS.getStreamFromFD(fd);
+          switch (cmd) {
+            case 0:
+              var arg = syscallGetVarargI();
+              if (arg < 0) return -28;
+              while (FS.streams[arg]) arg++;
+              var newStream;
+              newStream = FS.dupStream(stream, arg);
+              return newStream.fd;
+            case 1:
+            case 2:
+              return 0;
+            case 3:
+              return stream.flags;
+            case 4:
+              arg = syscallGetVarargI();
+              stream.flags = stream.flags & -289793 | arg & 289792;
+              return 0;
+            case 12:
+              arg = syscallGetVarargP();
+              HEAP16[arg + 0 >> 1] = 2;
+              return 0;
+            case 13:
+            case 14:
+              return 0;
+          }
+          return -28;
+        } catch (e) {
+          if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+          return -e.errno;
+        }
+      },
+      D: function (fd, buf) {
+        try {
+          return SYSCALLS.writeStat(buf, FS.fstat(fd));
+        } catch (e) {
+          if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+          return -e.errno;
+        }
+      },
+      u: function (fd, dirp, count) {
+        try {
+          var stream = SYSCALLS.getStreamFromFD(fd);
+          stream.getdents || (stream.getdents = FS.readdir(stream.path));
+          var pos = 0;
+          var off = FS.llseek(stream, 0, 1);
+          var startIdx = Math.floor(off / 280);
+          var endIdx = Math.min(stream.getdents.length, startIdx + Math.floor(count / 280));
+          for (var idx = startIdx; idx < endIdx; idx++) {
+            var id;
+            var type;
+            var name = stream.getdents[idx];
+            if (name === ".") {
+              id = stream.node.id;
+              type = 4;
+            } else if (name === "..") {
+              var lookup = FS.lookupPath(stream.path, {
+                parent: true
+              });
+              id = lookup.node.id;
+              type = 4;
+            } else {
+              var child;
+              try {
+                child = FS.lookupNode(stream.node, name);
+              } catch (e) {
+                if ((e === null || e === void 0 ? void 0 : e.errno) === 28) continue;
+                throw e;
+              }
+              id = child.id;
+              type = FS.isChrdev(child.mode) ? 2 : FS.isDir(child.mode) ? 4 : FS.isLink(child.mode) ? 10 : 8;
+            }
+            tempI64 = [id >>> 0, (tempDouble = id, +Math.abs(tempDouble) >= 1 ? tempDouble > 0 ? +Math.floor(tempDouble / 4294967296) >>> 0 : ~~+Math.ceil((tempDouble - +(~~tempDouble >>> 0)) / 4294967296) >>> 0 : 0)], HEAP32[dirp + pos >> 2] = tempI64[0], HEAP32[dirp + pos + 4 >> 2] = tempI64[1];
+            tempI64 = [(idx + 1) * 280 >>> 0, (tempDouble = (idx + 1) * 280, +Math.abs(tempDouble) >= 1 ? tempDouble > 0 ? +Math.floor(tempDouble / 4294967296) >>> 0 : ~~+Math.ceil((tempDouble - +(~~tempDouble >>> 0)) / 4294967296) >>> 0 : 0)], HEAP32[dirp + pos + 8 >> 2] = tempI64[0], HEAP32[dirp + pos + 12 >> 2] = tempI64[1];
+            HEAP16[dirp + pos + 16 >> 1] = 280;
+            HEAP8[dirp + pos + 18] = type;
+            stringToUTF8(name, dirp + pos + 19, 256);
+            pos += 280;
+          }
+          FS.llseek(stream, idx * 280, 0);
+          return pos;
+        } catch (e) {
+          if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+          return -e.errno;
+        }
+      },
+      h: function (fd, op, varargs) {
+        SYSCALLS.varargs = varargs;
+        try {
+          var stream = SYSCALLS.getStreamFromFD(fd);
+          switch (op) {
+            case 21509:
+              if (!stream.tty) return -59;
+              return 0;
+            case 21505:
+              if (!stream.tty) return -59;
+              if (stream.tty.ops.ioctl_tcgets) {
+                var termios = stream.tty.ops.ioctl_tcgets(stream);
+                var argp = syscallGetVarargP();
+                HEAP32[argp >> 2] = termios.c_iflag || 0;
+                HEAP32[argp + 4 >> 2] = termios.c_oflag || 0;
+                HEAP32[argp + 8 >> 2] = termios.c_cflag || 0;
+                HEAP32[argp + 12 >> 2] = termios.c_lflag || 0;
+                for (var i = 0; i < 32; i++) HEAP8[argp + i + 17] = termios.c_cc[i] || 0;
+                return 0;
+              }
+              return 0;
+            case 21510:
+            case 21511:
+            case 21512:
+              if (!stream.tty) return -59;
+              return 0;
+            case 21506:
+            case 21507:
+            case 21508:
+              if (!stream.tty) return -59;
+              if (stream.tty.ops.ioctl_tcsets) {
+                argp = syscallGetVarargP();
+                var c_iflag = HEAP32[argp >> 2];
+                var c_oflag = HEAP32[argp + 4 >> 2];
+                var c_cflag = HEAP32[argp + 8 >> 2];
+                var c_lflag = HEAP32[argp + 12 >> 2];
+                var c_cc = [];
+                for (i = 0; i < 32; i++) c_cc.push(HEAP8[argp + i + 17]);
+                return stream.tty.ops.ioctl_tcsets(stream.tty, op, {
+                  c_iflag,
+                  c_oflag,
+                  c_cflag,
+                  c_lflag,
+                  c_cc
+                });
+              }
+              return 0;
+            case 21519:
+              if (!stream.tty) return -59;
+              argp = syscallGetVarargP();
+              HEAP32[argp >> 2] = 0;
+              return 0;
+            case 21520:
+              if (!stream.tty) return -59;
+              return -28;
+            case 21537:
+            case 21531:
+              argp = syscallGetVarargP();
+              return FS.ioctl(stream, op, argp);
+            case 21523:
+              if (!stream.tty) return -59;
+              if (stream.tty.ops.ioctl_tiocgwinsz) {
+                var winsize = stream.tty.ops.ioctl_tiocgwinsz(stream.tty);
+                argp = syscallGetVarargP();
+                HEAP16[argp >> 1] = winsize[0];
+                HEAP16[argp + 2 >> 1] = winsize[1];
+              }
+              return 0;
+            case 21524:
+              if (!stream.tty) return -59;
+              return 0;
+            case 21515:
+              if (!stream.tty) return -59;
+              return 0;
+            default:
+              return -28;
+          }
+        } catch (e) {
+          if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+          return -e.errno;
+        }
+      },
+      A: function (path, buf) {
+        try {
+          path = SYSCALLS.getStr(path);
+          return SYSCALLS.writeStat(buf, FS.lstat(path));
+        } catch (e) {
+          if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+          return -e.errno;
+        }
+      },
+      B: function (dirfd, path, buf, flags) {
+        try {
+          path = SYSCALLS.getStr(path);
+          var nofollow = flags & 256;
+          var allowEmpty = flags & 4096;
+          flags &= -6401;
+          path = SYSCALLS.calculateAt(dirfd, path, allowEmpty);
+          return SYSCALLS.writeStat(buf, nofollow ? FS.lstat(path) : FS.stat(path));
+        } catch (e) {
+          if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+          return -e.errno;
+        }
+      },
+      v: function (dirfd, path, flags, varargs) {
+        SYSCALLS.varargs = varargs;
+        try {
+          path = SYSCALLS.getStr(path);
+          path = SYSCALLS.calculateAt(dirfd, path);
+          var mode = varargs ? syscallGetVarargI() : 0;
+          if (flags & 64) mode &= ~SYSCALLS.currentUmask;
+          return FS.open(path, flags, mode).fd;
+        } catch (e) {
+          if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+          return -e.errno;
+        }
+      },
+      t: function (olddirfd, oldpath, newdirfd, newpath) {
+        try {
+          oldpath = SYSCALLS.getStr(oldpath);
+          newpath = SYSCALLS.getStr(newpath);
+          oldpath = SYSCALLS.calculateAt(olddirfd, oldpath);
+          newpath = SYSCALLS.calculateAt(newdirfd, newpath);
+          FS.rename(oldpath, newpath);
+          return 0;
+        } catch (e) {
+          if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+          return -e.errno;
+        }
+      },
+      s: function (path) {
+        try {
+          path = SYSCALLS.getStr(path);
+          FS.rmdir(path);
+          return 0;
+        } catch (e) {
+          if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+          return -e.errno;
+        }
+      },
+      C: function (path, buf) {
+        try {
+          path = SYSCALLS.getStr(path);
+          return SYSCALLS.writeStat(buf, FS.stat(path));
+        } catch (e) {
+          if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+          return -e.errno;
+        }
+      },
+      q: function (dirfd, path, flags) {
+        try {
+          path = SYSCALLS.getStr(path);
+          path = SYSCALLS.calculateAt(dirfd, path);
+          if (!flags) FS.unlink(path);else if (flags === 512) FS.rmdir(path);else return -28;
+          return 0;
+        } catch (e) {
+          if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+          return -e.errno;
+        }
+      },
+      g: () => abort(""),
+      i: function (time_low, time_high, tmPtr) {
+        var time = convertI32PairToI53Checked(time_low, time_high);
+        var date = new Date(time * 1e3);
+        if (isNaN(date.getTime())) return 1;
+        HEAP32[tmPtr >> 2] = date.getUTCSeconds();
+        HEAP32[tmPtr + 4 >> 2] = date.getUTCMinutes();
+        HEAP32[tmPtr + 8 >> 2] = date.getUTCHours();
+        HEAP32[tmPtr + 12 >> 2] = date.getUTCDate();
+        HEAP32[tmPtr + 16 >> 2] = date.getUTCMonth();
+        HEAP32[tmPtr + 20 >> 2] = date.getUTCFullYear() - 1900;
+        HEAP32[tmPtr + 24 >> 2] = date.getUTCDay();
+        var start = Date.UTC(date.getUTCFullYear(), 0, 1, 0, 0, 0, 0);
+        var yday = (date.getTime() - start) / 864e5 | 0;
+        HEAP32[tmPtr + 28 >> 2] = yday;
+        return 0;
+      },
+      j: function (time_low, time_high, tmPtr) {
+        var time = convertI32PairToI53Checked(time_low, time_high);
+        var date = new Date(time * 1e3);
+        if (isNaN(date.getTime())) return 1;
+        HEAP32[tmPtr >> 2] = date.getSeconds();
+        HEAP32[tmPtr + 4 >> 2] = date.getMinutes();
+        HEAP32[tmPtr + 8 >> 2] = date.getHours();
+        HEAP32[tmPtr + 12 >> 2] = date.getDate();
+        HEAP32[tmPtr + 16 >> 2] = date.getMonth();
+        HEAP32[tmPtr + 20 >> 2] = date.getFullYear() - 1900;
+        HEAP32[tmPtr + 24 >> 2] = date.getDay();
+        var yday = ydayFromDate(date) | 0;
+        HEAP32[tmPtr + 28 >> 2] = yday;
+        HEAP32[tmPtr + 36 >> 2] = -date.getTimezoneOffset() * 60;
+        var start = new Date(date.getFullYear(), 0, 1);
+        var summerOffset = new Date(date.getFullYear(), 6, 1).getTimezoneOffset();
+        var winterOffset = start.getTimezoneOffset();
+        var dst = (summerOffset != winterOffset && date.getTimezoneOffset() == Math.min(winterOffset, summerOffset)) | 0;
+        HEAP32[tmPtr + 32 >> 2] = dst;
+        return 0;
+      },
+      k: function (tmPtr) {
+        var ret = (() => {
+          var date = new Date(HEAP32[tmPtr + 20 >> 2] + 1900, HEAP32[tmPtr + 16 >> 2], HEAP32[tmPtr + 12 >> 2], HEAP32[tmPtr + 8 >> 2], HEAP32[tmPtr + 4 >> 2], HEAP32[tmPtr >> 2], 0);
+          if (isNaN(date.getTime())) return -1;
+          var dst = HEAP32[tmPtr + 32 >> 2];
+          var guessedOffset = date.getTimezoneOffset();
+          var start = new Date(date.getFullYear(), 0, 1);
+          var summerOffset = new Date(date.getFullYear(), 6, 1).getTimezoneOffset();
+          var winterOffset = start.getTimezoneOffset();
+          var dstOffset = Math.min(winterOffset, summerOffset);
+          if (dst < 0) dst = Number(summerOffset != winterOffset && dstOffset == guessedOffset);else if (dst > 0 != (dstOffset == guessedOffset)) {
+            var nonDstOffset = Math.max(winterOffset, summerOffset);
+            var trueOffset = dst > 0 ? dstOffset : nonDstOffset;
+            date.setTime(date.getTime() + 6e4 * (trueOffset - guessedOffset));
+            if (isNaN(date.getTime())) return -1;
+          }
+          HEAP32[tmPtr + 32 >> 2] = dst;
+          HEAP32[tmPtr + 24 >> 2] = date.getDay();
+          var yday = ydayFromDate(date) | 0;
+          HEAP32[tmPtr + 28 >> 2] = yday;
+          HEAP32[tmPtr >> 2] = date.getSeconds();
+          HEAP32[tmPtr + 4 >> 2] = date.getMinutes();
+          HEAP32[tmPtr + 8 >> 2] = date.getHours();
+          HEAP32[tmPtr + 12 >> 2] = date.getDate();
+          HEAP32[tmPtr + 16 >> 2] = date.getMonth();
+          HEAP32[tmPtr + 20 >> 2] = date.getYear();
+          return date.getTime() / 1e3;
+        })();
+        return setTempRet0((tempDouble = ret, +Math.abs(tempDouble) >= 1 ? tempDouble > 0 ? +Math.floor(tempDouble / 4294967296) >>> 0 : ~~+Math.ceil((tempDouble - +(~~tempDouble >>> 0)) / 4294967296) >>> 0 : 0)), ret >>> 0;
+      },
+      w: (timezone, daylight, std_name, dst_name) => {
+        var currentYear = new Date().getFullYear();
+        var winter = new Date(currentYear, 0, 1);
+        var summer = new Date(currentYear, 6, 1);
+        var winterOffset = winter.getTimezoneOffset();
+        var summerOffset = summer.getTimezoneOffset();
+        var stdTimezoneOffset = Math.max(winterOffset, summerOffset);
+        HEAPU32[timezone >> 2] = stdTimezoneOffset * 60;
+        HEAP32[daylight >> 2] = Number(winterOffset != summerOffset);
+        var extractZone = timezoneOffset => {
+          var sign = timezoneOffset >= 0 ? "-" : "+";
+          var absOffset = Math.abs(timezoneOffset);
+          var hours = String(Math.floor(absOffset / 60)).padStart(2, "0");
+          var minutes = String(absOffset % 60).padStart(2, "0");
+          return `UTC${sign}${hours}${minutes}`;
+        };
+        var winterName = extractZone(winterOffset);
+        var summerName = extractZone(summerOffset);
+        if (summerOffset < winterOffset) {
+          stringToUTF8(winterName, std_name, 17);
+          stringToUTF8(summerName, dst_name, 17);
+        } else {
+          stringToUTF8(winterName, dst_name, 17);
+          stringToUTF8(summerName, std_name, 17);
+        }
+      },
+      n: function (clk_id, ignored_precision_low, ignored_precision_high, ptime) {
+        convertI32PairToI53Checked(ignored_precision_low, ignored_precision_high);
+        if (!checkWasiClock(clk_id)) return 28;
+        var now;
+        if (clk_id === 0) now = _emscripten_date_now();else if (1) now = _emscripten_get_now();else return 52;
+        var nsec = Math.round(now * 1e6);
+        tempI64 = [nsec >>> 0, (tempDouble = nsec, +Math.abs(tempDouble) >= 1 ? tempDouble > 0 ? +Math.floor(tempDouble / 4294967296) >>> 0 : ~~+Math.ceil((tempDouble - +(~~tempDouble >>> 0)) / 4294967296) >>> 0 : 0)], HEAP32[ptime >> 2] = tempI64[0], HEAP32[ptime + 4 >> 2] = tempI64[1];
+        return 0;
+      },
+      m: (code, sigPtr, argbuf) => runEmAsmFunction(code, sigPtr, argbuf),
+      E: _emscripten_date_now,
+      x: _emscripten_fiber_swap,
+      r: () => getHeapMax(),
+      e: _emscripten_get_now,
+      p: requestedSize => {
+        var oldSize = HEAPU8.length;
+        requestedSize >>>= 0;
+        var maxHeapSize = getHeapMax();
+        if (requestedSize > maxHeapSize) return false;
+        for (var cutDown = 1; cutDown <= 4; cutDown *= 2) {
+          var overGrownHeapSize = oldSize * (1 + .2 / cutDown);
+          overGrownHeapSize = Math.min(overGrownHeapSize, requestedSize + 100663296);
+          var newSize = Math.min(maxHeapSize, alignMemory(Math.max(requestedSize, overGrownHeapSize), 65536));
+          var replacement = growMemory(newSize);
+          if (replacement) return true;
+        }
+        return false;
+      },
+      y: (__environ, environ_buf) => {
+        var bufSize = 0;
+        var envp = 0;
+        for (var string of getEnvStrings()) {
+          var ptr = environ_buf + bufSize;
+          HEAPU32[__environ + envp >> 2] = ptr;
+          bufSize += stringToUTF8(string, ptr, 1 / 0) + 1;
+          envp += 4;
+        }
+        return 0;
+      },
+      z: (penviron_count, penviron_buf_size) => {
+        var strings = getEnvStrings();
+        HEAPU32[penviron_count >> 2] = strings.length;
+        var bufSize = 0;
+        for (var string of strings) bufSize += lengthBytesUTF8(string) + 1;
+        HEAPU32[penviron_buf_size >> 2] = bufSize;
+        return 0;
+      },
+      b: function (fd) {
+        try {
+          var stream = SYSCALLS.getStreamFromFD(fd);
+          FS.close(stream);
+          return 0;
+        } catch (e) {
+          if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+          return e.errno;
+        }
+      },
+      f: function (fd, pbuf) {
+        try {
+          var stream = SYSCALLS.getStreamFromFD(fd);
+          var type = stream.tty ? 2 : FS.isDir(stream.mode) ? 3 : FS.isLink(stream.mode) ? 7 : 4;
+          HEAP8[pbuf] = type;
+          HEAP16[pbuf + 2 >> 1] = 0;
+          tempI64 = [0, (tempDouble = 0, +Math.abs(tempDouble) >= 1 ? tempDouble > 0 ? +Math.floor(tempDouble / 4294967296) >>> 0 : ~~+Math.ceil((tempDouble - +(~~tempDouble >>> 0)) / 4294967296) >>> 0 : 0)], HEAP32[pbuf + 8 >> 2] = tempI64[0], HEAP32[pbuf + 12 >> 2] = tempI64[1];
+          tempI64 = [0, (tempDouble = 0, +Math.abs(tempDouble) >= 1 ? tempDouble > 0 ? +Math.floor(tempDouble / 4294967296) >>> 0 : ~~+Math.ceil((tempDouble - +(~~tempDouble >>> 0)) / 4294967296) >>> 0 : 0)], HEAP32[pbuf + 16 >> 2] = tempI64[0], HEAP32[pbuf + 20 >> 2] = tempI64[1];
+          return 0;
+        } catch (e) {
+          if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+          return e.errno;
+        }
+      },
+      d: function (fd, iov, iovcnt, pnum) {
+        try {
+          var stream = SYSCALLS.getStreamFromFD(fd);
+          var num = doReadv(stream, iov, iovcnt);
+          HEAPU32[pnum >> 2] = num;
+          return 0;
+        } catch (e) {
+          if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+          return e.errno;
+        }
+      },
+      l: function (fd, offset_low, offset_high, whence, newOffset) {
+        var offset = convertI32PairToI53Checked(offset_low, offset_high);
+        try {
+          if (isNaN(offset)) return 22;
+          var stream = SYSCALLS.getStreamFromFD(fd);
+          FS.llseek(stream, offset, whence);
+          tempI64 = [stream.position >>> 0, (tempDouble = stream.position, +Math.abs(tempDouble) >= 1 ? tempDouble > 0 ? +Math.floor(tempDouble / 4294967296) >>> 0 : ~~+Math.ceil((tempDouble - +(~~tempDouble >>> 0)) / 4294967296) >>> 0 : 0)], HEAP32[newOffset >> 2] = tempI64[0], HEAP32[newOffset + 4 >> 2] = tempI64[1];
+          if (stream.getdents && !offset && whence === 0) stream.getdents = null;
+          return 0;
+        } catch (e) {
+          if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+          return e.errno;
+        }
+      },
+      a: function (fd, iov, iovcnt, pnum) {
+        try {
+          var stream = SYSCALLS.getStreamFromFD(fd);
+          var num = doWritev(stream, iov, iovcnt);
+          HEAPU32[pnum >> 2] = num;
+          return 0;
+        } catch (e) {
+          if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+          return e.errno;
+        }
+      },
+      G: function (fd) {
+        return Asyncify.handleAsync(function () {
+          return new Promise(function (res) {
+            var name = Module.fdName(fd);
+            var waiters = Module.ff_reader_dev_waiters[name];
+            if (!waiters) waiters = Module.ff_reader_dev_waiters[name] = [];
+            waiters.push(res);
+          });
+        });
+      },
+      H: function () {
+        throw new Error("Out of memory");
+      }
+    };
+    var wasmExports;
+    wasmExports = await async function () {
+      function receiveInstance(instance) {
+        wasmExports = instance.exports;
+        wasmExports = Asyncify.instrumentWasmExports(wasmExports);
+        assignWasmExports(wasmExports);
+        updateMemoryViews();
+        return wasmExports;
+      }
+      var info = getWasmImports();
+      var instantiateWasm = Module["instantiateWasm"];
+      if (instantiateWasm) return new Promise(resolve => {
+        instantiateWasm(info, inst => resolve(receiveInstance(inst)));
+      });
+      wasmBinaryFile !== null && wasmBinaryFile !== void 0 ? wasmBinaryFile : wasmBinaryFile = findWasmBinary();
+      var result = await instantiateAsync(void 0, wasmBinaryFile, info);
+      var exports = function (result) {
+        return receiveInstance(result["instance"]);
+      }(result);
+      return exports;
+    }();
+    await async function (_Module$onRuntimeInit) {
+      preRun();
+      if (runDependencies) await resolveRunDependencies();
+      var setStatus = Module["setStatus"];
+      if (setStatus) {
+        setStatus("Running...");
+        await new Promise(resolve => setTimeout(resolve, 1));
+        setTimeout(setStatus, 1, "");
+      }
+      if (ABORT) return;
+      initRuntime();
+      (_Module$onRuntimeInit = Module["onRuntimeInitialized"]) === null || _Module$onRuntimeInit === void 0 || _Module$onRuntimeInit.call(Module);
+      postRun();
+    }();
+    var serializationPromise = null;
+    function serially(f) {
+      var p;
+      if (serializationPromise) p = serializationPromise.catch(function () {}).then(function () {
+        return f();
+      });else p = f();
+      serializationPromise = p = p.finally(function () {
+        if (serializationPromise === p) serializationPromise = null;
+      });
+      return p;
+    }
+    var CAccessors = {};
+    var ERRNO_CODES;
+    var free;
+    var malloc;
+    var strerror;
+    var copyin_u8;
+    var copyout_u8;
+    var copyin_s16;
+    var copyout_s16;
+    var copyin_s32;
+    var copyout_s32;
+    var copyin_f32;
+    var copyout_f32;
+    var av_dict_iterate;
+    var av_dict_set_js;
+    var av_strdup;
+    var ff_error;
+    var ff_nothing;
+    var AVDictionaryEntry_key;
+    var AVDictionaryEntry_value;
+    var avformat_alloc_output_context2_js;
+    var avformat_find_stream_info;
+    var avformat_free_context;
+    var avformat_new_stream;
+    var avformat_open_input;
+    var avformat_open_input_js;
+    var avformat_seek_file;
+    var avformat_seek_file_min;
+    var avformat_seek_file_max;
+    var avformat_seek_file_approx;
+    var av_interleaved_write_frame;
+    var avio_open2_js;
+    var avio_close;
+    var av_read_frame;
+    var av_seek_frame;
+    var av_write_frame;
+    var AVFormatContext_chapters_a;
+    var AVFormatContext_nb_chapters;
+    var AVFormatContext_nb_streams;
+    var AVFormatContext_oformat;
+    var AVFormatContext_pb_s;
+    var AVFormatContext_streams_a;
+    var AVStream_codecpar;
+    var AVStream_duration;
+    var AVStream_durationhi;
+    var AVStream_metadata;
+    var AVStream_time_base_num;
+    var AVStream_time_base_den;
+    var AVStream_time_base_s;
+    var AVChapter_end;
+    var AVChapter_endhi;
+    var AVChapter_id;
+    var AVChapter_metadata;
+    var AVChapter_start;
+    var AVChapter_starthi;
+    var AVChapter_time_base_num;
+    var AVChapter_time_base_den;
+    var av_grow_packet;
+    var av_packet_alloc;
+    var av_packet_clone;
+    var av_packet_make_writable;
+    var av_packet_new_side_data;
+    var av_packet_ref;
+    var av_packet_rescale_ts_js;
+    var AVPacketSideData_data;
+    var AVPacketSideData_size;
+    var AVPacketSideData_type;
+    var av_packet_unref;
+    var av_shrink_packet;
+    var ff_codecpar_new_side_data;
+    var AVCodecParameters_bit_rate;
+    var AVCodecParameters_channel_layoutmask;
+    var AVCodecParameters_channels;
+    var AVCodecParameters_chroma_location;
+    var AVCodecParameters_codec_id;
+    var AVCodecParameters_codec_tag;
+    var AVCodecParameters_codec_tag_s;
+    var AVCodecParameters_codec_type;
+    var AVCodecParameters_coded_side_data;
+    var AVCodecParameters_coded_side_data_s;
+    var AVCodecParameters_color_primaries;
+    var AVCodecParameters_color_range;
+    var AVCodecParameters_color_space;
+    var AVCodecParameters_color_trc;
+    var AVCodecParameters_extradata;
+    var AVCodecParameters_extradata_s;
+    var AVCodecParameters_extradata_size;
+    var AVCodecParameters_extradata_size_s;
+    var AVCodecParameters_format;
+    var AVCodecParameters_height;
+    var AVCodecParameters_level;
+    var AVCodecParameters_nb_coded_side_data;
+    var AVCodecParameters_nb_coded_side_data_s;
+    var AVCodecParameters_profile;
+    var AVCodecParameters_sample_rate;
+    var AVCodecParameters_width;
+    var AVPacket_data;
+    var AVPacket_dts;
+    var AVPacket_dtshi;
+    var AVPacket_duration;
+    var AVPacket_durationhi;
+    var AVPacket_flags;
+    var AVPacket_pts;
+    var AVPacket_ptshi;
+    var AVPacket_side_data;
+    var AVPacket_side_data_s;
+    var AVPacket_side_data_elems;
+    var AVPacket_side_data_elems_s;
+    var AVPacket_size;
+    var AVPacket_stream_index;
+    var AVPacket_time_base_num;
+    var AVPacket_time_base_den;
+    var AVPacket_time_base_s;
+    var av_packet_free_js;
+    var avcodec_parameters_free_js;
+    var avcodec_alloc_context3;
+    var avcodec_find_decoder;
+    var avcodec_find_decoder_by_name;
+    var avcodec_find_encoder_by_name;
+    var avcodec_open2;
+    var avcodec_open2_js;
+    var avcodec_parameters_alloc;
+    var avcodec_parameters_copy;
+    var avcodec_parameters_from_context;
+    var avcodec_parameters_to_context;
+    var avcodec_receive_frame;
+    var avcodec_receive_packet;
+    var avcodec_send_frame;
+    var avcodec_send_packet;
+    var AVCodecContext_codec_id;
+    var AVCodecContext_codec_id_s;
+    var AVCodecContext_frame_size;
+    var AVCodecContext_time_base_num;
+    var AVCodecContext_time_base_den;
+    var AVCodecContext_time_base_s;
+    var avcodec_free_context_js;
+    var av_frame_alloc;
+    var av_frame_clone;
+    var av_frame_get_buffer;
+    var av_frame_make_writable;
+    var av_frame_ref;
+    var av_frame_unref;
+    var av_pix_fmt_desc_get;
+    var ff_frame_rescale_ts_js;
+    var AVFrame_channel_layout;
+    var AVFrame_channels;
+    var AVFrame_crop_bottom;
+    var AVFrame_crop_bottom_s;
+    var AVFrame_crop_left;
+    var AVFrame_crop_left_s;
+    var AVFrame_crop_right;
+    var AVFrame_crop_right_s;
+    var AVFrame_crop_top;
+    var AVFrame_crop_top_s;
+    var AVFrame_data_a;
+    var AVFrame_flags;
+    var AVFrame_format;
+    var AVFrame_height;
+    var AVFrame_key_frame;
+    var AVFrame_linesize_a;
+    var AVFrame_nb_samples;
+    var AVFrame_nb_samples_s;
+    var AVFrame_pict_type;
+    var AVFrame_pts;
+    var AVFrame_ptshi;
+    var AVFrame_best_effort_timestamp;
+    var AVFrame_best_effort_timestamphi;
+    var AVFrame_sample_aspect_ratio_num;
+    var AVFrame_sample_aspect_ratio_den;
+    var AVFrame_sample_aspect_ratio_s;
+    var AVFrame_sample_rate;
+    var AVFrame_time_base_num;
+    var AVFrame_time_base_den;
+    var AVFrame_time_base_s;
+    var AVFrame_width;
+    var AVPixFmtDescriptor_flags;
+    var AVPixFmtDescriptor_log2_chroma_h;
+    var AVPixFmtDescriptor_log2_chroma_w;
+    var AVPixFmtDescriptor_nb_components;
+    var av_frame_free_js;
+    if (typeof ENVIRONMENT_IS_PTHREAD === "undefined" || !ENVIRONMENT_IS_PTHREAD) (function () {
+      Module.fsThrownError = null;
+      ERRNO_CODES = {
+        EPERM: 1,
+        EIO: 5,
+        EAGAIN: 6,
+        ECANCELED: 11,
+        ESPIPE: 29
+      };
+      Module.ff_malloc_int32_list = function (list) {
+        var ptr = malloc(list.length * 4);
+        if (ptr === 0) throw new Error("Failed to malloc");
+        var arr = new Uint32Array(Module.HEAPU8.buffer, ptr, list.length);
+        for (var i = 0; i < list.length; i++) arr[i] = list[i];
+        return ptr;
+      };
+      Module.ff_malloc_int64_list = function (list) {
+        var ptr = malloc(list.length * 8);
+        if (ptr === 0) throw new Error("Failed to malloc");
+        var arr = new Int32Array(Module.HEAPU8.buffer, ptr, list.length * 2);
+        for (var i = 0; i < list.length; i++) {
+          arr[i * 2] = list[i];
+          arr[i * 2 + 1] = list[i] < 0 ? -1 : 0;
+        }
+        return ptr;
+      };
+      Module.ff_malloc_string_array = function (arr) {
+        var ptr = malloc((arr.length + 1) * 4);
+        if (ptr === 0) throw new Error("Failed to malloc");
+        var inArr = new Uint32Array(Module.HEAPU8.buffer, ptr, arr.length + 1);
+        var i;
+        for (i = 0; i < arr.length; i++) inArr[i] = av_strdup(arr[i]);
+        inArr[i] = 0;
+        return ptr;
+      };
+      Module.ff_free_string_array = function (ptr) {
+        var iPtr = ptr / 4;
+        for (;; iPtr++) {
+          var elPtr = Module.HEAPU32[iPtr];
+          if (!elPtr) break;
+          free(elPtr);
+        }
+        free(ptr);
+      };
+      Module.calloc = CAccessors.calloc = Module.cwrap("calloc", "number", ["number", "number"]);
+      Module.close = CAccessors.close = Module.cwrap("close", "number", ["number"]);
+      Module.dup2 = CAccessors.dup2 = Module.cwrap("dup2", "number", ["number", "number"]);
+      free = Module.free = CAccessors.free = Module.cwrap("free", null, ["number"]);
+      malloc = Module.malloc = CAccessors.malloc = Module.cwrap("malloc", "number", ["number"]);
+      Module.mallinfo_uordblks = CAccessors.mallinfo_uordblks = Module.cwrap("mallinfo_uordblks", "number", []);
+      Module.open = CAccessors.open = Module.cwrap("open", "number", ["string", "number", "number"]);
+      strerror = Module.strerror = CAccessors.strerror = Module.cwrap("strerror", "string", ["number"]);
+      Module.libavjs_create_main_thread = CAccessors.libavjs_create_main_thread = Module.cwrap("libavjs_create_main_thread", "number", []);
+      Module.libavjs_with_swscale = CAccessors.libavjs_with_swscale = Module.cwrap("libavjs_with_swscale", "number", []);
+      copyin_u8 = Module.copyin_u8 = CAccessors.copyin_u8 = function (ptr, arr) {
+        var buf = new Uint8Array(Module.HEAPU8.buffer, ptr);
+        buf.set(arr);
+      };
+      copyout_u8 = Module.copyout_u8 = CAccessors.copyout_u8 = function (ptr, len) {
+        var ret = new Uint8Array(Module.HEAPU8.buffer, ptr, len).slice(0);
+        ret.libavjsTransfer = [ret.buffer];
+        return ret;
+      };
+      copyin_s16 = Module.copyin_s16 = CAccessors.copyin_s16 = function (ptr, arr) {
+        var buf = new Int16Array(Module.HEAPU8.buffer, ptr);
+        buf.set(arr);
+      };
+      copyout_s16 = Module.copyout_s16 = CAccessors.copyout_s16 = function (ptr, len) {
+        var ret = new Int16Array(Module.HEAPU8.buffer, ptr, len).slice(0);
+        ret.libavjsTransfer = [ret.buffer];
+        return ret;
+      };
+      copyin_s32 = Module.copyin_s32 = CAccessors.copyin_s32 = function (ptr, arr) {
+        var buf = new Int32Array(Module.HEAPU8.buffer, ptr);
+        buf.set(arr);
+      };
+      copyout_s32 = Module.copyout_s32 = CAccessors.copyout_s32 = function (ptr, len) {
+        var ret = new Int32Array(Module.HEAPU8.buffer, ptr, len).slice(0);
+        ret.libavjsTransfer = [ret.buffer];
+        return ret;
+      };
+      copyin_f32 = Module.copyin_f32 = CAccessors.copyin_f32 = function (ptr, arr) {
+        var buf = new Float32Array(Module.HEAPU8.buffer, ptr);
+        buf.set(arr);
+      };
+      copyout_f32 = Module.copyout_f32 = CAccessors.copyout_f32 = function (ptr, len) {
+        var ret = new Float32Array(Module.HEAPU8.buffer, ptr, len).slice(0);
+        ret.libavjsTransfer = [ret.buffer];
+        return ret;
+      };
+      Module.av_compare_ts_js = CAccessors.av_compare_ts_js = Module.cwrap("av_compare_ts_js", "number", ["number", "number", "number", "number", "number", "number", "number", "number"]);
+      Module.av_dict_copy_js = CAccessors.av_dict_copy_js = Module.cwrap("av_dict_copy_js", "number", ["number", "number", "number"]);
+      Module.av_dict_free = CAccessors.av_dict_free = Module.cwrap("av_dict_free", null, ["number"]);
+      av_dict_iterate = Module.av_dict_iterate = CAccessors.av_dict_iterate = Module.cwrap("av_dict_iterate", "number", ["number", "number"]);
+      av_dict_set_js = Module.av_dict_set_js = CAccessors.av_dict_set_js = Module.cwrap("av_dict_set_js", "number", ["number", "string", "string", "number"]);
+      Module.av_log_get_level = CAccessors.av_log_get_level = Module.cwrap("av_log_get_level", "number", []);
+      Module.av_log_set_level = CAccessors.av_log_set_level = Module.cwrap("av_log_set_level", null, ["number"]);
+      Module.av_opt_set = CAccessors.av_opt_set = Module.cwrap("av_opt_set", "number", ["number", "string", "string", "number"]);
+      Module.av_opt_set_int_list_js = CAccessors.av_opt_set_int_list_js = Module.cwrap("av_opt_set_int_list_js", "number", ["number", "string", "number", "number", "number", "number"]);
+      av_strdup = Module.av_strdup = CAccessors.av_strdup = Module.cwrap("av_strdup", "number", ["string"]);
+      ff_error = Module.ff_error = CAccessors.ff_error = Module.cwrap("ff_error", "string", ["number"]);
+      ff_nothing = Module.ff_nothing = CAccessors.ff_nothing = Module.cwrap("ff_nothing", null, [], {
+        async: true
+      });
+      Module.ff_nothing = function () {
+        var args = arguments;
+        return serially(function () {
+          return ff_nothing.apply(void 0, args);
+        });
+      };
+      Module.LIBAVUTIL_VERSION_INT = CAccessors.LIBAVUTIL_VERSION_INT = Module.cwrap("LIBAVUTIL_VERSION_INT", "number", []);
+      AVDictionaryEntry_key = Module.AVDictionaryEntry_key = CAccessors.AVDictionaryEntry_key = Module.cwrap("AVDictionaryEntry_key", "string", ["number"]);
+      AVDictionaryEntry_value = Module.AVDictionaryEntry_value = CAccessors.AVDictionaryEntry_value = Module.cwrap("AVDictionaryEntry_value", "string", ["number"]);
+      Module.av_dict_free_js = CAccessors.av_dict_free_js = function (p) {
+        var p2 = malloc(4);
+        if (p2 === 0) throw new Error("Could not malloc");
+        new Uint32Array(Module.HEAPU8.buffer, p2, 1)[0] = p;
+        CAccessors.av_dict_free(p2);
+        free(p2);
+      };
+      Module.av_find_best_stream = CAccessors.av_find_best_stream = Module.cwrap("av_find_best_stream", "number", ["number", "number", "number", "number", "number", "number"]);
+      Module.av_find_input_format = CAccessors.av_find_input_format = Module.cwrap("av_find_input_format", "number", ["string"]);
+      Module.avformat_alloc_context = CAccessors.avformat_alloc_context = Module.cwrap("avformat_alloc_context", "number", []);
+      avformat_alloc_output_context2_js = Module.avformat_alloc_output_context2_js = CAccessors.avformat_alloc_output_context2_js = Module.cwrap("avformat_alloc_output_context2_js", "number", ["number", "string", "string"]);
+      Module.avformat_close_input = CAccessors.avformat_close_input = Module.cwrap("avformat_close_input", null, ["number"]);
+      avformat_find_stream_info = Module.avformat_find_stream_info = CAccessors.avformat_find_stream_info = Module.cwrap("avformat_find_stream_info", "number", ["number", "number"], {
+        async: true
+      });
+      var avformat_find_stream_info__raw = avformat_find_stream_info;
+      avformat_find_stream_info = Module.avformat_find_stream_info = function () {
+        var args = arguments;
+        var ret = avformat_find_stream_info__raw.apply(void 0, args);
+        if (ret === -11) throw Module.fsThrownError;else if (ret && ret.then) return ret.then(function (ret) {
+          if (ret === -11) throw Module.fsThrownError;
+          return ret;
+        });
+        return ret;
+      };
+      Module.avformat_find_stream_info = function () {
+        var args = arguments;
+        return serially(function () {
+          return avformat_find_stream_info.apply(void 0, args);
+        });
+      };
+      Module.avformat_flush = CAccessors.avformat_flush = Module.cwrap("avformat_flush", "number", ["number"]);
+      avformat_free_context = Module.avformat_free_context = CAccessors.avformat_free_context = Module.cwrap("avformat_free_context", null, ["number"]);
+      avformat_new_stream = Module.avformat_new_stream = CAccessors.avformat_new_stream = Module.cwrap("avformat_new_stream", "number", ["number", "number"]);
+      avformat_open_input = Module.avformat_open_input = CAccessors.avformat_open_input = Module.cwrap("avformat_open_input", "number", ["number", "string", "number", "number"], {
+        async: true
+      });
+      var avformat_open_input__raw = avformat_open_input;
+      avformat_open_input = Module.avformat_open_input = function () {
+        var args = arguments;
+        var ret = avformat_open_input__raw.apply(void 0, args);
+        if (ret === -11) throw Module.fsThrownError;else if (ret && ret.then) return ret.then(function (ret) {
+          if (ret === -11) throw Module.fsThrownError;
+          return ret;
+        });
+        return ret;
+      };
+      Module.avformat_open_input = function () {
+        var args = arguments;
+        return serially(function () {
+          return avformat_open_input.apply(void 0, args);
+        });
+      };
+      avformat_open_input_js = Module.avformat_open_input_js = CAccessors.avformat_open_input_js = Module.cwrap("avformat_open_input_js", "number", ["string", "number", "number"], {
+        async: true
+      });
+      var avformat_open_input_js__raw = avformat_open_input_js;
+      avformat_open_input_js = Module.avformat_open_input_js = function () {
+        var args = arguments;
+        var ret = avformat_open_input_js__raw.apply(void 0, args);
+        if (ret === -11) throw Module.fsThrownError;else if (ret && ret.then) return ret.then(function (ret) {
+          if (ret === -11) throw Module.fsThrownError;
+          return ret;
+        });
+        return ret;
+      };
+      Module.avformat_open_input_js = function () {
+        var args = arguments;
+        return serially(function () {
+          return avformat_open_input_js.apply(void 0, args);
+        });
+      };
+      avformat_seek_file = Module.avformat_seek_file = CAccessors.avformat_seek_file = Module.cwrap("avformat_seek_file", "number", ["number", "number", "number", "number", "number", "number"], {
+        async: true
+      });
+      var avformat_seek_file__raw = avformat_seek_file;
+      avformat_seek_file = Module.avformat_seek_file = function () {
+        var args = arguments;
+        var ret = avformat_seek_file__raw.apply(void 0, args);
+        if (ret === -11) throw Module.fsThrownError;else if (ret && ret.then) return ret.then(function (ret) {
+          if (ret === -11) throw Module.fsThrownError;
+          return ret;
+        });
+        return ret;
+      };
+      Module.avformat_seek_file = function () {
+        var args = arguments;
+        return serially(function () {
+          return avformat_seek_file.apply(void 0, args);
+        });
+      };
+      avformat_seek_file_min = Module.avformat_seek_file_min = CAccessors.avformat_seek_file_min = Module.cwrap("avformat_seek_file_min", "number", ["number", "number", "number", "number"], {
+        async: true
+      });
+      var avformat_seek_file_min__raw = avformat_seek_file_min;
+      avformat_seek_file_min = Module.avformat_seek_file_min = function () {
+        var args = arguments;
+        var ret = avformat_seek_file_min__raw.apply(void 0, args);
+        if (ret === -11) throw Module.fsThrownError;else if (ret && ret.then) return ret.then(function (ret) {
+          if (ret === -11) throw Module.fsThrownError;
+          return ret;
+        });
+        return ret;
+      };
+      Module.avformat_seek_file_min = function () {
+        var args = arguments;
+        return serially(function () {
+          return avformat_seek_file_min.apply(void 0, args);
+        });
+      };
+      avformat_seek_file_max = Module.avformat_seek_file_max = CAccessors.avformat_seek_file_max = Module.cwrap("avformat_seek_file_max", "number", ["number", "number", "number", "number"], {
+        async: true
+      });
+      var avformat_seek_file_max__raw = avformat_seek_file_max;
+      avformat_seek_file_max = Module.avformat_seek_file_max = function () {
+        var args = arguments;
+        var ret = avformat_seek_file_max__raw.apply(void 0, args);
+        if (ret === -11) throw Module.fsThrownError;else if (ret && ret.then) return ret.then(function (ret) {
+          if (ret === -11) throw Module.fsThrownError;
+          return ret;
+        });
+        return ret;
+      };
+      Module.avformat_seek_file_max = function () {
+        var args = arguments;
+        return serially(function () {
+          return avformat_seek_file_max.apply(void 0, args);
+        });
+      };
+      avformat_seek_file_approx = Module.avformat_seek_file_approx = CAccessors.avformat_seek_file_approx = Module.cwrap("avformat_seek_file_approx", "number", ["number", "number", "number", "number"], {
+        async: true
+      });
+      var avformat_seek_file_approx__raw = avformat_seek_file_approx;
+      avformat_seek_file_approx = Module.avformat_seek_file_approx = function () {
+        var args = arguments;
+        var ret = avformat_seek_file_approx__raw.apply(void 0, args);
+        if (ret === -11) throw Module.fsThrownError;else if (ret && ret.then) return ret.then(function (ret) {
+          if (ret === -11) throw Module.fsThrownError;
+          return ret;
+        });
+        return ret;
+      };
+      Module.avformat_seek_file_approx = function () {
+        var args = arguments;
+        return serially(function () {
+          return avformat_seek_file_approx.apply(void 0, args);
+        });
+      };
+      Module.avformat_write_header = CAccessors.avformat_write_header = Module.cwrap("avformat_write_header", "number", ["number", "number"]);
+      av_interleaved_write_frame = Module.av_interleaved_write_frame = CAccessors.av_interleaved_write_frame = Module.cwrap("av_interleaved_write_frame", "number", ["number", "number"]);
+      avio_open2_js = Module.avio_open2_js = CAccessors.avio_open2_js = Module.cwrap("avio_open2_js", "number", ["string", "number", "number", "number"]);
+      avio_close = Module.avio_close = CAccessors.avio_close = Module.cwrap("avio_close", "number", ["number"]);
+      Module.avio_flush = CAccessors.avio_flush = Module.cwrap("avio_flush", null, ["number"]);
+      av_read_frame = Module.av_read_frame = CAccessors.av_read_frame = Module.cwrap("av_read_frame", "number", ["number", "number"], {
+        async: true
+      });
+      var av_read_frame__raw = av_read_frame;
+      av_read_frame = Module.av_read_frame = function () {
+        var args = arguments;
+        var ret = av_read_frame__raw.apply(void 0, args);
+        if (ret === -11) throw Module.fsThrownError;else if (ret && ret.then) return ret.then(function (ret) {
+          if (ret === -11) throw Module.fsThrownError;
+          return ret;
+        });
+        return ret;
+      };
+      Module.av_read_frame = function () {
+        var args = arguments;
+        return serially(function () {
+          return av_read_frame.apply(void 0, args);
+        });
+      };
+      av_seek_frame = Module.av_seek_frame = CAccessors.av_seek_frame = Module.cwrap("av_seek_frame", "number", ["number", "number", "number", "number"], {
+        async: true
+      });
+      var av_seek_frame__raw = av_seek_frame;
+      av_seek_frame = Module.av_seek_frame = function () {
+        var args = arguments;
+        var ret = av_seek_frame__raw.apply(void 0, args);
+        if (ret === -11) throw Module.fsThrownError;else if (ret && ret.then) return ret.then(function (ret) {
+          if (ret === -11) throw Module.fsThrownError;
+          return ret;
+        });
+        return ret;
+      };
+      Module.av_seek_frame = function () {
+        var args = arguments;
+        return serially(function () {
+          return av_seek_frame.apply(void 0, args);
+        });
+      };
+      av_write_frame = Module.av_write_frame = CAccessors.av_write_frame = Module.cwrap("av_write_frame", "number", ["number", "number"]);
+      Module.av_write_trailer = CAccessors.av_write_trailer = Module.cwrap("av_write_trailer", "number", ["number"]);
+      Module.LIBAVFORMAT_VERSION_INT = CAccessors.LIBAVFORMAT_VERSION_INT = Module.cwrap("LIBAVFORMAT_VERSION_INT", "number", []);
+      AVFormatContext_chapters_a = Module.AVFormatContext_chapters_a = CAccessors.AVFormatContext_chapters_a = Module.cwrap("AVFormatContext_chapters_a", "number", ["number", "number"]);
+      Module.AVFormatContext_chapters_a_s = CAccessors.AVFormatContext_chapters_a_s = Module.cwrap("AVFormatContext_chapters_a_s", null, ["number", "number", "number"]);
+      Module.AVFormatContext_duration = CAccessors.AVFormatContext_duration = Module.cwrap("AVFormatContext_duration", "number", ["number"]);
+      Module.AVFormatContext_duration_s = CAccessors.AVFormatContext_duration_s = Module.cwrap("AVFormatContext_duration_s", null, ["number", "number"]);
+      Module.AVFormatContext_durationhi = CAccessors.AVFormatContext_durationhi = Module.cwrap("AVFormatContext_durationhi", "number", ["number"]);
+      Module.AVFormatContext_durationhi_s = CAccessors.AVFormatContext_durationhi_s = Module.cwrap("AVFormatContext_durationhi_s", null, ["number", "number"]);
+      Module.AVFormatContext_flags = CAccessors.AVFormatContext_flags = Module.cwrap("AVFormatContext_flags", "number", ["number"]);
+      Module.AVFormatContext_flags_s = CAccessors.AVFormatContext_flags_s = Module.cwrap("AVFormatContext_flags_s", null, ["number", "number"]);
+      Module.AVFormatContext_metadata = CAccessors.AVFormatContext_metadata = Module.cwrap("AVFormatContext_metadata", "number", ["number"]);
+      Module.AVFormatContext_metadata_s = CAccessors.AVFormatContext_metadata_s = Module.cwrap("AVFormatContext_metadata_s", null, ["number", "number"]);
+      AVFormatContext_nb_chapters = Module.AVFormatContext_nb_chapters = CAccessors.AVFormatContext_nb_chapters = Module.cwrap("AVFormatContext_nb_chapters", "number", ["number"]);
+      Module.AVFormatContext_nb_chapters_s = CAccessors.AVFormatContext_nb_chapters_s = Module.cwrap("AVFormatContext_nb_chapters_s", null, ["number", "number"]);
+      AVFormatContext_nb_streams = Module.AVFormatContext_nb_streams = CAccessors.AVFormatContext_nb_streams = Module.cwrap("AVFormatContext_nb_streams", "number", ["number"]);
+      Module.AVFormatContext_nb_streams_s = CAccessors.AVFormatContext_nb_streams_s = Module.cwrap("AVFormatContext_nb_streams_s", null, ["number", "number"]);
+      AVFormatContext_oformat = Module.AVFormatContext_oformat = CAccessors.AVFormatContext_oformat = Module.cwrap("AVFormatContext_oformat", "number", ["number"]);
+      Module.AVFormatContext_oformat_s = CAccessors.AVFormatContext_oformat_s = Module.cwrap("AVFormatContext_oformat_s", null, ["number", "number"]);
+      Module.AVFormatContext_pb = CAccessors.AVFormatContext_pb = Module.cwrap("AVFormatContext_pb", "number", ["number"]);
+      AVFormatContext_pb_s = Module.AVFormatContext_pb_s = CAccessors.AVFormatContext_pb_s = Module.cwrap("AVFormatContext_pb_s", null, ["number", "number"]);
+      Module.AVFormatContext_start_time = CAccessors.AVFormatContext_start_time = Module.cwrap("AVFormatContext_start_time", "number", ["number"]);
+      Module.AVFormatContext_start_time_s = CAccessors.AVFormatContext_start_time_s = Module.cwrap("AVFormatContext_start_time_s", null, ["number", "number"]);
+      Module.AVFormatContext_start_timehi = CAccessors.AVFormatContext_start_timehi = Module.cwrap("AVFormatContext_start_timehi", "number", ["number"]);
+      Module.AVFormatContext_start_timehi_s = CAccessors.AVFormatContext_start_timehi_s = Module.cwrap("AVFormatContext_start_timehi_s", null, ["number", "number"]);
+      AVFormatContext_streams_a = Module.AVFormatContext_streams_a = CAccessors.AVFormatContext_streams_a = Module.cwrap("AVFormatContext_streams_a", "number", ["number", "number"]);
+      Module.AVFormatContext_streams_a_s = CAccessors.AVFormatContext_streams_a_s = Module.cwrap("AVFormatContext_streams_a_s", null, ["number", "number", "number"]);
+      AVStream_codecpar = Module.AVStream_codecpar = CAccessors.AVStream_codecpar = Module.cwrap("AVStream_codecpar", "number", ["number"]);
+      Module.AVStream_codecpar_s = CAccessors.AVStream_codecpar_s = Module.cwrap("AVStream_codecpar_s", null, ["number", "number"]);
+      Module.AVStream_discard = CAccessors.AVStream_discard = Module.cwrap("AVStream_discard", "number", ["number"]);
+      Module.AVStream_discard_s = CAccessors.AVStream_discard_s = Module.cwrap("AVStream_discard_s", null, ["number", "number"]);
+      AVStream_duration = Module.AVStream_duration = CAccessors.AVStream_duration = Module.cwrap("AVStream_duration", "number", ["number"]);
+      Module.AVStream_duration_s = CAccessors.AVStream_duration_s = Module.cwrap("AVStream_duration_s", null, ["number", "number"]);
+      AVStream_durationhi = Module.AVStream_durationhi = CAccessors.AVStream_durationhi = Module.cwrap("AVStream_durationhi", "number", ["number"]);
+      Module.AVStream_durationhi_s = CAccessors.AVStream_durationhi_s = Module.cwrap("AVStream_durationhi_s", null, ["number", "number"]);
+      AVStream_metadata = Module.AVStream_metadata = CAccessors.AVStream_metadata = Module.cwrap("AVStream_metadata", "number", ["number"]);
+      Module.AVStream_metadata_s = CAccessors.AVStream_metadata_s = Module.cwrap("AVStream_metadata_s", null, ["number", "number"]);
+      AVStream_time_base_num = Module.AVStream_time_base_num = CAccessors.AVStream_time_base_num = Module.cwrap("AVStream_time_base_num", "number", ["number"]);
+      AVStream_time_base_den = Module.AVStream_time_base_den = CAccessors.AVStream_time_base_den = Module.cwrap("AVStream_time_base_den", "number", ["number"]);
+      Module.AVStream_time_base_num_s = CAccessors.AVStream_time_base_num_s = Module.cwrap("AVStream_time_base_num_s", null, ["number", "number"]);
+      Module.AVStream_time_base_den_s = CAccessors.AVStream_time_base_den_s = Module.cwrap("AVStream_time_base_den_s", null, ["number", "number"]);
+      AVStream_time_base_s = Module.AVStream_time_base_s = CAccessors.AVStream_time_base_s = Module.cwrap("AVStream_time_base_s", null, ["number", "number", "number"]);
+      AVChapter_end = Module.AVChapter_end = CAccessors.AVChapter_end = Module.cwrap("AVChapter_end", "number", ["number"]);
+      Module.AVChapter_end_s = CAccessors.AVChapter_end_s = Module.cwrap("AVChapter_end_s", null, ["number", "number"]);
+      AVChapter_endhi = Module.AVChapter_endhi = CAccessors.AVChapter_endhi = Module.cwrap("AVChapter_endhi", "number", ["number"]);
+      Module.AVChapter_endhi_s = CAccessors.AVChapter_endhi_s = Module.cwrap("AVChapter_endhi_s", null, ["number", "number"]);
+      AVChapter_id = Module.AVChapter_id = CAccessors.AVChapter_id = Module.cwrap("AVChapter_id", "number", ["number"]);
+      Module.AVChapter_id_s = CAccessors.AVChapter_id_s = Module.cwrap("AVChapter_id_s", null, ["number", "number"]);
+      AVChapter_metadata = Module.AVChapter_metadata = CAccessors.AVChapter_metadata = Module.cwrap("AVChapter_metadata", "number", ["number"]);
+      Module.AVChapter_metadata_s = CAccessors.AVChapter_metadata_s = Module.cwrap("AVChapter_metadata_s", null, ["number", "number"]);
+      AVChapter_start = Module.AVChapter_start = CAccessors.AVChapter_start = Module.cwrap("AVChapter_start", "number", ["number"]);
+      Module.AVChapter_start_s = CAccessors.AVChapter_start_s = Module.cwrap("AVChapter_start_s", null, ["number", "number"]);
+      AVChapter_starthi = Module.AVChapter_starthi = CAccessors.AVChapter_starthi = Module.cwrap("AVChapter_starthi", "number", ["number"]);
+      Module.AVChapter_starthi_s = CAccessors.AVChapter_starthi_s = Module.cwrap("AVChapter_starthi_s", null, ["number", "number"]);
+      AVChapter_time_base_num = Module.AVChapter_time_base_num = CAccessors.AVChapter_time_base_num = Module.cwrap("AVChapter_time_base_num", "number", ["number"]);
+      AVChapter_time_base_den = Module.AVChapter_time_base_den = CAccessors.AVChapter_time_base_den = Module.cwrap("AVChapter_time_base_den", "number", ["number"]);
+      Module.AVChapter_time_base_num_s = CAccessors.AVChapter_time_base_num_s = Module.cwrap("AVChapter_time_base_num_s", null, ["number", "number"]);
+      Module.AVChapter_time_base_den_s = CAccessors.AVChapter_time_base_den_s = Module.cwrap("AVChapter_time_base_den_s", null, ["number", "number"]);
+      Module.AVChapter_time_base_s = CAccessors.AVChapter_time_base_s = Module.cwrap("AVChapter_time_base_s", null, ["number", "number", "number"]);
+      Module.avformat_close_input_js = CAccessors.avformat_close_input_js = function (p) {
+        var p2 = malloc(4);
+        if (p2 === 0) throw new Error("Could not malloc");
+        new Uint32Array(Module.HEAPU8.buffer, p2, 1)[0] = p;
+        CAccessors.avformat_close_input(p2);
+        free(p2);
+      };
+      Module.avcodec_descriptor_get = CAccessors.avcodec_descriptor_get = Module.cwrap("avcodec_descriptor_get", "number", ["number"]);
+      Module.avcodec_descriptor_get_by_name = CAccessors.avcodec_descriptor_get_by_name = Module.cwrap("avcodec_descriptor_get_by_name", "number", ["string"]);
+      Module.avcodec_descriptor_next = CAccessors.avcodec_descriptor_next = Module.cwrap("avcodec_descriptor_next", "number", ["number"]);
+      av_grow_packet = Module.av_grow_packet = CAccessors.av_grow_packet = Module.cwrap("av_grow_packet", "number", ["number", "number"]);
+      av_packet_alloc = Module.av_packet_alloc = CAccessors.av_packet_alloc = Module.cwrap("av_packet_alloc", "number", []);
+      av_packet_clone = Module.av_packet_clone = CAccessors.av_packet_clone = Module.cwrap("av_packet_clone", "number", ["number"]);
+      Module.av_packet_free = CAccessors.av_packet_free = Module.cwrap("av_packet_free", null, ["number"]);
+      av_packet_make_writable = Module.av_packet_make_writable = CAccessors.av_packet_make_writable = Module.cwrap("av_packet_make_writable", "number", ["number"]);
+      av_packet_new_side_data = Module.av_packet_new_side_data = CAccessors.av_packet_new_side_data = Module.cwrap("av_packet_new_side_data", "number", ["number", "number", "number"]);
+      av_packet_ref = Module.av_packet_ref = CAccessors.av_packet_ref = Module.cwrap("av_packet_ref", "number", ["number", "number"]);
+      av_packet_rescale_ts_js = Module.av_packet_rescale_ts_js = CAccessors.av_packet_rescale_ts_js = Module.cwrap("av_packet_rescale_ts_js", null, ["number", "number", "number", "number", "number"]);
+      AVPacketSideData_data = Module.AVPacketSideData_data = CAccessors.AVPacketSideData_data = Module.cwrap("AVPacketSideData_data", "number", ["number", "number"]);
+      AVPacketSideData_size = Module.AVPacketSideData_size = CAccessors.AVPacketSideData_size = Module.cwrap("AVPacketSideData_size", "number", ["number", "number"]);
+      AVPacketSideData_type = Module.AVPacketSideData_type = CAccessors.AVPacketSideData_type = Module.cwrap("AVPacketSideData_type", "number", ["number", "number"]);
+      av_packet_unref = Module.av_packet_unref = CAccessors.av_packet_unref = Module.cwrap("av_packet_unref", null, ["number"]);
+      av_shrink_packet = Module.av_shrink_packet = CAccessors.av_shrink_packet = Module.cwrap("av_shrink_packet", null, ["number", "number"]);
+      ff_codecpar_new_side_data = Module.ff_codecpar_new_side_data = CAccessors.ff_codecpar_new_side_data = Module.cwrap("ff_codecpar_new_side_data", "number", ["number", "number", "number"]);
+      Module.LIBAVCODEC_VERSION_INT = CAccessors.LIBAVCODEC_VERSION_INT = Module.cwrap("LIBAVCODEC_VERSION_INT", "number", []);
+      Module.AVCodecDescriptor_id = CAccessors.AVCodecDescriptor_id = Module.cwrap("AVCodecDescriptor_id", "number", ["number"]);
+      Module.AVCodecDescriptor_id_s = CAccessors.AVCodecDescriptor_id_s = Module.cwrap("AVCodecDescriptor_id_s", null, ["number", "number"]);
+      Module.AVCodecDescriptor_long_name = CAccessors.AVCodecDescriptor_long_name = Module.cwrap("AVCodecDescriptor_long_name", "string", ["number"]);
+      Module.AVCodecDescriptor_mime_types_a = CAccessors.AVCodecDescriptor_mime_types_a = Module.cwrap("AVCodecDescriptor_mime_types_a", "number", ["number", "number"]);
+      Module.AVCodecDescriptor_mime_types_a_s = CAccessors.AVCodecDescriptor_mime_types_a_s = Module.cwrap("AVCodecDescriptor_mime_types_a_s", null, ["number", "number", "number"]);
+      Module.AVCodecDescriptor_name = CAccessors.AVCodecDescriptor_name = Module.cwrap("AVCodecDescriptor_name", "string", ["number"]);
+      Module.AVCodecDescriptor_props = CAccessors.AVCodecDescriptor_props = Module.cwrap("AVCodecDescriptor_props", "number", ["number"]);
+      Module.AVCodecDescriptor_props_s = CAccessors.AVCodecDescriptor_props_s = Module.cwrap("AVCodecDescriptor_props_s", null, ["number", "number"]);
+      Module.AVCodecDescriptor_type = CAccessors.AVCodecDescriptor_type = Module.cwrap("AVCodecDescriptor_type", "number", ["number"]);
+      Module.AVCodecDescriptor_type_s = CAccessors.AVCodecDescriptor_type_s = Module.cwrap("AVCodecDescriptor_type_s", null, ["number", "number"]);
+      AVCodecParameters_bit_rate = Module.AVCodecParameters_bit_rate = CAccessors.AVCodecParameters_bit_rate = Module.cwrap("AVCodecParameters_bit_rate", "number", ["number"]);
+      Module.AVCodecParameters_bit_rate_s = CAccessors.AVCodecParameters_bit_rate_s = Module.cwrap("AVCodecParameters_bit_rate_s", null, ["number", "number"]);
+      AVCodecParameters_channel_layoutmask = Module.AVCodecParameters_channel_layoutmask = CAccessors.AVCodecParameters_channel_layoutmask = Module.cwrap("AVCodecParameters_channel_layoutmask", "number", ["number"]);
+      Module.AVCodecParameters_channel_layoutmask_s = CAccessors.AVCodecParameters_channel_layoutmask_s = Module.cwrap("AVCodecParameters_channel_layoutmask_s", null, ["number", "number"]);
+      AVCodecParameters_channels = Module.AVCodecParameters_channels = CAccessors.AVCodecParameters_channels = Module.cwrap("AVCodecParameters_channels", "number", ["number"]);
+      Module.AVCodecParameters_channels_s = CAccessors.AVCodecParameters_channels_s = Module.cwrap("AVCodecParameters_channels_s", null, ["number", "number"]);
+      Module.AVCodecParameters_ch_layout_nb_channels = CAccessors.AVCodecParameters_ch_layout_nb_channels = Module.cwrap("AVCodecParameters_ch_layout_nb_channels", "number", ["number"]);
+      Module.AVCodecParameters_ch_layout_nb_channels_s = CAccessors.AVCodecParameters_ch_layout_nb_channels_s = Module.cwrap("AVCodecParameters_ch_layout_nb_channels_s", null, ["number", "number"]);
+      AVCodecParameters_chroma_location = Module.AVCodecParameters_chroma_location = CAccessors.AVCodecParameters_chroma_location = Module.cwrap("AVCodecParameters_chroma_location", "number", ["number"]);
+      Module.AVCodecParameters_chroma_location_s = CAccessors.AVCodecParameters_chroma_location_s = Module.cwrap("AVCodecParameters_chroma_location_s", null, ["number", "number"]);
+      AVCodecParameters_codec_id = Module.AVCodecParameters_codec_id = CAccessors.AVCodecParameters_codec_id = Module.cwrap("AVCodecParameters_codec_id", "number", ["number"]);
+      Module.AVCodecParameters_codec_id_s = CAccessors.AVCodecParameters_codec_id_s = Module.cwrap("AVCodecParameters_codec_id_s", null, ["number", "number"]);
+      AVCodecParameters_codec_tag = Module.AVCodecParameters_codec_tag = CAccessors.AVCodecParameters_codec_tag = Module.cwrap("AVCodecParameters_codec_tag", "number", ["number"]);
+      AVCodecParameters_codec_tag_s = Module.AVCodecParameters_codec_tag_s = CAccessors.AVCodecParameters_codec_tag_s = Module.cwrap("AVCodecParameters_codec_tag_s", null, ["number", "number"]);
+      AVCodecParameters_codec_type = Module.AVCodecParameters_codec_type = CAccessors.AVCodecParameters_codec_type = Module.cwrap("AVCodecParameters_codec_type", "number", ["number"]);
+      Module.AVCodecParameters_codec_type_s = CAccessors.AVCodecParameters_codec_type_s = Module.cwrap("AVCodecParameters_codec_type_s", null, ["number", "number"]);
+      AVCodecParameters_coded_side_data = Module.AVCodecParameters_coded_side_data = CAccessors.AVCodecParameters_coded_side_data = Module.cwrap("AVCodecParameters_coded_side_data", "number", ["number"]);
+      AVCodecParameters_coded_side_data_s = Module.AVCodecParameters_coded_side_data_s = CAccessors.AVCodecParameters_coded_side_data_s = Module.cwrap("AVCodecParameters_coded_side_data_s", null, ["number", "number"]);
+      AVCodecParameters_color_primaries = Module.AVCodecParameters_color_primaries = CAccessors.AVCodecParameters_color_primaries = Module.cwrap("AVCodecParameters_color_primaries", "number", ["number"]);
+      Module.AVCodecParameters_color_primaries_s = CAccessors.AVCodecParameters_color_primaries_s = Module.cwrap("AVCodecParameters_color_primaries_s", null, ["number", "number"]);
+      AVCodecParameters_color_range = Module.AVCodecParameters_color_range = CAccessors.AVCodecParameters_color_range = Module.cwrap("AVCodecParameters_color_range", "number", ["number"]);
+      Module.AVCodecParameters_color_range_s = CAccessors.AVCodecParameters_color_range_s = Module.cwrap("AVCodecParameters_color_range_s", null, ["number", "number"]);
+      AVCodecParameters_color_space = Module.AVCodecParameters_color_space = CAccessors.AVCodecParameters_color_space = Module.cwrap("AVCodecParameters_color_space", "number", ["number"]);
+      Module.AVCodecParameters_color_space_s = CAccessors.AVCodecParameters_color_space_s = Module.cwrap("AVCodecParameters_color_space_s", null, ["number", "number"]);
+      AVCodecParameters_color_trc = Module.AVCodecParameters_color_trc = CAccessors.AVCodecParameters_color_trc = Module.cwrap("AVCodecParameters_color_trc", "number", ["number"]);
+      Module.AVCodecParameters_color_trc_s = CAccessors.AVCodecParameters_color_trc_s = Module.cwrap("AVCodecParameters_color_trc_s", null, ["number", "number"]);
+      AVCodecParameters_extradata = Module.AVCodecParameters_extradata = CAccessors.AVCodecParameters_extradata = Module.cwrap("AVCodecParameters_extradata", "number", ["number"]);
+      AVCodecParameters_extradata_s = Module.AVCodecParameters_extradata_s = CAccessors.AVCodecParameters_extradata_s = Module.cwrap("AVCodecParameters_extradata_s", null, ["number", "number"]);
+      AVCodecParameters_extradata_size = Module.AVCodecParameters_extradata_size = CAccessors.AVCodecParameters_extradata_size = Module.cwrap("AVCodecParameters_extradata_size", "number", ["number"]);
+      AVCodecParameters_extradata_size_s = Module.AVCodecParameters_extradata_size_s = CAccessors.AVCodecParameters_extradata_size_s = Module.cwrap("AVCodecParameters_extradata_size_s", null, ["number", "number"]);
+      AVCodecParameters_format = Module.AVCodecParameters_format = CAccessors.AVCodecParameters_format = Module.cwrap("AVCodecParameters_format", "number", ["number"]);
+      Module.AVCodecParameters_format_s = CAccessors.AVCodecParameters_format_s = Module.cwrap("AVCodecParameters_format_s", null, ["number", "number"]);
+      Module.AVCodecParameters_framerate_num = CAccessors.AVCodecParameters_framerate_num = Module.cwrap("AVCodecParameters_framerate_num", "number", ["number"]);
+      Module.AVCodecParameters_framerate_den = CAccessors.AVCodecParameters_framerate_den = Module.cwrap("AVCodecParameters_framerate_den", "number", ["number"]);
+      Module.AVCodecParameters_framerate_num_s = CAccessors.AVCodecParameters_framerate_num_s = Module.cwrap("AVCodecParameters_framerate_num_s", null, ["number", "number"]);
+      Module.AVCodecParameters_framerate_den_s = CAccessors.AVCodecParameters_framerate_den_s = Module.cwrap("AVCodecParameters_framerate_den_s", null, ["number", "number"]);
+      Module.AVCodecParameters_framerate_s = CAccessors.AVCodecParameters_framerate_s = Module.cwrap("AVCodecParameters_framerate_s", null, ["number", "number", "number"]);
+      AVCodecParameters_height = Module.AVCodecParameters_height = CAccessors.AVCodecParameters_height = Module.cwrap("AVCodecParameters_height", "number", ["number"]);
+      Module.AVCodecParameters_height_s = CAccessors.AVCodecParameters_height_s = Module.cwrap("AVCodecParameters_height_s", null, ["number", "number"]);
+      AVCodecParameters_level = Module.AVCodecParameters_level = CAccessors.AVCodecParameters_level = Module.cwrap("AVCodecParameters_level", "number", ["number"]);
+      Module.AVCodecParameters_level_s = CAccessors.AVCodecParameters_level_s = Module.cwrap("AVCodecParameters_level_s", null, ["number", "number"]);
+      AVCodecParameters_nb_coded_side_data = Module.AVCodecParameters_nb_coded_side_data = CAccessors.AVCodecParameters_nb_coded_side_data = Module.cwrap("AVCodecParameters_nb_coded_side_data", "number", ["number"]);
+      AVCodecParameters_nb_coded_side_data_s = Module.AVCodecParameters_nb_coded_side_data_s = CAccessors.AVCodecParameters_nb_coded_side_data_s = Module.cwrap("AVCodecParameters_nb_coded_side_data_s", null, ["number", "number"]);
+      AVCodecParameters_profile = Module.AVCodecParameters_profile = CAccessors.AVCodecParameters_profile = Module.cwrap("AVCodecParameters_profile", "number", ["number"]);
+      Module.AVCodecParameters_profile_s = CAccessors.AVCodecParameters_profile_s = Module.cwrap("AVCodecParameters_profile_s", null, ["number", "number"]);
+      AVCodecParameters_sample_rate = Module.AVCodecParameters_sample_rate = CAccessors.AVCodecParameters_sample_rate = Module.cwrap("AVCodecParameters_sample_rate", "number", ["number"]);
+      Module.AVCodecParameters_sample_rate_s = CAccessors.AVCodecParameters_sample_rate_s = Module.cwrap("AVCodecParameters_sample_rate_s", null, ["number", "number"]);
+      AVCodecParameters_width = Module.AVCodecParameters_width = CAccessors.AVCodecParameters_width = Module.cwrap("AVCodecParameters_width", "number", ["number"]);
+      Module.AVCodecParameters_width_s = CAccessors.AVCodecParameters_width_s = Module.cwrap("AVCodecParameters_width_s", null, ["number", "number"]);
+      AVPacket_data = Module.AVPacket_data = CAccessors.AVPacket_data = Module.cwrap("AVPacket_data", "number", ["number"]);
+      Module.AVPacket_data_s = CAccessors.AVPacket_data_s = Module.cwrap("AVPacket_data_s", null, ["number", "number"]);
+      AVPacket_dts = Module.AVPacket_dts = CAccessors.AVPacket_dts = Module.cwrap("AVPacket_dts", "number", ["number"]);
+      Module.AVPacket_dts_s = CAccessors.AVPacket_dts_s = Module.cwrap("AVPacket_dts_s", null, ["number", "number"]);
+      AVPacket_dtshi = Module.AVPacket_dtshi = CAccessors.AVPacket_dtshi = Module.cwrap("AVPacket_dtshi", "number", ["number"]);
+      Module.AVPacket_dtshi_s = CAccessors.AVPacket_dtshi_s = Module.cwrap("AVPacket_dtshi_s", null, ["number", "number"]);
+      AVPacket_duration = Module.AVPacket_duration = CAccessors.AVPacket_duration = Module.cwrap("AVPacket_duration", "number", ["number"]);
+      Module.AVPacket_duration_s = CAccessors.AVPacket_duration_s = Module.cwrap("AVPacket_duration_s", null, ["number", "number"]);
+      AVPacket_durationhi = Module.AVPacket_durationhi = CAccessors.AVPacket_durationhi = Module.cwrap("AVPacket_durationhi", "number", ["number"]);
+      Module.AVPacket_durationhi_s = CAccessors.AVPacket_durationhi_s = Module.cwrap("AVPacket_durationhi_s", null, ["number", "number"]);
+      AVPacket_flags = Module.AVPacket_flags = CAccessors.AVPacket_flags = Module.cwrap("AVPacket_flags", "number", ["number"]);
+      Module.AVPacket_flags_s = CAccessors.AVPacket_flags_s = Module.cwrap("AVPacket_flags_s", null, ["number", "number"]);
+      Module.AVPacket_pos = CAccessors.AVPacket_pos = Module.cwrap("AVPacket_pos", "number", ["number"]);
+      Module.AVPacket_pos_s = CAccessors.AVPacket_pos_s = Module.cwrap("AVPacket_pos_s", null, ["number", "number"]);
+      Module.AVPacket_poshi = CAccessors.AVPacket_poshi = Module.cwrap("AVPacket_poshi", "number", ["number"]);
+      Module.AVPacket_poshi_s = CAccessors.AVPacket_poshi_s = Module.cwrap("AVPacket_poshi_s", null, ["number", "number"]);
+      AVPacket_pts = Module.AVPacket_pts = CAccessors.AVPacket_pts = Module.cwrap("AVPacket_pts", "number", ["number"]);
+      Module.AVPacket_pts_s = CAccessors.AVPacket_pts_s = Module.cwrap("AVPacket_pts_s", null, ["number", "number"]);
+      AVPacket_ptshi = Module.AVPacket_ptshi = CAccessors.AVPacket_ptshi = Module.cwrap("AVPacket_ptshi", "number", ["number"]);
+      Module.AVPacket_ptshi_s = CAccessors.AVPacket_ptshi_s = Module.cwrap("AVPacket_ptshi_s", null, ["number", "number"]);
+      AVPacket_side_data = Module.AVPacket_side_data = CAccessors.AVPacket_side_data = Module.cwrap("AVPacket_side_data", "number", ["number"]);
+      AVPacket_side_data_s = Module.AVPacket_side_data_s = CAccessors.AVPacket_side_data_s = Module.cwrap("AVPacket_side_data_s", null, ["number", "number"]);
+      AVPacket_side_data_elems = Module.AVPacket_side_data_elems = CAccessors.AVPacket_side_data_elems = Module.cwrap("AVPacket_side_data_elems", "number", ["number"]);
+      AVPacket_side_data_elems_s = Module.AVPacket_side_data_elems_s = CAccessors.AVPacket_side_data_elems_s = Module.cwrap("AVPacket_side_data_elems_s", null, ["number", "number"]);
+      AVPacket_size = Module.AVPacket_size = CAccessors.AVPacket_size = Module.cwrap("AVPacket_size", "number", ["number"]);
+      Module.AVPacket_size_s = CAccessors.AVPacket_size_s = Module.cwrap("AVPacket_size_s", null, ["number", "number"]);
+      AVPacket_stream_index = Module.AVPacket_stream_index = CAccessors.AVPacket_stream_index = Module.cwrap("AVPacket_stream_index", "number", ["number"]);
+      Module.AVPacket_stream_index_s = CAccessors.AVPacket_stream_index_s = Module.cwrap("AVPacket_stream_index_s", null, ["number", "number"]);
+      AVPacket_time_base_num = Module.AVPacket_time_base_num = CAccessors.AVPacket_time_base_num = Module.cwrap("AVPacket_time_base_num", "number", ["number"]);
+      AVPacket_time_base_den = Module.AVPacket_time_base_den = CAccessors.AVPacket_time_base_den = Module.cwrap("AVPacket_time_base_den", "number", ["number"]);
+      Module.AVPacket_time_base_num_s = CAccessors.AVPacket_time_base_num_s = Module.cwrap("AVPacket_time_base_num_s", null, ["number", "number"]);
+      Module.AVPacket_time_base_den_s = CAccessors.AVPacket_time_base_den_s = Module.cwrap("AVPacket_time_base_den_s", null, ["number", "number"]);
+      AVPacket_time_base_s = Module.AVPacket_time_base_s = CAccessors.AVPacket_time_base_s = Module.cwrap("AVPacket_time_base_s", null, ["number", "number", "number"]);
+      av_packet_free_js = Module.av_packet_free_js = CAccessors.av_packet_free_js = function (p) {
+        var p2 = malloc(4);
+        if (p2 === 0) throw new Error("Could not malloc");
+        new Uint32Array(Module.HEAPU8.buffer, p2, 1)[0] = p;
+        CAccessors.av_packet_free(p2);
+        free(p2);
+      };
+      avcodec_parameters_free_js = Module.avcodec_parameters_free_js = CAccessors.avcodec_parameters_free_js = function (p) {
+        var p2 = malloc(4);
+        if (p2 === 0) throw new Error("Could not malloc");
+        new Uint32Array(Module.HEAPU8.buffer, p2, 1)[0] = p;
+        CAccessors.avcodec_parameters_free(p2);
+        free(p2);
+      };
+      avcodec_alloc_context3 = Module.avcodec_alloc_context3 = CAccessors.avcodec_alloc_context3 = Module.cwrap("avcodec_alloc_context3", "number", ["number"]);
+      avcodec_find_decoder = Module.avcodec_find_decoder = CAccessors.avcodec_find_decoder = Module.cwrap("avcodec_find_decoder", "number", ["number"]);
+      avcodec_find_decoder_by_name = Module.avcodec_find_decoder_by_name = CAccessors.avcodec_find_decoder_by_name = Module.cwrap("avcodec_find_decoder_by_name", "number", ["string"]);
+      Module.avcodec_find_encoder = CAccessors.avcodec_find_encoder = Module.cwrap("avcodec_find_encoder", "number", ["number"]);
+      avcodec_find_encoder_by_name = Module.avcodec_find_encoder_by_name = CAccessors.avcodec_find_encoder_by_name = Module.cwrap("avcodec_find_encoder_by_name", "number", ["string"]);
+      Module.avcodec_flush_buffers = CAccessors.avcodec_flush_buffers = Module.cwrap("avcodec_flush_buffers", null, ["number"]);
+      Module.avcodec_free_context = CAccessors.avcodec_free_context = Module.cwrap("avcodec_free_context", null, ["number"]);
+      Module.avcodec_get_name = CAccessors.avcodec_get_name = Module.cwrap("avcodec_get_name", "string", ["number"]);
+      avcodec_open2 = Module.avcodec_open2 = CAccessors.avcodec_open2 = Module.cwrap("avcodec_open2", "number", ["number", "number", "number"]);
+      avcodec_open2_js = Module.avcodec_open2_js = CAccessors.avcodec_open2_js = Module.cwrap("avcodec_open2_js", "number", ["number", "number", "number"]);
+      avcodec_parameters_alloc = Module.avcodec_parameters_alloc = CAccessors.avcodec_parameters_alloc = Module.cwrap("avcodec_parameters_alloc", "number", []);
+      avcodec_parameters_copy = Module.avcodec_parameters_copy = CAccessors.avcodec_parameters_copy = Module.cwrap("avcodec_parameters_copy", "number", ["number", "number"]);
+      Module.avcodec_parameters_free = CAccessors.avcodec_parameters_free = Module.cwrap("avcodec_parameters_free", null, ["number"]);
+      avcodec_parameters_from_context = Module.avcodec_parameters_from_context = CAccessors.avcodec_parameters_from_context = Module.cwrap("avcodec_parameters_from_context", "number", ["number", "number"]);
+      avcodec_parameters_to_context = Module.avcodec_parameters_to_context = CAccessors.avcodec_parameters_to_context = Module.cwrap("avcodec_parameters_to_context", "number", ["number", "number"]);
+      avcodec_receive_frame = Module.avcodec_receive_frame = CAccessors.avcodec_receive_frame = Module.cwrap("avcodec_receive_frame", "number", ["number", "number"]);
+      avcodec_receive_packet = Module.avcodec_receive_packet = CAccessors.avcodec_receive_packet = Module.cwrap("avcodec_receive_packet", "number", ["number", "number"]);
+      avcodec_send_frame = Module.avcodec_send_frame = CAccessors.avcodec_send_frame = Module.cwrap("avcodec_send_frame", "number", ["number", "number"]);
+      avcodec_send_packet = Module.avcodec_send_packet = CAccessors.avcodec_send_packet = Module.cwrap("avcodec_send_packet", "number", ["number", "number"]);
+      Module.AVCodec_name = CAccessors.AVCodec_name = Module.cwrap("AVCodec_name", "string", ["number"]);
+      Module.AVCodec_sample_fmts = CAccessors.AVCodec_sample_fmts = Module.cwrap("AVCodec_sample_fmts", "number", ["number"]);
+      Module.AVCodec_sample_fmts_s = CAccessors.AVCodec_sample_fmts_s = Module.cwrap("AVCodec_sample_fmts_s", null, ["number", "number"]);
+      Module.AVCodec_sample_fmts_a = CAccessors.AVCodec_sample_fmts_a = Module.cwrap("AVCodec_sample_fmts_a", "number", ["number", "number"]);
+      Module.AVCodec_sample_fmts_a_s = CAccessors.AVCodec_sample_fmts_a_s = Module.cwrap("AVCodec_sample_fmts_a_s", null, ["number", "number", "number"]);
+      Module.AVCodec_supported_samplerates = CAccessors.AVCodec_supported_samplerates = Module.cwrap("AVCodec_supported_samplerates", "number", ["number"]);
+      Module.AVCodec_supported_samplerates_s = CAccessors.AVCodec_supported_samplerates_s = Module.cwrap("AVCodec_supported_samplerates_s", null, ["number", "number"]);
+      Module.AVCodec_supported_samplerates_a = CAccessors.AVCodec_supported_samplerates_a = Module.cwrap("AVCodec_supported_samplerates_a", "number", ["number", "number"]);
+      Module.AVCodec_supported_samplerates_a_s = CAccessors.AVCodec_supported_samplerates_a_s = Module.cwrap("AVCodec_supported_samplerates_a_s", null, ["number", "number", "number"]);
+      Module.AVCodec_type = CAccessors.AVCodec_type = Module.cwrap("AVCodec_type", "number", ["number"]);
+      Module.AVCodec_type_s = CAccessors.AVCodec_type_s = Module.cwrap("AVCodec_type_s", null, ["number", "number"]);
+      AVCodecContext_codec_id = Module.AVCodecContext_codec_id = CAccessors.AVCodecContext_codec_id = Module.cwrap("AVCodecContext_codec_id", "number", ["number"]);
+      AVCodecContext_codec_id_s = Module.AVCodecContext_codec_id_s = CAccessors.AVCodecContext_codec_id_s = Module.cwrap("AVCodecContext_codec_id_s", null, ["number", "number"]);
+      Module.AVCodecContext_codec_type = CAccessors.AVCodecContext_codec_type = Module.cwrap("AVCodecContext_codec_type", "number", ["number"]);
+      Module.AVCodecContext_codec_type_s = CAccessors.AVCodecContext_codec_type_s = Module.cwrap("AVCodecContext_codec_type_s", null, ["number", "number"]);
+      Module.AVCodecContext_bit_rate = CAccessors.AVCodecContext_bit_rate = Module.cwrap("AVCodecContext_bit_rate", "number", ["number"]);
+      Module.AVCodecContext_bit_rate_s = CAccessors.AVCodecContext_bit_rate_s = Module.cwrap("AVCodecContext_bit_rate_s", null, ["number", "number"]);
+      Module.AVCodecContext_bit_ratehi = CAccessors.AVCodecContext_bit_ratehi = Module.cwrap("AVCodecContext_bit_ratehi", "number", ["number"]);
+      Module.AVCodecContext_bit_ratehi_s = CAccessors.AVCodecContext_bit_ratehi_s = Module.cwrap("AVCodecContext_bit_ratehi_s", null, ["number", "number"]);
+      Module.AVCodecContext_channel_layout = CAccessors.AVCodecContext_channel_layout = Module.cwrap("AVCodecContext_channel_layout", "number", ["number"]);
+      Module.AVCodecContext_channel_layout_s = CAccessors.AVCodecContext_channel_layout_s = Module.cwrap("AVCodecContext_channel_layout_s", null, ["number", "number"]);
+      Module.AVCodecContext_channel_layouthi = CAccessors.AVCodecContext_channel_layouthi = Module.cwrap("AVCodecContext_channel_layouthi", "number", ["number"]);
+      Module.AVCodecContext_channel_layouthi_s = CAccessors.AVCodecContext_channel_layouthi_s = Module.cwrap("AVCodecContext_channel_layouthi_s", null, ["number", "number"]);
+      Module.AVCodecContext_channels = CAccessors.AVCodecContext_channels = Module.cwrap("AVCodecContext_channels", "number", ["number"]);
+      Module.AVCodecContext_channels_s = CAccessors.AVCodecContext_channels_s = Module.cwrap("AVCodecContext_channels_s", null, ["number", "number"]);
+      Module.AVCodecContext_channel_layoutmask = CAccessors.AVCodecContext_channel_layoutmask = Module.cwrap("AVCodecContext_channel_layoutmask", "number", ["number"]);
+      Module.AVCodecContext_channel_layoutmask_s = CAccessors.AVCodecContext_channel_layoutmask_s = Module.cwrap("AVCodecContext_channel_layoutmask_s", null, ["number", "number"]);
+      Module.AVCodecContext_ch_layout_nb_channels = CAccessors.AVCodecContext_ch_layout_nb_channels = Module.cwrap("AVCodecContext_ch_layout_nb_channels", "number", ["number"]);
+      Module.AVCodecContext_ch_layout_nb_channels_s = CAccessors.AVCodecContext_ch_layout_nb_channels_s = Module.cwrap("AVCodecContext_ch_layout_nb_channels_s", null, ["number", "number"]);
+      Module.AVCodecContext_coded_side_data = CAccessors.AVCodecContext_coded_side_data = Module.cwrap("AVCodecContext_coded_side_data", "number", ["number"]);
+      Module.AVCodecContext_coded_side_data_s = CAccessors.AVCodecContext_coded_side_data_s = Module.cwrap("AVCodecContext_coded_side_data_s", null, ["number", "number"]);
+      Module.AVCodecContext_compression_level = CAccessors.AVCodecContext_compression_level = Module.cwrap("AVCodecContext_compression_level", "number", ["number"]);
+      Module.AVCodecContext_compression_level_s = CAccessors.AVCodecContext_compression_level_s = Module.cwrap("AVCodecContext_compression_level_s", null, ["number", "number"]);
+      Module.AVCodecContext_extradata = CAccessors.AVCodecContext_extradata = Module.cwrap("AVCodecContext_extradata", "number", ["number"]);
+      Module.AVCodecContext_extradata_s = CAccessors.AVCodecContext_extradata_s = Module.cwrap("AVCodecContext_extradata_s", null, ["number", "number"]);
+      Module.AVCodecContext_extradata_size = CAccessors.AVCodecContext_extradata_size = Module.cwrap("AVCodecContext_extradata_size", "number", ["number"]);
+      Module.AVCodecContext_extradata_size_s = CAccessors.AVCodecContext_extradata_size_s = Module.cwrap("AVCodecContext_extradata_size_s", null, ["number", "number"]);
+      AVCodecContext_frame_size = Module.AVCodecContext_frame_size = CAccessors.AVCodecContext_frame_size = Module.cwrap("AVCodecContext_frame_size", "number", ["number"]);
+      Module.AVCodecContext_frame_size_s = CAccessors.AVCodecContext_frame_size_s = Module.cwrap("AVCodecContext_frame_size_s", null, ["number", "number"]);
+      Module.AVCodecContext_framerate_num = CAccessors.AVCodecContext_framerate_num = Module.cwrap("AVCodecContext_framerate_num", "number", ["number"]);
+      Module.AVCodecContext_framerate_den = CAccessors.AVCodecContext_framerate_den = Module.cwrap("AVCodecContext_framerate_den", "number", ["number"]);
+      Module.AVCodecContext_framerate_num_s = CAccessors.AVCodecContext_framerate_num_s = Module.cwrap("AVCodecContext_framerate_num_s", null, ["number", "number"]);
+      Module.AVCodecContext_framerate_den_s = CAccessors.AVCodecContext_framerate_den_s = Module.cwrap("AVCodecContext_framerate_den_s", null, ["number", "number"]);
+      Module.AVCodecContext_framerate_s = CAccessors.AVCodecContext_framerate_s = Module.cwrap("AVCodecContext_framerate_s", null, ["number", "number", "number"]);
+      Module.AVCodecContext_gop_size = CAccessors.AVCodecContext_gop_size = Module.cwrap("AVCodecContext_gop_size", "number", ["number"]);
+      Module.AVCodecContext_gop_size_s = CAccessors.AVCodecContext_gop_size_s = Module.cwrap("AVCodecContext_gop_size_s", null, ["number", "number"]);
+      Module.AVCodecContext_height = CAccessors.AVCodecContext_height = Module.cwrap("AVCodecContext_height", "number", ["number"]);
+      Module.AVCodecContext_height_s = CAccessors.AVCodecContext_height_s = Module.cwrap("AVCodecContext_height_s", null, ["number", "number"]);
+      Module.AVCodecContext_keyint_min = CAccessors.AVCodecContext_keyint_min = Module.cwrap("AVCodecContext_keyint_min", "number", ["number"]);
+      Module.AVCodecContext_keyint_min_s = CAccessors.AVCodecContext_keyint_min_s = Module.cwrap("AVCodecContext_keyint_min_s", null, ["number", "number"]);
+      Module.AVCodecContext_level = CAccessors.AVCodecContext_level = Module.cwrap("AVCodecContext_level", "number", ["number"]);
+      Module.AVCodecContext_level_s = CAccessors.AVCodecContext_level_s = Module.cwrap("AVCodecContext_level_s", null, ["number", "number"]);
+      Module.AVCodecContext_max_b_frames = CAccessors.AVCodecContext_max_b_frames = Module.cwrap("AVCodecContext_max_b_frames", "number", ["number"]);
+      Module.AVCodecContext_max_b_frames_s = CAccessors.AVCodecContext_max_b_frames_s = Module.cwrap("AVCodecContext_max_b_frames_s", null, ["number", "number"]);
+      Module.AVCodecContext_nb_coded_side_data = CAccessors.AVCodecContext_nb_coded_side_data = Module.cwrap("AVCodecContext_nb_coded_side_data", "number", ["number"]);
+      Module.AVCodecContext_nb_coded_side_data_s = CAccessors.AVCodecContext_nb_coded_side_data_s = Module.cwrap("AVCodecContext_nb_coded_side_data_s", null, ["number", "number"]);
+      Module.AVCodecContext_pix_fmt = CAccessors.AVCodecContext_pix_fmt = Module.cwrap("AVCodecContext_pix_fmt", "number", ["number"]);
+      Module.AVCodecContext_pix_fmt_s = CAccessors.AVCodecContext_pix_fmt_s = Module.cwrap("AVCodecContext_pix_fmt_s", null, ["number", "number"]);
+      Module.AVCodecContext_profile = CAccessors.AVCodecContext_profile = Module.cwrap("AVCodecContext_profile", "number", ["number"]);
+      Module.AVCodecContext_profile_s = CAccessors.AVCodecContext_profile_s = Module.cwrap("AVCodecContext_profile_s", null, ["number", "number"]);
+      Module.AVCodecContext_rc_max_rate = CAccessors.AVCodecContext_rc_max_rate = Module.cwrap("AVCodecContext_rc_max_rate", "number", ["number"]);
+      Module.AVCodecContext_rc_max_rate_s = CAccessors.AVCodecContext_rc_max_rate_s = Module.cwrap("AVCodecContext_rc_max_rate_s", null, ["number", "number"]);
+      Module.AVCodecContext_rc_max_ratehi = CAccessors.AVCodecContext_rc_max_ratehi = Module.cwrap("AVCodecContext_rc_max_ratehi", "number", ["number"]);
+      Module.AVCodecContext_rc_max_ratehi_s = CAccessors.AVCodecContext_rc_max_ratehi_s = Module.cwrap("AVCodecContext_rc_max_ratehi_s", null, ["number", "number"]);
+      Module.AVCodecContext_rc_min_rate = CAccessors.AVCodecContext_rc_min_rate = Module.cwrap("AVCodecContext_rc_min_rate", "number", ["number"]);
+      Module.AVCodecContext_rc_min_rate_s = CAccessors.AVCodecContext_rc_min_rate_s = Module.cwrap("AVCodecContext_rc_min_rate_s", null, ["number", "number"]);
+      Module.AVCodecContext_rc_min_ratehi = CAccessors.AVCodecContext_rc_min_ratehi = Module.cwrap("AVCodecContext_rc_min_ratehi", "number", ["number"]);
+      Module.AVCodecContext_rc_min_ratehi_s = CAccessors.AVCodecContext_rc_min_ratehi_s = Module.cwrap("AVCodecContext_rc_min_ratehi_s", null, ["number", "number"]);
+      Module.AVCodecContext_sample_aspect_ratio_num = CAccessors.AVCodecContext_sample_aspect_ratio_num = Module.cwrap("AVCodecContext_sample_aspect_ratio_num", "number", ["number"]);
+      Module.AVCodecContext_sample_aspect_ratio_den = CAccessors.AVCodecContext_sample_aspect_ratio_den = Module.cwrap("AVCodecContext_sample_aspect_ratio_den", "number", ["number"]);
+      Module.AVCodecContext_sample_aspect_ratio_num_s = CAccessors.AVCodecContext_sample_aspect_ratio_num_s = Module.cwrap("AVCodecContext_sample_aspect_ratio_num_s", null, ["number", "number"]);
+      Module.AVCodecContext_sample_aspect_ratio_den_s = CAccessors.AVCodecContext_sample_aspect_ratio_den_s = Module.cwrap("AVCodecContext_sample_aspect_ratio_den_s", null, ["number", "number"]);
+      Module.AVCodecContext_sample_aspect_ratio_s = CAccessors.AVCodecContext_sample_aspect_ratio_s = Module.cwrap("AVCodecContext_sample_aspect_ratio_s", null, ["number", "number", "number"]);
+      Module.AVCodecContext_sample_fmt = CAccessors.AVCodecContext_sample_fmt = Module.cwrap("AVCodecContext_sample_fmt", "number", ["number"]);
+      Module.AVCodecContext_sample_fmt_s = CAccessors.AVCodecContext_sample_fmt_s = Module.cwrap("AVCodecContext_sample_fmt_s", null, ["number", "number"]);
+      Module.AVCodecContext_sample_rate = CAccessors.AVCodecContext_sample_rate = Module.cwrap("AVCodecContext_sample_rate", "number", ["number"]);
+      Module.AVCodecContext_sample_rate_s = CAccessors.AVCodecContext_sample_rate_s = Module.cwrap("AVCodecContext_sample_rate_s", null, ["number", "number"]);
+      Module.AVCodecContext_strict_std_compliance = CAccessors.AVCodecContext_strict_std_compliance = Module.cwrap("AVCodecContext_strict_std_compliance", "number", ["number"]);
+      Module.AVCodecContext_strict_std_compliance_s = CAccessors.AVCodecContext_strict_std_compliance_s = Module.cwrap("AVCodecContext_strict_std_compliance_s", null, ["number", "number"]);
+      AVCodecContext_time_base_num = Module.AVCodecContext_time_base_num = CAccessors.AVCodecContext_time_base_num = Module.cwrap("AVCodecContext_time_base_num", "number", ["number"]);
+      AVCodecContext_time_base_den = Module.AVCodecContext_time_base_den = CAccessors.AVCodecContext_time_base_den = Module.cwrap("AVCodecContext_time_base_den", "number", ["number"]);
+      Module.AVCodecContext_time_base_num_s = CAccessors.AVCodecContext_time_base_num_s = Module.cwrap("AVCodecContext_time_base_num_s", null, ["number", "number"]);
+      Module.AVCodecContext_time_base_den_s = CAccessors.AVCodecContext_time_base_den_s = Module.cwrap("AVCodecContext_time_base_den_s", null, ["number", "number"]);
+      AVCodecContext_time_base_s = Module.AVCodecContext_time_base_s = CAccessors.AVCodecContext_time_base_s = Module.cwrap("AVCodecContext_time_base_s", null, ["number", "number", "number"]);
+      Module.AVCodecContext_pkt_timebase_num = CAccessors.AVCodecContext_pkt_timebase_num = Module.cwrap("AVCodecContext_pkt_timebase_num", "number", ["number"]);
+      Module.AVCodecContext_pkt_timebase_den = CAccessors.AVCodecContext_pkt_timebase_den = Module.cwrap("AVCodecContext_pkt_timebase_den", "number", ["number"]);
+      Module.AVCodecContext_pkt_timebase_num_s = CAccessors.AVCodecContext_pkt_timebase_num_s = Module.cwrap("AVCodecContext_pkt_timebase_num_s", null, ["number", "number"]);
+      Module.AVCodecContext_pkt_timebase_den_s = CAccessors.AVCodecContext_pkt_timebase_den_s = Module.cwrap("AVCodecContext_pkt_timebase_den_s", null, ["number", "number"]);
+      Module.AVCodecContext_pkt_timebase_s = CAccessors.AVCodecContext_pkt_timebase_s = Module.cwrap("AVCodecContext_pkt_timebase_s", null, ["number", "number", "number"]);
+      Module.AVCodecContext_qmax = CAccessors.AVCodecContext_qmax = Module.cwrap("AVCodecContext_qmax", "number", ["number"]);
+      Module.AVCodecContext_qmax_s = CAccessors.AVCodecContext_qmax_s = Module.cwrap("AVCodecContext_qmax_s", null, ["number", "number"]);
+      Module.AVCodecContext_qmin = CAccessors.AVCodecContext_qmin = Module.cwrap("AVCodecContext_qmin", "number", ["number"]);
+      Module.AVCodecContext_qmin_s = CAccessors.AVCodecContext_qmin_s = Module.cwrap("AVCodecContext_qmin_s", null, ["number", "number"]);
+      Module.AVCodecContext_width = CAccessors.AVCodecContext_width = Module.cwrap("AVCodecContext_width", "number", ["number"]);
+      Module.AVCodecContext_width_s = CAccessors.AVCodecContext_width_s = Module.cwrap("AVCodecContext_width_s", null, ["number", "number"]);
+      avcodec_free_context_js = Module.avcodec_free_context_js = CAccessors.avcodec_free_context_js = function (p) {
+        var p2 = malloc(4);
+        if (p2 === 0) throw new Error("Could not malloc");
+        new Uint32Array(Module.HEAPU8.buffer, p2, 1)[0] = p;
+        CAccessors.avcodec_free_context(p2);
+        free(p2);
+      };
+      av_frame_alloc = Module.av_frame_alloc = CAccessors.av_frame_alloc = Module.cwrap("av_frame_alloc", "number", []);
+      av_frame_clone = Module.av_frame_clone = CAccessors.av_frame_clone = Module.cwrap("av_frame_clone", "number", ["number", "number"]);
+      Module.av_frame_free = CAccessors.av_frame_free = Module.cwrap("av_frame_free", null, ["number"]);
+      av_frame_get_buffer = Module.av_frame_get_buffer = CAccessors.av_frame_get_buffer = Module.cwrap("av_frame_get_buffer", "number", ["number", "number"]);
+      av_frame_make_writable = Module.av_frame_make_writable = CAccessors.av_frame_make_writable = Module.cwrap("av_frame_make_writable", "number", ["number"]);
+      av_frame_ref = Module.av_frame_ref = CAccessors.av_frame_ref = Module.cwrap("av_frame_ref", "number", ["number", "number"]);
+      av_frame_unref = Module.av_frame_unref = CAccessors.av_frame_unref = Module.cwrap("av_frame_unref", null, ["number"]);
+      Module.av_get_bytes_per_sample = CAccessors.av_get_bytes_per_sample = Module.cwrap("av_get_bytes_per_sample", "number", ["number"]);
+      Module.av_get_sample_fmt_name = CAccessors.av_get_sample_fmt_name = Module.cwrap("av_get_sample_fmt_name", "string", ["number"]);
+      av_pix_fmt_desc_get = Module.av_pix_fmt_desc_get = CAccessors.av_pix_fmt_desc_get = Module.cwrap("av_pix_fmt_desc_get", "number", ["number"]);
+      Module.AVPixFmtDescriptor_comp_depth = CAccessors.AVPixFmtDescriptor_comp_depth = Module.cwrap("AVPixFmtDescriptor_comp_depth", "number", ["number", "number"]);
+      ff_frame_rescale_ts_js = Module.ff_frame_rescale_ts_js = CAccessors.ff_frame_rescale_ts_js = Module.cwrap("ff_frame_rescale_ts_js", null, ["number", "number", "number", "number", "number"]);
+      AVFrame_channel_layout = Module.AVFrame_channel_layout = CAccessors.AVFrame_channel_layout = Module.cwrap("AVFrame_channel_layout", "number", ["number"]);
+      Module.AVFrame_channel_layout_s = CAccessors.AVFrame_channel_layout_s = Module.cwrap("AVFrame_channel_layout_s", null, ["number", "number"]);
+      Module.AVFrame_channel_layouthi = CAccessors.AVFrame_channel_layouthi = Module.cwrap("AVFrame_channel_layouthi", "number", ["number"]);
+      Module.AVFrame_channel_layouthi_s = CAccessors.AVFrame_channel_layouthi_s = Module.cwrap("AVFrame_channel_layouthi_s", null, ["number", "number"]);
+      AVFrame_channels = Module.AVFrame_channels = CAccessors.AVFrame_channels = Module.cwrap("AVFrame_channels", "number", ["number"]);
+      Module.AVFrame_channels_s = CAccessors.AVFrame_channels_s = Module.cwrap("AVFrame_channels_s", null, ["number", "number"]);
+      Module.AVFrame_channel_layoutmask = CAccessors.AVFrame_channel_layoutmask = Module.cwrap("AVFrame_channel_layoutmask", "number", ["number"]);
+      Module.AVFrame_channel_layoutmask_s = CAccessors.AVFrame_channel_layoutmask_s = Module.cwrap("AVFrame_channel_layoutmask_s", null, ["number", "number"]);
+      Module.AVFrame_ch_layout_nb_channels = CAccessors.AVFrame_ch_layout_nb_channels = Module.cwrap("AVFrame_ch_layout_nb_channels", "number", ["number"]);
+      Module.AVFrame_ch_layout_nb_channels_s = CAccessors.AVFrame_ch_layout_nb_channels_s = Module.cwrap("AVFrame_ch_layout_nb_channels_s", null, ["number", "number"]);
+      AVFrame_crop_bottom = Module.AVFrame_crop_bottom = CAccessors.AVFrame_crop_bottom = Module.cwrap("AVFrame_crop_bottom", "number", ["number"]);
+      AVFrame_crop_bottom_s = Module.AVFrame_crop_bottom_s = CAccessors.AVFrame_crop_bottom_s = Module.cwrap("AVFrame_crop_bottom_s", null, ["number", "number"]);
+      AVFrame_crop_left = Module.AVFrame_crop_left = CAccessors.AVFrame_crop_left = Module.cwrap("AVFrame_crop_left", "number", ["number"]);
+      AVFrame_crop_left_s = Module.AVFrame_crop_left_s = CAccessors.AVFrame_crop_left_s = Module.cwrap("AVFrame_crop_left_s", null, ["number", "number"]);
+      AVFrame_crop_right = Module.AVFrame_crop_right = CAccessors.AVFrame_crop_right = Module.cwrap("AVFrame_crop_right", "number", ["number"]);
+      AVFrame_crop_right_s = Module.AVFrame_crop_right_s = CAccessors.AVFrame_crop_right_s = Module.cwrap("AVFrame_crop_right_s", null, ["number", "number"]);
+      AVFrame_crop_top = Module.AVFrame_crop_top = CAccessors.AVFrame_crop_top = Module.cwrap("AVFrame_crop_top", "number", ["number"]);
+      AVFrame_crop_top_s = Module.AVFrame_crop_top_s = CAccessors.AVFrame_crop_top_s = Module.cwrap("AVFrame_crop_top_s", null, ["number", "number"]);
+      AVFrame_data_a = Module.AVFrame_data_a = CAccessors.AVFrame_data_a = Module.cwrap("AVFrame_data_a", "number", ["number", "number"]);
+      Module.AVFrame_data_a_s = CAccessors.AVFrame_data_a_s = Module.cwrap("AVFrame_data_a_s", null, ["number", "number", "number"]);
+      Module.AVFrame_duration = CAccessors.AVFrame_duration = Module.cwrap("AVFrame_duration", "number", ["number"]);
+      Module.AVFrame_duration_s = CAccessors.AVFrame_duration_s = Module.cwrap("AVFrame_duration_s", null, ["number", "number"]);
+      AVFrame_flags = Module.AVFrame_flags = CAccessors.AVFrame_flags = Module.cwrap("AVFrame_flags", "number", ["number"]);
+      Module.AVFrame_flags_s = CAccessors.AVFrame_flags_s = Module.cwrap("AVFrame_flags_s", null, ["number", "number"]);
+      AVFrame_format = Module.AVFrame_format = CAccessors.AVFrame_format = Module.cwrap("AVFrame_format", "number", ["number"]);
+      Module.AVFrame_format_s = CAccessors.AVFrame_format_s = Module.cwrap("AVFrame_format_s", null, ["number", "number"]);
+      AVFrame_height = Module.AVFrame_height = CAccessors.AVFrame_height = Module.cwrap("AVFrame_height", "number", ["number"]);
+      Module.AVFrame_height_s = CAccessors.AVFrame_height_s = Module.cwrap("AVFrame_height_s", null, ["number", "number"]);
+      AVFrame_key_frame = Module.AVFrame_key_frame = CAccessors.AVFrame_key_frame = Module.cwrap("AVFrame_key_frame", "number", ["number"]);
+      Module.AVFrame_key_frame_s = CAccessors.AVFrame_key_frame_s = Module.cwrap("AVFrame_key_frame_s", null, ["number", "number"]);
+      AVFrame_linesize_a = Module.AVFrame_linesize_a = CAccessors.AVFrame_linesize_a = Module.cwrap("AVFrame_linesize_a", "number", ["number", "number"]);
+      Module.AVFrame_linesize_a_s = CAccessors.AVFrame_linesize_a_s = Module.cwrap("AVFrame_linesize_a_s", null, ["number", "number", "number"]);
+      AVFrame_nb_samples = Module.AVFrame_nb_samples = CAccessors.AVFrame_nb_samples = Module.cwrap("AVFrame_nb_samples", "number", ["number"]);
+      AVFrame_nb_samples_s = Module.AVFrame_nb_samples_s = CAccessors.AVFrame_nb_samples_s = Module.cwrap("AVFrame_nb_samples_s", null, ["number", "number"]);
+      AVFrame_pict_type = Module.AVFrame_pict_type = CAccessors.AVFrame_pict_type = Module.cwrap("AVFrame_pict_type", "number", ["number"]);
+      Module.AVFrame_pict_type_s = CAccessors.AVFrame_pict_type_s = Module.cwrap("AVFrame_pict_type_s", null, ["number", "number"]);
+      AVFrame_pts = Module.AVFrame_pts = CAccessors.AVFrame_pts = Module.cwrap("AVFrame_pts", "number", ["number"]);
+      Module.AVFrame_pts_s = CAccessors.AVFrame_pts_s = Module.cwrap("AVFrame_pts_s", null, ["number", "number"]);
+      AVFrame_ptshi = Module.AVFrame_ptshi = CAccessors.AVFrame_ptshi = Module.cwrap("AVFrame_ptshi", "number", ["number"]);
+      Module.AVFrame_ptshi_s = CAccessors.AVFrame_ptshi_s = Module.cwrap("AVFrame_ptshi_s", null, ["number", "number"]);
+      AVFrame_best_effort_timestamp = Module.AVFrame_best_effort_timestamp = CAccessors.AVFrame_best_effort_timestamp = Module.cwrap("AVFrame_best_effort_timestamp", "number", ["number"]);
+      Module.AVFrame_best_effort_timestamp_s = CAccessors.AVFrame_best_effort_timestamp_s = Module.cwrap("AVFrame_best_effort_timestamp_s", null, ["number", "number"]);
+      AVFrame_best_effort_timestamphi = Module.AVFrame_best_effort_timestamphi = CAccessors.AVFrame_best_effort_timestamphi = Module.cwrap("AVFrame_best_effort_timestamphi", "number", ["number"]);
+      Module.AVFrame_best_effort_timestamphi_s = CAccessors.AVFrame_best_effort_timestamphi_s = Module.cwrap("AVFrame_best_effort_timestamphi_s", null, ["number", "number"]);
+      AVFrame_sample_aspect_ratio_num = Module.AVFrame_sample_aspect_ratio_num = CAccessors.AVFrame_sample_aspect_ratio_num = Module.cwrap("AVFrame_sample_aspect_ratio_num", "number", ["number"]);
+      AVFrame_sample_aspect_ratio_den = Module.AVFrame_sample_aspect_ratio_den = CAccessors.AVFrame_sample_aspect_ratio_den = Module.cwrap("AVFrame_sample_aspect_ratio_den", "number", ["number"]);
+      Module.AVFrame_sample_aspect_ratio_num_s = CAccessors.AVFrame_sample_aspect_ratio_num_s = Module.cwrap("AVFrame_sample_aspect_ratio_num_s", null, ["number", "number"]);
+      Module.AVFrame_sample_aspect_ratio_den_s = CAccessors.AVFrame_sample_aspect_ratio_den_s = Module.cwrap("AVFrame_sample_aspect_ratio_den_s", null, ["number", "number"]);
+      AVFrame_sample_aspect_ratio_s = Module.AVFrame_sample_aspect_ratio_s = CAccessors.AVFrame_sample_aspect_ratio_s = Module.cwrap("AVFrame_sample_aspect_ratio_s", null, ["number", "number", "number"]);
+      AVFrame_sample_rate = Module.AVFrame_sample_rate = CAccessors.AVFrame_sample_rate = Module.cwrap("AVFrame_sample_rate", "number", ["number"]);
+      Module.AVFrame_sample_rate_s = CAccessors.AVFrame_sample_rate_s = Module.cwrap("AVFrame_sample_rate_s", null, ["number", "number"]);
+      AVFrame_time_base_num = Module.AVFrame_time_base_num = CAccessors.AVFrame_time_base_num = Module.cwrap("AVFrame_time_base_num", "number", ["number"]);
+      AVFrame_time_base_den = Module.AVFrame_time_base_den = CAccessors.AVFrame_time_base_den = Module.cwrap("AVFrame_time_base_den", "number", ["number"]);
+      Module.AVFrame_time_base_num_s = CAccessors.AVFrame_time_base_num_s = Module.cwrap("AVFrame_time_base_num_s", null, ["number", "number"]);
+      Module.AVFrame_time_base_den_s = CAccessors.AVFrame_time_base_den_s = Module.cwrap("AVFrame_time_base_den_s", null, ["number", "number"]);
+      AVFrame_time_base_s = Module.AVFrame_time_base_s = CAccessors.AVFrame_time_base_s = Module.cwrap("AVFrame_time_base_s", null, ["number", "number", "number"]);
+      AVFrame_width = Module.AVFrame_width = CAccessors.AVFrame_width = Module.cwrap("AVFrame_width", "number", ["number"]);
+      Module.AVFrame_width_s = CAccessors.AVFrame_width_s = Module.cwrap("AVFrame_width_s", null, ["number", "number"]);
+      AVPixFmtDescriptor_flags = Module.AVPixFmtDescriptor_flags = CAccessors.AVPixFmtDescriptor_flags = Module.cwrap("AVPixFmtDescriptor_flags", "number", ["number"]);
+      Module.AVPixFmtDescriptor_flags_s = CAccessors.AVPixFmtDescriptor_flags_s = Module.cwrap("AVPixFmtDescriptor_flags_s", null, ["number", "number"]);
+      AVPixFmtDescriptor_log2_chroma_h = Module.AVPixFmtDescriptor_log2_chroma_h = CAccessors.AVPixFmtDescriptor_log2_chroma_h = Module.cwrap("AVPixFmtDescriptor_log2_chroma_h", "number", ["number"]);
+      Module.AVPixFmtDescriptor_log2_chroma_h_s = CAccessors.AVPixFmtDescriptor_log2_chroma_h_s = Module.cwrap("AVPixFmtDescriptor_log2_chroma_h_s", null, ["number", "number"]);
+      AVPixFmtDescriptor_log2_chroma_w = Module.AVPixFmtDescriptor_log2_chroma_w = CAccessors.AVPixFmtDescriptor_log2_chroma_w = Module.cwrap("AVPixFmtDescriptor_log2_chroma_w", "number", ["number"]);
+      Module.AVPixFmtDescriptor_log2_chroma_w_s = CAccessors.AVPixFmtDescriptor_log2_chroma_w_s = Module.cwrap("AVPixFmtDescriptor_log2_chroma_w_s", null, ["number", "number"]);
+      AVPixFmtDescriptor_nb_components = Module.AVPixFmtDescriptor_nb_components = CAccessors.AVPixFmtDescriptor_nb_components = Module.cwrap("AVPixFmtDescriptor_nb_components", "number", ["number"]);
+      Module.AVPixFmtDescriptor_nb_components_s = CAccessors.AVPixFmtDescriptor_nb_components_s = Module.cwrap("AVPixFmtDescriptor_nb_components_s", null, ["number", "number"]);
+      av_frame_free_js = Module.av_frame_free_js = CAccessors.av_frame_free_js = function (p) {
+        var p2 = malloc(4);
+        if (p2 === 0) throw new Error("Could not malloc");
+        new Uint32Array(Module.HEAPU8.buffer, p2, 1)[0] = p;
+        CAccessors.av_frame_free(p2);
+        free(p2);
+      };
+    })();
+    var readerCallbacks = {
+      open: function (stream) {
+        if (stream.flags & 3) throw new FS.ErrnoError(ERRNO_CODES.EPERM);
+      },
+      close: function () {},
+      read: function (stream, buffer, offset, length, position) {
+        var data = Module.readBuffers[stream.node.name];
+        if (!data || data.buf.length === 0 && !data.eof) {
+          if (Module.onread) try {
+            var rr = Module.onread(stream.node.name, position, length);
+            if (rr && rr.then && rr.catch) rr.catch(function (ex) {
+              ff_reader_dev_send(stream.node.name, null, {
+                error: ex
+              });
+            });
+          } catch (ex) {
+            ff_reader_dev_send(stream.node.name, null, {
+              error: ex
+            });
+          }
+          data = Module.readBuffers[stream.node.name];
+        }
+        if (!data) throw new FS.ErrnoError(ERRNO_CODES.EAGAIN);
+        if (data.error) {
+          Module.fsThrownError = data.error;
+          throw new FS.ErrnoError(ERRNO_CODES.ECANCELED);
+        }
+        if (data.errorCode) throw new FS.ErrnoError(data.errorCode);
+        if (data.buf.length === 0) if (data.eof) return 0;else {
+          data.ready = false;
+          throw new FS.ErrnoError(ERRNO_CODES.EAGAIN);
+        }
+        var ret;
+        if (length < data.buf.length) {
+          ret = data.buf.subarray(0, length);
+          data.buf = data.buf.slice(length);
+        } else {
+          ret = data.buf;
+          data.buf = new Uint8Array(0);
+        }
+        new Uint8Array(buffer.buffer).set(ret, offset);
+        return ret.length;
+      },
+      write: function () {
+        throw new FS.ErrnoError(ERRNO_CODES.EIO);
+      },
+      llseek: function () {
+        throw new FS.ErrnoError(ERRNO_CODES.ESPIPE);
+      }
+    };
+    var blockReaderCallbacks = {
+      open: function (stream) {
+        if (stream.flags & 3) throw new FS.ErrnoError(ERRNO_CODES.EPERM);
+      },
+      close: function () {},
+      read: function (stream, buffer, offset, length, position) {
+        var data = Module.blockReadBuffers[stream.node.name];
+        if (!data) throw new FS.ErrnoError(ERRNO_CODES.EAGAIN);
+        if (data.error) {
+          Module.fsThrownError = data.error;
+          throw new FS.ErrnoError(ERRNO_CODES.ECANCELED);
+        }
+        if (data.errorCode) throw new FS.ErrnoError(data.errorCode);
+        var bufMin = data.position;
+        var bufMax = data.position + data.buf.length;
+        if (position < bufMin || position >= bufMax) {
+          if (position >= stream.node.ff_block_reader_dev_size) return 0;
+          if (!Module.onblockread) throw new FS.ErrnoError(ERRNO_CODES.EIO);
+          try {
+            var brr = Module.onblockread(stream.node.name, position, length);
+            if (brr && brr.then && brr.catch) brr.catch(function (ex) {
+              ff_block_reader_dev_send(stream.node.name, position, null, {
+                error: ex
+              });
+            });
+          } catch (ex) {
+            Module.fsThrownError = ex;
+            throw new FS.ErrnoError(ERRNO_CODES.ECANCELED);
+          }
+          bufMin = data.position;
+          bufMax = data.position + data.buf.length;
+          if (position < bufMin || position >= bufMax) {
+            data.ready = false;
+            throw new FS.ErrnoError(ERRNO_CODES.EAGAIN);
+          }
+        }
+        var bufPos = position - bufMin;
+        var ret;
+        if (bufPos + length < data.buf.length) ret = data.buf.subarray(bufPos, bufPos + length);else ret = data.buf.subarray(bufPos, data.buf.length);
+        new Uint8Array(buffer.buffer).set(ret, offset);
+        return ret.length;
+      },
+      write: function () {
+        throw new FS.ErrnoError(ERRNO_CODES.EIO);
+      },
+      llseek: function (stream, offset, whence) {
+        if (whence === 2) offset = stream.node.size + offset;else if (whence === 1) offset += stream.position;
+        return offset;
+      }
+    };
+    var writerCallbacks = {
+      open: function (stream) {
+        if (!(stream.flags & 1)) throw new FS.ErrnoError(ERRNO_CODES.EPERM);
+      },
+      close: function () {},
+      read: function () {
+        throw new FS.ErrnoError(ERRNO_CODES.EIO);
+      },
+      write: function (stream, buffer, offset, length, position) {
+        if (!Module.onwrite) throw new FS.ErrnoError(ERRNO_CODES.EIO);
+        Module.onwrite(stream.node.name, position, buffer.subarray(offset, offset + length));
+        return length;
+      },
+      llseek: function (stream, offset, whence) {
+        if (whence === 2) throw new FS.ErrnoError(ERRNO_CODES.EIO);else if (whence === 1) offset += stream.position;
+        return offset;
+      }
+    };
+    var streamWriterCallbacks = Object.create(writerCallbacks);
+    streamWriterCallbacks.write = function (stream, buffer, offset, length, position) {
+      if (position != stream.position) throw new FS.ErrnoError(ERRNO_CODES.ESPIPE);
+      return writerCallbacks.write(stream, buffer, offset, length, position);
+    };
+    streamWriterCallbacks.llseek = function () {
+      throw new FS.ErrnoError(ERRNO_CODES.ESPIPE);
+    };
+    var streamWriterFS = Object.create(MEMFS);
+    streamWriterFS.mount = function () {
+      return streamWriterFS.createNode(null, "/", 16895, 0);
+    };
+    streamWriterFS.createNode = function () {
+      var node = MEMFS.createNode.apply(MEMFS, arguments);
+      if (FS.isDir(node.mode)) {
+        if (!streamWriterFS.dir_node_ops) {
+          streamWriterFS.dir_node_ops = Object.create(node.node_ops);
+          streamWriterFS.dir_node_ops.mknod = function (parent, name, mode, dev) {
+            return streamWriterFS.createNode(parent, name, mode, dev);
+          };
+        }
+        node.node_ops = streamWriterFS.dir_node_ops;
+      } else if (FS.isFile(node.mode)) node.stream_ops = writerCallbacks;
+      return node;
+    };
+    function fsBinding(of) {
+      Module[of] = function () {
+        try {
+          return FS[of].apply(FS, arguments);
+        } catch (ex) {
+          if (ex && ex.name === "ErrnoError") {
+            ex.message = strerror(ex.errno);
+            if (typeof arguments[0] === "string") ex.message = arguments[0] + ": " + ex.message;
+          }
+          throw ex;
+        }
+      };
+    }
+    var readerDev = FS.makedev(44, 0);
+    FS.registerDevice(readerDev, readerCallbacks);
+    Module.readBuffers = Object.create(null);
+    Module.blockReadBuffers = Object.create(null);
+    var writerDev = FS.makedev(44, 1);
+    FS.registerDevice(writerDev, writerCallbacks);
+    var streamWriterDev = FS.makedev(44, 2);
+    FS.registerDevice(streamWriterDev, streamWriterCallbacks);
+    fsBinding("readFile");
+    fsBinding("writeFile");
+    fsBinding("unlink");
+    fsBinding("unmount");
+    fsBinding("mkdev");
+    fsBinding("createLazyFile");
+    Module.mkreaderdev = function (loc, mode) {
+      FS.mkdev(loc, mode ? mode : 511, readerDev);
+      Module.readBuffers[loc] = {
+        buf: new Uint8Array(0),
+        eof: false,
+        errorCode: 0,
+        error: null
+      };
+      return 0;
+    };
+    var mkblockreaderdev = Module.mkblockreaderdev = function (name, size) {
+      FS.writeFile(name, new Uint8Array(0));
+      var f = FS.open(name, 0);
+      var super_node_ops = f.node.node_ops;
+      var node_ops = f.node.node_ops = Object.create(super_node_ops);
+      node_ops.getattr = function (node) {
+        var ret = super_node_ops.getattr(node);
+        ret.size = size;
+        ret.blksize = 4096;
+        ret.blocks = Math.ceil(size / 4096);
+        return ret;
+      };
+      f.node.stream_ops = blockReaderCallbacks;
+      f.node.ff_block_reader_dev_size = size;
+      Module.blockReadBuffers[name] = {
+        position: -1,
+        buf: new Uint8Array(0),
+        ready: false,
+        errorCode: 0,
+        error: null
+      };
+      FS.close(f);
+    };
+    var readaheads = {};
+    var preReadaheadOnBlockRead = null;
+    function readaheadOnBlockRead(name, position, length) {
+      if (!(name in readaheads)) {
+        if (preReadaheadOnBlockRead) return preReadaheadOnBlockRead(name, position, length);
+        return;
+      }
+      var ra = readaheads[name];
+      function then() {
+        if (ra.position !== position) {
+          ra.position = position;
+          ra.buf = null;
+          ra.bufPromise = ra.file.slice(position, position + length).arrayBuffer().then(function (ret) {
+            ra.buf = ret;
+          }).catch(function (ex) {
+            console.error(ex + "\n" + ex.stack);
+            ra.buf = new Uint8Array(0);
+          }).then(then);
+          return;
+        }
+        ff_block_reader_dev_send(name, position, new Uint8Array(ra.buf));
+        position += length;
+        ra.position = position;
+        ra.buf = null;
+        ra.bufPromise = ra.file.slice(position, position + length).arrayBuffer().then(function (ret) {
+          ra.buf = ret;
+        }).catch(function (ex) {
+          console.error(ex + "\n" + ex.stack);
+          ra.buf = new Uint8Array(0);
+        });
+      }
+      if (!ra.buf && ra.bufPromise) ra.bufPromise.then(then);else then();
+    }
+    Module.mkreadaheadfile = function (name, file) {
+      if (Module.onblockread !== readaheadOnBlockRead) {
+        preReadaheadOnBlockRead = Module.onblockread;
+        Module.onblockread = readaheadOnBlockRead;
+      }
+      mkblockreaderdev(name, file.size);
+      readaheads[name] = {
+        file,
+        position: -1,
+        bufPromise: null,
+        buf: null
+      };
+    };
+    Module.unlinkreadaheadfile = function (name) {
+      FS.unlink(name);
+      delete readaheads[name];
+    };
+    var mkwriterdev = Module.mkwriterdev = function (loc, mode) {
+      FS.mkdev(loc, mode ? mode : 511, writerDev);
+      return 0;
+    };
+    Module.mkstreamwriterdev = function (loc, mode) {
+      FS.mkdev(loc, mode ? mode : 511, streamWriterDev);
+      return 0;
+    };
+    Module.mountwriterfs = function (mountpoint) {
+      try {
+        FS.mkdir(mountpoint);
+      } catch (ex) {}
+      FS.mount(streamWriterFS, {}, mountpoint);
+      return 0;
+    };
+    Module.ff_reader_dev_waiters = Object.create(null);
+    Module.mkworkerfsfile = function (name, blob) {
+      FS.mkdir("/" + name + ".d");
+      FS.mount(WORKERFS, {
+        blobs: [{
+          name,
+          data: blob
+        }]
+      }, "/" + name + ".d");
+      return "/" + name + ".d/" + name;
+    };
+    Module.unlinkworkerfsfile = function (name) {
+      FS.unmount("/" + name + ".d");
+      FS.rmdir("/" + name + ".d");
+    };
+    var fsfhs = {};
+    var preFSFHOnWrite = null;
+    function fsfhOnWrite(name, position, buffer) {
+      if (!(name in fsfhs)) {
+        if (preFSFHOnWrite) return preFSFHOnWrite(name, position, buffer);
+        return;
+      }
+      var h = fsfhs[name];
+      buffer = buffer.slice(0);
+      if (h.syncHandle) {
+        h.syncHandle.write(buffer.buffer, {
+          at: position
+        });
+        return;
+      }
+      var p = h.promise.then(function () {
+        return h.handle.write({
+          type: "write",
+          position,
+          data: buffer
+        });
+      });
+      h.promise = p.catch(console.error);
+      return p;
+    }
+    Module.mkfsfhfile = function (name, fsfh) {
+      if (Module.onwrite !== fsfhOnWrite) {
+        preFSFHOnWrite = Module.onwrite;
+        Module.onwrite = fsfhOnWrite;
+      }
+      mkwriterdev(name);
+      var h = fsfhs[name] = {
+        promise: Promise.all([])
+      };
+      h.promise = h.promise.then(function () {
+        return fsfh.createSyncAccessHandle();
+      }).then(function (syncHandle) {
+        h.syncHandle = syncHandle;
+      }).catch(function () {
+        return fsfh.createWritable();
+      }).then(function (handle) {
+        h.handle = handle;
+      });
+      return h.promise;
+    };
+    Module.unlinkfsfhfile = function (name) {
+      FS.unlink(name);
+      var h = fsfhs[name];
+      delete fsfhs[name];
+      if (h.syncHandle) {
+        h.syncHandle.close();
+        return Promise.all([]);
+      }
+      return h.promise.then(function () {
+        return h.handle.close();
+      });
+    };
+    var ff_reader_dev_send = Module.ff_reader_dev_send = function (name, data, opts) {
+      opts = opts || {};
+      var idata = Module.readBuffers[name];
+      if (data === null) idata.eof = true;else {
+        var newbuf = new Uint8Array(idata.buf.length + data.length);
+        newbuf.set(idata.buf);
+        newbuf.set(data, idata.buf.length);
+        idata.buf = newbuf;
+      }
+      idata.ready = true;
+      idata.errorCode = 0;
+      if (typeof opts.errorCode === "number") idata.errorCode = opts.errorCode;
+      idata.error = null;
+      if (opts.error) idata.error = opts.error;
+      var waiters = Module.ff_reader_dev_waiters[name] || [];
+      delete Module.ff_reader_dev_waiters[name];
+      for (var i = 0; i < waiters.length; i++) waiters[i]();
+    };
+    var ff_block_reader_dev_send = Module.ff_block_reader_dev_send = function (name, pos, data, opts) {
+      opts = opts || {};
+      var idata = Module.blockReadBuffers[name];
+      idata.position = pos;
+      idata.buf = data;
+      idata.ready = true;
+      idata.errorCode = 0;
+      idata.error = null;
+      if (data === null) idata.buf = new Uint8Array(0);
+      if (typeof opts.errorCode === "number") idata.errorCode = opts.errorCode;
+      if (opts.error) idata.error = opts.error;
+      var waiters = Module.ff_reader_dev_waiters[name] || [];
+      delete Module.ff_reader_dev_waiters[name];
+      for (var i = 0; i < waiters.length; i++) waiters[i]();
+    };
+    Module.ff_reader_dev_waiting = function (name) {
+      console.log("[libav.js] ff_reader_dev_waiting is deprecated. Use the onread callback.");
+      return ff_nothing().then(function () {
+        if (name) return !!Module.ff_reader_dev_waiters[name];else return !!Object.keys(Module.ff_reader_dev_waiters).length;
+      });
+    };
+    Module.readerDevReady = function (fd) {
+      var stream = FS.streams[fd].node.name;
+      if (stream in Module.readBuffers) return Module.readBuffers[stream].ready;else if (stream in Module.blockReadBuffers) return Module.blockReadBuffers[stream].ready;
+      return false;
+    };
+    Module.fdName = function (fd) {
+      return FS.streams[fd].node.name;
+    };
+    Module.ff_init_muxer = function (opts, streamCtxs) {
+      var oformat = opts.oformat ? opts.oformat : 0;
+      var format_name = opts.format_name ? opts.format_name : null;
+      var filename = opts.filename ? opts.filename : null;
+      var oc = avformat_alloc_output_context2_js(oformat, format_name, filename);
+      if (oc === 0) throw new Error("Failed to allocate output context");
+      var fmt = AVFormatContext_oformat(oc);
+      var sts = [];
+      streamCtxs.forEach(function (ctx) {
+        var st = avformat_new_stream(oc, 0);
+        if (st === 0) throw new Error("Could not allocate stream");
+        sts.push(st);
+        var codecpar = AVStream_codecpar(st);
+        var ret;
+        if (opts.codecpars) {
+          ret = avcodec_parameters_copy(codecpar, ctx[0]);
+          AVCodecParameters_codec_tag_s(codecpar, 0);
+        } else ret = avcodec_parameters_from_context(codecpar, ctx[0]);
+        if (ret < 0) throw new Error("Could not copy the stream parameters: " + ff_error(ret));
+        AVStream_time_base_s(st, ctx[1], ctx[2]);
+      });
+      if (opts.device) FS.mkdev(opts.filename, 511, writerDev);
+      var pb = null;
+      if (opts.open) {
+        pb = avio_open2_js(opts.filename, 2, 0, 0);
+        if (pb === 0) throw new Error("Could not open file");
+        AVFormatContext_pb_s(oc, pb);
+      }
+      return [oc, fmt, pb, sts];
+    };
+    Module.ff_free_muxer = function (oc, pb) {
+      avformat_free_context(oc);
+      if (pb) avio_close(pb);
+    };
+    function ff_init_demuxer_file(filename, opts) {
+      var fmt_ctx;
+      if (typeof opts === "string") opts = {
+        format: opts
+      };else if (typeof opts === "undefined") opts = {};
+      return avformat_open_input_js(filename, opts.format || null, opts.open_input_options || null).then(function (ret) {
+        fmt_ctx = ret;
+        if (fmt_ctx === 0) throw new Error("Could not open source file");
+        return avformat_find_stream_info(fmt_ctx, 0);
+      }).then(function () {
+        var nb_streams = AVFormatContext_nb_streams(fmt_ctx);
+        var streams = [];
+        for (var i = 0; i < nb_streams; i++) {
+          var inStream = AVFormatContext_streams_a(fmt_ctx, i);
+          var outStream = {
+            ptr: inStream,
+            index: i
+          };
+          var codecpar = AVStream_codecpar(inStream);
+          outStream.codecpar = codecpar;
+          outStream.codec_type = AVCodecParameters_codec_type(codecpar);
+          outStream.codec_id = AVCodecParameters_codec_id(codecpar);
+          outStream.time_base_num = AVStream_time_base_num(inStream);
+          outStream.time_base_den = AVStream_time_base_den(inStream);
+          outStream.duration_time_base = AVStream_duration(inStream) + AVStream_durationhi(inStream) * 4294967296;
+          outStream.duration = outStream.duration_time_base * outStream.time_base_num / outStream.time_base_den;
+          var md = AVStream_metadata(inStream);
+          if (md) outStream.metadata = ff_copyout_dict(md);
+          streams.push(outStream);
+        }
+        return [fmt_ctx, streams];
+      });
+    }
+    Module.ff_init_demuxer_file = function () {
+      var args = arguments;
+      return serially(function () {
+        return ff_init_demuxer_file.apply(void 0, args);
+      });
+    };
+    Module.ff_get_demuxer_chapters = function (fmt_ctx) {
+      var nb_chapters = AVFormatContext_nb_chapters(fmt_ctx);
+      var chapters = [];
+      for (var ci = 0; ci < nb_chapters; ci++) {
+        var inCh = AVFormatContext_chapters_a(fmt_ctx, ci);
+        var start_tb = AVChapter_start(inCh) + AVChapter_starthi(inCh) * 4294967296;
+        var end_tb = AVChapter_end(inCh) + AVChapter_endhi(inCh) * 4294967296;
+        var tbNum = AVChapter_time_base_num(inCh);
+        var tbDen = AVChapter_time_base_den(inCh);
+        var ch = {
+          ptr: inCh,
+          id: AVChapter_id(inCh),
+          time_base_num: tbNum,
+          time_base_den: tbDen,
+          start_time_base: start_tb,
+          end_time_base: end_tb,
+          start: start_tb * tbNum / tbDen,
+          end: end_tb * tbNum / tbDen
+        };
+        var chmd = AVChapter_metadata(inCh);
+        if (chmd) ch.metadata = ff_copyout_dict(chmd);
+        chapters.push(ch);
+      }
+      return chapters;
+    };
+    Module.ff_write_multi = function (oc, pkt, inPackets, interleave) {
+      var step = av_interleaved_write_frame;
+      if (interleave === false) step = av_write_frame;
+      var tbs = {};
+      inPackets.forEach(function (inPacket) {
+        var ret = av_packet_make_writable(pkt);
+        if (ret < 0) throw new Error("Error making packet writable: " + ff_error(ret));
+        ff_copyin_packet(pkt, inPacket);
+        var sti = inPacket.stream_index || 0;
+        var iptbNum, iptbDen;
+        if (typeof inPacket === "number") {
+          iptbNum = AVPacket_time_base_num(pkt);
+          iptbDen = AVPacket_time_base_den(pkt);
+        } else {
+          iptbNum = inPacket.time_base_num;
+          iptbDen = inPacket.time_base_den;
+        }
+        if (iptbNum) {
+          var tb = tbs[sti];
+          if (!tb) {
+            var str = AVFormatContext_streams_a(oc, sti);
+            tb = tbs[sti] = [AVStream_time_base_num(str), AVStream_time_base_den(str)];
+          }
+          if (tb[0]) {
+            av_packet_rescale_ts_js(pkt, iptbNum, iptbDen, tb[0], tb[1]);
+            AVPacket_time_base_s(pkt, tb[0], tb[1]);
+          }
+        }
+        step(oc, pkt);
+        av_packet_unref(pkt);
+      });
+      av_packet_unref(pkt);
+    };
+    function ff_read_frame_multi(fmt_ctx, pkt, opts) {
+      var sz = 0;
+      var outPackets = {};
+      var tbs = {};
+      if (typeof opts === "number") opts = {
+        limit: opts
+      };
+      if (typeof opts === "undefined") opts = {};
+      var unify = !!opts.unify;
+      var copyoutPacket = ff_copyout_packet;
+      if (opts.copyoutPacket) copyoutPacket = ff_copyout_packet_versions[opts.copyoutPacket];
+      return function step() {
+        return av_read_frame(fmt_ctx, pkt).then(function (ret) {
+          if (ret < 0) return [ret, outPackets];
+          var packet = copyoutPacket(pkt);
+          var stri = AVPacket_stream_index(pkt);
+          var ptbNum;
+          if (typeof packet === "number") {
+            ptbNum = AVPacket_time_base_num(packet);
+            AVPacket_time_base_den(packet);
+          } else {
+            ptbNum = packet.time_base_num;
+            packet.time_base_den;
+          }
+          if (!ptbNum) {
+            var tb = tbs[stri];
+            if (!tb) {
+              var str = AVFormatContext_streams_a(fmt_ctx, stri);
+              tb = tbs[stri] = [AVStream_time_base_num(str), AVStream_time_base_den(str)];
+            }
+            if (typeof packet === "number") AVPacket_time_base_s(packet, tb[0], tb[1]);else {
+              packet.time_base_num = tb[0];
+              packet.time_base_den = tb[1];
+            }
+          }
+          var idx = unify ? 0 : stri;
+          if (!(idx in outPackets)) outPackets[idx] = [];
+          outPackets[idx].push(packet);
+          sz += AVPacket_size(pkt);
+          av_packet_unref(pkt);
+          if (opts.limit && sz >= opts.limit) return [-6, outPackets];
+          return Promise.all([]).then(step);
+        });
+      }();
+    }
+    Module.ff_read_frame_multi = function () {
+      var args = arguments;
+      return serially(function () {
+        return ff_read_frame_multi.apply(void 0, args);
+      });
+    };
+    Module.ff_read_multi = function (fmt_ctx, pkt, devfile, opts) {
+      console.log("[libav.js] ff_read_multi is deprecated. Use ff_read_frame_multi.");
+      return Module.ff_read_frame_multi(fmt_ctx, pkt, opts);
+    };
+    var ff_set_packet = Module.ff_set_packet = function (pkt, data) {
+      if (data.length === 0) av_packet_unref(pkt);else {
+        var size = AVPacket_size(pkt);
+        if (size < data.length) {
+          var ret = av_grow_packet(pkt, data.length - size);
+          if (ret < 0) throw new Error("Error growing packet: " + ff_error(ret));
+        } else if (size > data.length) av_shrink_packet(pkt, data.length);
+      }
+      var ptr = AVPacket_data(pkt);
+      Module.HEAPU8.set(data, ptr);
+    };
+    var ff_copyout_packet = Module.ff_copyout_packet = function (pkt) {
+      var data = AVPacket_data(pkt);
+      var size = AVPacket_size(pkt);
+      data = copyout_u8(data, size);
+      return {
+        data,
+        libavjsTransfer: [data.buffer],
+        pts: AVPacket_pts(pkt),
+        ptshi: AVPacket_ptshi(pkt),
+        dts: AVPacket_dts(pkt),
+        dtshi: AVPacket_dtshi(pkt),
+        time_base_num: AVPacket_time_base_num(pkt),
+        time_base_den: AVPacket_time_base_den(pkt),
+        stream_index: AVPacket_stream_index(pkt),
+        flags: AVPacket_flags(pkt),
+        duration: AVPacket_duration(pkt),
+        durationhi: AVPacket_durationhi(pkt),
+        side_data: ff_copyout_side_data(AVPacket_side_data(pkt), AVPacket_side_data_elems(pkt))
+      };
+    };
+    var ff_copyout_side_data = Module.ff_copyout_side_data = function (side_data, side_data_elems) {
+      if (!side_data) return null;
+      var ret = [];
+      for (var i = 0; i < side_data_elems; i++) {
+        var data = AVPacketSideData_data(side_data, i);
+        var size = AVPacketSideData_size(side_data, i);
+        ret.push({
+          data: copyout_u8(data, size),
+          type: AVPacketSideData_type(side_data, i)
+        });
+      }
+      return ret;
+    };
+    var ff_copyout_packet_ptr = Module.ff_copyout_packet_ptr = function (pkt) {
+      var ret = av_packet_clone(pkt);
+      if (!ret) throw new Error("Failed to clone packet");
+      return ret;
+    };
+    var ff_copyout_packet_versions = {
+      default: ff_copyout_packet,
+      ptr: ff_copyout_packet_ptr
+    };
+    var ff_copyin_packet = Module.ff_copyin_packet = function (pktPtr, packet) {
+      if (typeof packet === "number") {
+        av_packet_unref(pktPtr);
+        var res = av_packet_ref(pktPtr, packet);
+        if (res < 0) throw new Error("Failed to reference packet: " + ff_error(res));
+        av_packet_unref(packet);
+        av_packet_free_js(packet);
+        return;
+      }
+      ff_set_packet(pktPtr, packet.data);
+      ["dts", "dtshi", "duration", "durationhi", "flags", "stream_index", "pts", "ptshi", "time_base_num", "time_base_den"].forEach(function (key) {
+        if (key in packet) CAccessors["AVPacket_" + key + "_s"](pktPtr, packet[key]);
+      });
+      ff_copyin_side_data(pktPtr, packet.side_data);
+    };
+    var ff_copyin_side_data = Module.ff_copyin_side_data = function (pktPtr, side_data) {
+      AVPacket_side_data_s(pktPtr, 0);
+      AVPacket_side_data_elems_s(pktPtr, 0);
+      if (!side_data) return;
+      side_data.forEach(function (elem) {
+        var data = av_packet_new_side_data(pktPtr, elem.type, elem.data.length);
+        if (data === 0) throw new Error("Failed to allocate side data!");
+        copyin_u8(data, elem.data);
+      });
+    };
+    Module.ff_copyout_codecpar = function (codecpar) {
+      return {
+        bit_rate: AVCodecParameters_bit_rate(codecpar),
+        channel_layoutmask: AVCodecParameters_channel_layoutmask(codecpar),
+        channels: AVCodecParameters_channels(codecpar),
+        chroma_location: AVCodecParameters_chroma_location(codecpar),
+        codec_id: AVCodecParameters_codec_id(codecpar),
+        codec_tag: AVCodecParameters_codec_tag(codecpar),
+        codec_type: AVCodecParameters_codec_type(codecpar),
+        color_primaries: AVCodecParameters_color_primaries(codecpar),
+        color_range: AVCodecParameters_color_range(codecpar),
+        color_space: AVCodecParameters_color_space(codecpar),
+        color_trc: AVCodecParameters_color_trc(codecpar),
+        format: AVCodecParameters_format(codecpar),
+        height: AVCodecParameters_height(codecpar),
+        level: AVCodecParameters_level(codecpar),
+        profile: AVCodecParameters_profile(codecpar),
+        sample_rate: AVCodecParameters_sample_rate(codecpar),
+        width: AVCodecParameters_width(codecpar),
+        extradata: ff_copyout_codecpar_extradata(codecpar),
+        coded_side_data: ff_copyout_side_data(AVCodecParameters_coded_side_data(codecpar), AVCodecParameters_nb_coded_side_data(codecpar))
+      };
+    };
+    var ff_copyout_codecpar_extradata = Module.ff_copyout_codecpar_extradata = function (codecpar) {
+      var extradata = AVCodecParameters_extradata(codecpar);
+      var extradata_size = AVCodecParameters_extradata_size(codecpar);
+      if (!extradata || !extradata_size) return null;
+      return copyout_u8(extradata, extradata_size);
+    };
+    var ff_copyin_codecpar = Module.ff_copyin_codecpar = function (codecparPtr, codecpar) {
+      ["bit_rate", "channel_layoutmask", "channels", "chroma_location", "codec_id", "codec_tag", "codec_type", "color_primaries", "color_range", "color_space", "color_trc", "format", "height", "level", "profile", "sample_rate", "width"].forEach(function (key) {
+        if (key in codecpar) CAccessors["AVCodecParameters_" + key + "_s"](codecparPtr, codecpar[key]);
+      });
+      ff_copyin_codecpar_extradata(codecparPtr, codecpar.extradata);
+      ff_copyin_codecpar_side_data(codecparPtr, codecpar.side_data);
+    };
+    var ff_copyin_codecpar_extradata = Module.ff_copyin_codecpar_extradata = function (codecparPtr, extradata) {
+      if (!extradata) {
+        AVCodecParameters_extradata_s(codecparPtr, 0);
+        AVCodecParameters_extradata_size_s(codecparPtr, 0);
+      } else {
+        var extradataPtr = malloc(extradata.length);
+        copyin_u8(extradataPtr, extradata);
+        AVCodecParameters_extradata_s(codecparPtr, extradataPtr);
+        AVCodecParameters_extradata_size_s(codecparPtr, extradata.length);
+      }
+    };
+    var ff_copyin_codecpar_side_data = Module.ff_copyin_codecpar_side_data = function (codecpar, side_data) {
+      AVCodecParameters_coded_side_data_s(codecpar, 0);
+      AVCodecParameters_nb_coded_side_data_s(codecpar, 0);
+      if (!side_data) return;
+      side_data.forEach(function (elem) {
+        var data = ff_codecpar_new_side_data(codecpar, elem.type, elem.data.length);
+        if (data === 0) throw new Error("Failed to allocate side data!");
+        copyin_u8(data, elem.data);
+      });
+    };
+    var ff_copyout_dict = Module.ff_copyout_dict = function (dict) {
+      if (!dict) return null;
+      var ret = {};
+      var ent = 0;
+      while (ent = av_dict_iterate(dict, ent)) ret[AVDictionaryEntry_key(ent)] = AVDictionaryEntry_value(ent);
+      return ret;
+    };
+    Module.ff_init_encoder = function (name, opts) {
+      opts = opts || {};
+      var codec = avcodec_find_encoder_by_name(name);
+      if (codec === 0) throw new Error("Codec not found");
+      var c = avcodec_alloc_context3(codec);
+      if (c === 0) throw new Error("Could not allocate audio codec context");
+      var ctxProps = opts.ctx || {};
+      for (var prop in ctxProps) this["AVCodecContext_" + prop + "_s"](c, ctxProps[prop]);
+      var time_base = opts.time_base || [1, 1e3];
+      AVCodecContext_time_base_s(c, time_base[0], time_base[1]);
+      var options = 0;
+      if (opts.options) for (var prop in opts.options) options = av_dict_set_js(options, prop, opts.options[prop], 0);
+      var ret = avcodec_open2_js(c, codec, options);
+      if (ret < 0) throw new Error("Could not open codec: " + ff_error(ret));
+      var frame = av_frame_alloc();
+      if (frame === 0) throw new Error("Could not allocate frame");
+      var pkt = av_packet_alloc();
+      if (pkt === 0) throw new Error("Could not allocate packet");
+      var frame_size = AVCodecContext_frame_size(c);
+      return [codec, c, frame, pkt, frame_size];
+    };
+    Module.ff_init_decoder = function (name, config) {
+      if (typeof config === "number") config = {
+        codecpar: config
+      };else config = config || {};
+      var codec, ret;
+      if (typeof name === "string") codec = avcodec_find_decoder_by_name(name);else codec = avcodec_find_decoder(name);
+      if (codec === 0) throw new Error("Codec not found");
+      var c = avcodec_alloc_context3(codec);
+      if (c === 0) throw new Error("Could not allocate audio codec context");
+      var codecid = AVCodecContext_codec_id(c);
+      if (config.codecpar) {
+        var codecparPtr = 0;
+        var codecpar = config.codecpar;
+        if (typeof codecpar === "object") {
+          codecparPtr = avcodec_parameters_alloc();
+          if (codecparPtr === 0) throw new Error("Failed to allocate codec parameters");
+          ff_copyin_codecpar(codecparPtr, codecpar);
+          codecpar = codecparPtr;
+        }
+        ret = avcodec_parameters_to_context(c, codecpar);
+        if (codecparPtr) avcodec_parameters_free_js(codecparPtr);
+        if (ret < 0) throw new Error("Could not set codec parameters: " + ff_error(ret));
+      }
+      if (AVCodecContext_codec_id(c) === 0) AVCodecContext_codec_id_s(c, codecid);
+      if (config.time_base) AVCodecContext_time_base_s(c, config.time_base[0], config.time_base[1]);
+      ret = avcodec_open2(c, codec, 0);
+      if (ret < 0) throw new Error("Could not open codec: " + ff_error(ret));
+      var pkt = av_packet_alloc();
+      if (pkt === 0) throw new Error("Could not allocate packet");
+      var frame = av_frame_alloc();
+      if (frame === 0) throw new Error("Could not allocate frame");
+      return [codec, c, pkt, frame];
+    };
+    var ff_free_encoder = Module.ff_free_encoder = function (c, frame, pkt) {
+      av_frame_free_js(frame);
+      av_packet_free_js(pkt);
+      avcodec_free_context_js(c);
+    };
+    Module.ff_free_decoder = function (c, pkt, frame) {
+      ff_free_encoder(c, frame, pkt);
+    };
+    Module.ff_encode_multi = function (ctx, frame, pkt, inFrames, config) {
+      if (typeof config === "boolean") config = {
+        fin: config
+      };else config = config || {};
+      var outPackets = [];
+      var tbNum = AVCodecContext_time_base_num(ctx);
+      var tbDen = AVCodecContext_time_base_den(ctx);
+      var copyoutPacket = function (ptr) {
+        var ret = ff_copyout_packet(ptr);
+        if (!ret.time_base_num) {
+          ret.time_base_num = tbNum;
+          ret.time_base_den = tbDen;
+        }
+        return ret;
+      };
+      if (config.copyoutPacket === "ptr") copyoutPacket = function (ptr) {
+        var ret = ff_copyout_packet_ptr(ptr);
+        if (!AVPacket_time_base_num(ret)) AVPacket_time_base_s(ret, tbNum, tbDen);
+        return ret;
+      };
+      function handleFrame(inFrame) {
+        if (inFrame !== null) {
+          ff_copyin_frame(frame, inFrame);
+          if (tbNum) if (typeof inFrame === "number") {
+            var itbn = AVFrame_time_base_num(frame);
+            if (itbn) {
+              ff_frame_rescale_ts_js(frame, itbn, AVFrame_time_base_den(frame), tbNum, tbDen);
+              AVFrame_time_base_s(frame, tbNum, tbDen);
+            }
+          } else if (inFrame && inFrame.time_base_num) {
+            ff_frame_rescale_ts_js(frame, inFrame.time_base_num, inFrame.time_base_den, tbNum, tbDen);
+            AVFrame_time_base_s(frame, tbNum, tbDen);
+          }
+        }
+        var ret = avcodec_send_frame(ctx, inFrame ? frame : 0);
+        if (ret < 0) throw new Error("Error sending the frame to the encoder: " + ff_error(ret));
+        if (inFrame) av_frame_unref(frame);
+        while (true) {
+          ret = avcodec_receive_packet(ctx, pkt);
+          if (ret === -6 || ret === -541478725) return;else if (ret < 0) throw new Error("Error encoding audio frame: " + ff_error(ret));
+          outPackets.push(copyoutPacket(pkt));
+          av_packet_unref(pkt);
+        }
+      }
+      inFrames.forEach(handleFrame);
+      if (config.fin) handleFrame(null);
+      return outPackets;
+    };
+    Module.ff_decode_multi = function (ctx, pkt, frame, inPackets, config) {
+      var outFrames = [];
+      var transfer = [];
+      if (typeof config === "boolean") config = {
+        fin: config
+      };else config = config || {};
+      var tbNum = AVCodecContext_time_base_num(ctx);
+      var tbDen = AVCodecContext_time_base_den(ctx);
+      var copyoutFrameO = ff_copyout_frame;
+      if (config.copyoutFrame) copyoutFrameO = ff_copyout_frame_versions[config.copyoutFrame];
+      var copyoutFrame = function (ptr) {
+        var ret = copyoutFrameO(ptr);
+        if (!ret.time_base_num) {
+          ret.time_base_num = tbNum;
+          ret.time_base_den = tbDen;
+        }
+        return ret;
+      };
+      if (config.copyoutFrame === "ptr") copyoutFrame = function (ptr) {
+        var ret = ff_copyout_frame_ptr(ptr);
+        if (!AVFrame_time_base_num(ret)) AVFrame_time_base_s(ret, tbNum, tbDen);
+        return ret;
+      };
+      function handlePacket(inPacket) {
+        var ret;
+        if (inPacket !== null) {
+          ret = av_packet_make_writable(pkt);
+          if (ret < 0) throw new Error("Failed to make packet writable: " + ff_error(ret));
+          ff_copyin_packet(pkt, inPacket);
+          if (tbNum) if (typeof inPacket === "number") {
+            var iptbn = AVPacket_time_base_num(pkt);
+            if (iptbn) {
+              av_packet_rescale_ts_js(pkt, iptbn, AVPacket_time_base_den(pkt), tbNum, tbDen);
+              AVPacket_time_base_s(pkt, tbNum, tbDen);
+            }
+          } else if (inPacket && inPacket.time_base_num) {
+            av_packet_rescale_ts_js(pkt, inPacket.time_base_num, inPacket.time_base_den, tbNum, tbDen);
+            AVPacket_time_base_s(pkt, tbNum, tbDen);
+          }
+        } else av_packet_unref(pkt);
+        ret = avcodec_send_packet(ctx, pkt);
+        if (ret < 0) {
+          var err = "Error submitting the packet to the decoder: " + ff_error(ret);
+          if (!config.ignoreErrors) throw new Error(err);else {
+            console.log(err);
+            av_packet_unref(pkt);
+            return;
+          }
+        }
+        av_packet_unref(pkt);
+        while (true) {
+          ret = avcodec_receive_frame(ctx, frame);
+          if (ret === -6 || ret === -541478725) return;else if (ret < 0) throw new Error("Error decoding audio frame: " + ff_error(ret));
+          var outFrame = copyoutFrame(frame);
+          if (outFrame && outFrame.libavjsTransfer && outFrame.libavjsTransfer.length) transfer.push.apply(transfer, outFrame.libavjsTransfer);
+          outFrames.push(outFrame);
+          av_frame_unref(frame);
+        }
+      }
+      inPackets.forEach(handlePacket);
+      if (config.fin) handlePacket(null);
+      outFrames.libavjsTransfer = transfer;
+      return outFrames;
+    };
+    var ff_copyout_frame = Module.ff_copyout_frame = function (frame) {
+      var nb_samples = AVFrame_nb_samples(frame);
+      if (nb_samples === 0) {
+        var width = AVFrame_width(frame);
+        if (width) return ff_copyout_frame_video_width(frame, width);
+      }
+      var channels = AVFrame_channels(frame);
+      var format = AVFrame_format(frame);
+      var transfer = [];
+      var outFrame = {
+        data: null,
+        libavjsTransfer: transfer,
+        channel_layout: AVFrame_channel_layout(frame),
+        channels,
+        format,
+        nb_samples,
+        pts: AVFrame_pts(frame),
+        ptshi: AVFrame_ptshi(frame),
+        best_effort_timestamp: AVFrame_best_effort_timestamp(frame),
+        best_effort_timestamphi: AVFrame_best_effort_timestamphi(frame),
+        time_base_num: AVFrame_time_base_num(frame),
+        time_base_den: AVFrame_time_base_den(frame),
+        sample_rate: AVFrame_sample_rate(frame)
+      };
+      if (format >= 5) {
+        var data = [];
+        for (var ci = 0; ci < channels; ci++) {
+          var inData = AVFrame_data_a(frame, ci);
+          var outData = null;
+          switch (format) {
+            case 5:
+              outData = copyout_u8(inData, nb_samples);
+              break;
+            case 6:
+              outData = copyout_s16(inData, nb_samples);
+              break;
+            case 7:
+              outData = copyout_s32(inData, nb_samples);
+              break;
+            case 8:
+              outData = copyout_f32(inData, nb_samples);
+              break;
+          }
+          if (outData) {
+            data.push(outData);
+            transfer.push(outData.buffer);
+          }
+        }
+        outFrame.data = data;
+      } else {
+        var ct = channels * nb_samples;
+        inData = AVFrame_data_a(frame, 0);
+        outData = null;
+        switch (format) {
+          case 0:
+            outData = copyout_u8(inData, ct);
+            break;
+          case 1:
+            outData = copyout_s16(inData, ct);
+            break;
+          case 2:
+            outData = copyout_s32(inData, ct);
+            break;
+          case 3:
+            outData = copyout_f32(inData, ct);
+            break;
+        }
+        if (outData) {
+          outFrame.data = outData;
+          transfer.push(outData.buffer);
+        }
+      }
+      return outFrame;
+    };
+    var ff_copyout_frame_video = Module.ff_copyout_frame_video = function (frame) {
+      return ff_copyout_frame_video_width(frame, AVFrame_width(frame));
+    };
+    var ff_copyout_frame_video_width = Module.ff_copyout_frame_video = function (frame, width) {
+      var height = AVFrame_height(frame);
+      var format = AVFrame_format(frame);
+      var desc = av_pix_fmt_desc_get(format);
+      var log2ch = AVPixFmtDescriptor_log2_chroma_h(desc);
+      var layout = [];
+      var transfer = [];
+      var outFrame = {
+        data: null,
+        layout,
+        libavjsTransfer: transfer,
+        width,
+        height,
+        crop: {
+          top: AVFrame_crop_top(frame),
+          bottom: AVFrame_crop_bottom(frame),
+          left: AVFrame_crop_left(frame),
+          right: AVFrame_crop_right(frame)
+        },
+        format: AVFrame_format(frame),
+        flags: AVFrame_flags(frame),
+        key_frame: AVFrame_key_frame(frame),
+        pict_type: AVFrame_pict_type(frame),
+        pts: AVFrame_pts(frame),
+        ptshi: AVFrame_ptshi(frame),
+        best_effort_timestamp: AVFrame_best_effort_timestamp(frame),
+        best_effort_timestamphi: AVFrame_best_effort_timestamphi(frame),
+        time_base_num: AVFrame_time_base_num(frame),
+        time_base_den: AVFrame_time_base_den(frame),
+        sample_aspect_ratio: [AVFrame_sample_aspect_ratio_num(frame), AVFrame_sample_aspect_ratio_den(frame)]
+      };
+      var dataLo = 1 / 0;
+      var dataHi = 0;
+      for (var p = 0; p < 8; p++) {
+        var linesize = AVFrame_linesize_a(frame, p);
+        if (!linesize) break;
+        var plane = AVFrame_data_a(frame, p);
+        if (plane < dataLo) dataLo = plane;
+        var h = height;
+        if (p === 1 || p === 2) h >>= log2ch;
+        plane += linesize * h;
+        if (plane > dataHi) dataHi = plane;
+      }
+      outFrame.data = Module.HEAPU8.slice(dataLo, dataHi);
+      transfer.push(outFrame.data.buffer);
+      for (p = 0; p < 8; p++) {
+        linesize = AVFrame_linesize_a(frame, p);
+        if (!linesize) break;
+        plane = AVFrame_data_a(frame, p);
+        layout.push({
+          offset: plane - dataLo,
+          stride: linesize
+        });
+      }
+      return outFrame;
+    };
+    var ff_frame_video_packed_size = Module.ff_frame_video_packed_size = function (frame) {
+      var width = AVFrame_width(frame);
+      var height = AVFrame_height(frame);
+      var format = AVFrame_format(frame);
+      var desc = av_pix_fmt_desc_get(format);
+      var bpp = 1;
+      if (!(AVPixFmtDescriptor_flags(desc) & 16)) bpp *= AVPixFmtDescriptor_nb_components(desc);
+      var dataSz = 0;
+      for (var i = 0; i < 8; i++) {
+        var linesize = AVFrame_linesize_a(frame, i);
+        if (!linesize) break;
+        var w = width * bpp;
+        var h = height;
+        if (i === 1 || i === 2) {
+          w >>= AVPixFmtDescriptor_log2_chroma_w(desc);
+          h >>= AVPixFmtDescriptor_log2_chroma_h(desc);
+        }
+        dataSz += w * h;
+      }
+      return dataSz;
+    };
+    function ff_copyout_frame_data_packed(data, layout, frame) {
+      var width = AVFrame_width(frame);
+      var height = AVFrame_height(frame);
+      var format = AVFrame_format(frame);
+      var desc = av_pix_fmt_desc_get(format);
+      var bpp = 1;
+      if (!(AVPixFmtDescriptor_flags(desc) & 16)) bpp *= AVPixFmtDescriptor_nb_components(desc);
+      var dIdx = 0;
+      for (var i = 0; i < 8; i++) {
+        var linesize = AVFrame_linesize_a(frame, i);
+        if (!linesize) break;
+        var inData = AVFrame_data_a(frame, i);
+        var w = width * bpp;
+        var h = height;
+        if (i === 1 || i === 2) {
+          w >>= AVPixFmtDescriptor_log2_chroma_w(desc);
+          h >>= AVPixFmtDescriptor_log2_chroma_h(desc);
+        }
+        layout.push({
+          offset: dIdx,
+          stride: w
+        });
+        for (var y = 0; y < h; y++) {
+          var line = inData + y * linesize;
+          data.set(Module.HEAPU8.subarray(line, line + w), dIdx);
+          dIdx += w;
+        }
+      }
+    }
+    var ff_copyout_frame_video_packed = Module.ff_copyout_frame_video_packed = function (frame) {
+      var data = new Uint8Array(ff_frame_video_packed_size(frame));
+      ff_copyout_frame_data_packed(data, [], frame);
+      var outFrame = {
+        data,
+        libavjsTransfer: [data.buffer],
+        width: AVFrame_width(frame),
+        height: AVFrame_height(frame),
+        format: AVFrame_format(frame),
+        flags: AVFrame_flags(frame),
+        key_frame: AVFrame_key_frame(frame),
+        pict_type: AVFrame_pict_type(frame),
+        pts: AVFrame_pts(frame),
+        ptshi: AVFrame_ptshi(frame),
+        best_effort_timestamp: AVFrame_best_effort_timestamp(frame),
+        best_effort_timestamphi: AVFrame_best_effort_timestamphi(frame),
+        time_base_num: AVFrame_time_base_num(frame),
+        time_base_den: AVFrame_time_base_den(frame),
+        sample_aspect_ratio: [AVFrame_sample_aspect_ratio_num(frame), AVFrame_sample_aspect_ratio_den(frame)]
+      };
+      return outFrame;
+    };
+    var ff_copyout_frame_video_imagedata = Module.ff_copyout_frame_video_imagedata = function (frame) {
+      var width = AVFrame_width(frame);
+      var height = AVFrame_height(frame);
+      var id = new ImageData(width, height);
+      ff_copyout_frame_data_packed(id.data, [], frame);
+      id.libavjsTransfer = [id.data.buffer];
+      return id;
+    };
+    var ff_copyout_frame_ptr = Module.ff_copyout_frame_ptr = function (frame) {
+      var ret = av_frame_clone(frame);
+      if (!ret) throw new Error("Failed to allocate new frame");
+      return ret;
+    };
+    var ff_copyout_frame_versions = {
+      default: ff_copyout_frame,
+      video: ff_copyout_frame_video,
+      video_packed: ff_copyout_frame_video_packed,
+      ImageData: ff_copyout_frame_video_imagedata,
+      ptr: ff_copyout_frame_ptr
+    };
+    var ff_copyin_frame = Module.ff_copyin_frame = function (framePtr, frame) {
+      if (typeof frame === "number") {
+        av_frame_unref(framePtr);
+        var ret = av_frame_ref(framePtr, frame);
+        if (ret < 0) throw new Error("Failed to reference frame data: " + ff_error(ret));
+        av_frame_unref(frame);
+        av_frame_free_js(frame);
+        return;
+      }
+      if (frame.width) return ff_copyin_frame_video(framePtr, frame);
+      var format = frame.format;
+      var channels = frame.channels;
+      if (!channels) {
+        var channel_layout = frame.channel_layout;
+        channels = 0;
+        while (channel_layout) {
+          if (channel_layout & 1) channels++;
+          channel_layout >>>= 1;
+        }
+      }
+      ["channel_layout", "channels", "format", "pts", "ptshi", "sample_rate", "best_effort_timestamp", "best_effort_timestamphi", "time_base_num", "time_base_den"].forEach(function (key) {
+        if (key in frame) CAccessors["AVFrame_" + key + "_s"](framePtr, frame[key]);
+      });
+      var nb_samples;
+      if (format >= 5) nb_samples = frame.data[0].length;else nb_samples = frame.data.length / channels;
+      AVFrame_nb_samples_s(framePtr, nb_samples);
+      if (av_frame_make_writable(framePtr) < 0) {
+        ret = av_frame_get_buffer(framePtr, 0);
+        if (ret < 0) throw new Error("Failed to allocate frame buffers: " + ff_error(ret));
+      }
+      if (format >= 5) for (var ci = 0; ci < channels; ci++) {
+        var data = AVFrame_data_a(framePtr, ci);
+        var inData = frame.data[ci];
+        switch (format) {
+          case 5:
+            copyin_u8(data, inData);
+            break;
+          case 6:
+            copyin_s16(data, inData);
+            break;
+          case 7:
+            copyin_s32(data, inData);
+            break;
+          case 8:
+            copyin_f32(data, inData);
+            break;
+        }
+      } else {
+        data = AVFrame_data_a(framePtr, 0);
+        inData = frame.data;
+        switch (format) {
+          case 0:
+            copyin_u8(data, inData);
+            break;
+          case 1:
+            copyin_s16(data, inData);
+            break;
+          case 2:
+            copyin_s32(data, inData);
+            break;
+          case 3:
+            copyin_f32(data, inData);
+            break;
+        }
+      }
+    };
+    var ff_copyin_frame_video = Module.ff_copyin_frame_video = function (framePtr, frame) {
+      ["format", "height", "key_frame", "flags", "pict_type", "pts", "ptshi", "width", "best_effort_timestamp", "best_effort_timestamphi", "time_base_num", "time_base_den"].forEach(function (key) {
+        if (key in frame) CAccessors["AVFrame_" + key + "_s"](framePtr, frame[key]);
+      });
+      if ("sample_aspect_ratio" in frame) AVFrame_sample_aspect_ratio_s(framePtr, frame.sample_aspect_ratio[0], frame.sample_aspect_ratio[1]);
+      var crop = frame.crop || {
+        top: 0,
+        bottom: 0,
+        left: 0,
+        right: 0
+      };
+      AVFrame_crop_top_s(framePtr, crop.top);
+      AVFrame_crop_bottom_s(framePtr, crop.bottom);
+      AVFrame_crop_left_s(framePtr, crop.left);
+      AVFrame_crop_right_s(framePtr, crop.right);
+      var desc = av_pix_fmt_desc_get(frame.format);
+      var log2cw = AVPixFmtDescriptor_log2_chroma_w(desc);
+      var log2ch = AVPixFmtDescriptor_log2_chroma_h(desc);
+      if (av_frame_make_writable(framePtr) < 0) {
+        var ret = av_frame_get_buffer(framePtr, 0);
+        if (ret < 0) throw new Error("Failed to allocate frame buffers: " + ff_error(ret));
+      }
+      var layout = frame.layout;
+      if (!layout) {
+        layout = [];
+        var bpp = 1;
+        if (!(AVPixFmtDescriptor_flags(desc) & 16)) bpp *= AVPixFmtDescriptor_nb_components(desc);
+        var off = 0;
+        for (var p = 0; p < 8; p++) {
+          var linesize = AVFrame_linesize_a(framePtr, p);
+          if (!linesize) break;
+          var w = frame.width;
+          var h = frame.height;
+          if (p === 1 || p === 2) {
+            w >>= log2cw;
+            h >>= log2ch;
+          }
+          layout.push({
+            offset: off,
+            stride: w * bpp
+          });
+          off += w * h * bpp;
+        }
+      }
+      for (p = 0; p < layout.length; p++) {
+        var lplane = layout[p];
+        linesize = AVFrame_linesize_a(framePtr, p);
+        var data = AVFrame_data_a(framePtr, p);
+        h = frame.height;
+        if (p === 1 || p === 2) h >>= log2ch;
+        var ioff = lplane.offset;
+        var ooff = 0;
+        var stride = Math.min(lplane.stride, linesize);
+        for (var y = 0; y < h; y++) {
+          copyin_u8(data + ooff, frame.data.subarray(ioff, ioff + stride));
+          ooff += linesize;
+          ioff += lplane.stride;
+        }
+      }
+    };
+    ;
+    return Module;
+  };
+})();
+if (typeof exports === "object" && typeof module === "object") {
+  module.exports = LibAVFactory;
+  module.exports.default = LibAVFactory;
+} else if (typeof define === "function" && define["amd"]) define([], () => LibAVFactory);
+/*
+ * Copyright (C) 2019-2025 Yahweasel
+ *
+ * Permission to use, copy, modify, and/or distribute this software for any
+ * purpose with or without fee is hereby granted.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+ * SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
+ * OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
+ * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+if (/* We're in a worker */
+typeof importScripts !== "undefined" && /* We're not being loaded with noworker from the main code */
+typeof LibAV === "undefined" && (/* We're not being loaded as a thread */
+
+typeof self === "undefined" && typeof Module === "undefined" || typeof self !== "undefined" && self.name !== "em-pthread")) (function () {
+  var libav;
+  Promise.all([]).then(function () {
+    /* We're the primary code for this worker. The host should ask us to
+     * load immediately. */
+    return new Promise(function (res, rej) {
+      onmessage = function (e) {
+        if (e && e.data && e.data.config) {
+          LibAVFactory({
+            wasmurl: e.data.config.wasmurl,
+            variant: e.data.config.variant
+          }).then(res).catch(rej);
+        }
+      };
+    });
+  }).then(function (lib) {
+    libav = lib;
+
+    // Now we're ready for normal messages
+    onmessage = function (e) {
+      var id = e.data[0];
+      var fun = e.data[1];
+      var args = e.data.slice(2);
+      var ret = void 0;
+      var succ = true;
+      function reply() {
+        var transfer = [];
+        if (ret && ret.libavjsTransfer) transfer = ret.libavjsTransfer;
+        try {
+          postMessage([id, fun, succ, ret], transfer);
+        } catch (ex) {
+          try {
+            ret = JSON.parse(JSON.stringify(ret, function (k, v) {
+              return v;
+            }));
+            postMessage([id, fun, succ, ret], transfer);
+          } catch (ex) {
+            postMessage([id, fun, succ, "" + ret]);
+          }
+        }
+      }
+      try {
+        ret = libav[fun].apply(libav, args);
+      } catch (ex) {
+        succ = false;
+        ret = ex;
+      }
+      if (succ && ret && ret.then) {
+        // Let the promise resolve
+        ret.then(function (res) {
+          ret = res;
+        }).catch(function (ex) {
+          succ = false;
+          ret = ex;
+        }).then(reply);
+      } else reply();
+    };
+    libav.onwrite = function (name, pos, buf) {
+      /* We have to buf.slice(0) so we don't duplicate the entire heap just
+       * to get one part of it in postMessage */
+      buf = buf.slice(0);
+      postMessage(["onwrite", "onwrite", true, [name, pos, buf]], [buf.buffer]);
+    };
+    libav.onread = function (name, pos, len) {
+      postMessage(["onread", "onread", true, [name, pos, len]]);
+    };
+    libav.onblockread = function (name, pos, len) {
+      postMessage(["onblockread", "onblockread", true, [name, pos, len]]);
+    };
+    postMessage(["onready", "onready", true, null]);
+  }).catch(function (ex) {
+    try {
+      postMessage(["error", "error", false, ex]);
+    } catch (_) {
+      postMessage(["error", "error", false, ex + "\n" + ex.stack]);
+    }
+    console.log("Loading LibAV failed\n" + ex + "\n" + ex.stack);
+  });
+})();

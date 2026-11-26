@@ -1010,6 +1010,8 @@ function destroyHls() {
     AppState._directPlaybackDetach();
     AppState._directPlaybackDetach = null;
   }
+  if (window.WasmPlayback) WasmPlayback.detach();
+  AppState.wasmPlayback = false;
   if (AppState.hls) {
     AppState.expectedDuration = null;
     AppState.originalDuration = null;
@@ -4033,6 +4035,34 @@ function updateDirectTrackDiag(videoPlayer) {
   if (t) for (var i = 0; i < t.length; i++) kinds.push((t[i].kind || '?') + (t[i].language ? '/' + t[i].language : ''));
   directPlaybackDiag.kinds = kinds.join(', ');
 }
+function wasmAudioList(info) {
+  currentAudioTracks = (info.audioTracks || []).map(function (a, i) {
+    return {
+      title: 'Аудиодорожка ' + (i + 1),
+      language: 'und',
+      channels: a.channels || null,
+      codec: (a.codec || '').toUpperCase()
+    };
+  });
+  currentAudioTrack = info.audio >= 0 ? info.audio : 0;
+  renderAudioTracks();
+  applyDirectProbe();
+}
+function showWasmUnsupported(code, msg) {
+  hidePlayerLoading();
+  var title, text;
+  if (code === 'ts') {
+    title = 'Формат TS не поддерживается';
+    text = 'Файлы MPEG-TS (.ts, .m2ts) напрямую с TorrServer в браузере не воспроизводятся. ' + (AppState.serverHlsOff ? 'Выберите другую раздачу.' : 'Выберите другую раздачу или включите перекодирование.');
+  } else if (code === 'video') {
+    title = 'Видео не поддерживается браузером';
+    text = (msg ? msg + '. ' : '') + (AppState.serverHlsOff ? 'Выберите другую раздачу.' : 'Выберите другую раздачу или включите перекодирование.');
+  } else {
+    title = 'Файл не воспроизводится напрямую';
+    text = (msg ? msg + '. ' : '') + 'TorrServer не отдал поток либо формат файла не поддерживается. ' + (AppState.serverHlsOff ? 'Попробуйте перезапустить контент или выбрать другую раздачу.' : 'Попробуйте перезапустить контент, выбрать другую раздачу или включить перекодирование.');
+  }
+  if (typeof window.showErrorBanner === 'function') window.showErrorBanner(title, text);else alert(title);
+}
 function initTranscodingOffPlayback(_x58, _x59, _x60) {
   return _initTranscodingOffPlayback.apply(this, arguments);
 }
@@ -4109,7 +4139,7 @@ function _initTranscodingOffPlayback() {
       AppState.expectedDuration = videoPlayer.duration;
       AppState.originalDuration = videoPlayer.duration;
       forceUpdateDuration(videoPlayer.duration, videoPlayer.duration, 0);
-      var nativeTracks = webosAudio.mode || probeAudio.on ? [] : collectNativeAudioTracks(videoPlayer);
+      var nativeTracks = webosAudio.mode || probeAudio.on || AppState.wasmPlayback ? [] : collectNativeAudioTracks(videoPlayer);
       if (nativeTracks.length) {
         currentAudioTracks = nativeTracks;
         var enabled = applyNativeAudioPref(videoPlayer);
@@ -4153,8 +4183,31 @@ function _initTranscodingOffPlayback() {
       if (!started && !signal.aborted) startPlayback();
     }, LOADING_TIMEOUT_MS);
     var staleMediaId = videoPlayer.mediaId;
-    videoPlayer.src = playURL;
-    videoPlayer.load();
+    if (window.WasmPlayback && WasmPlayback.eligible()) {
+      if (/\.(m2?ts|mts)$/i.test(fileName || '')) {
+        detachDirectListeners();
+        showWasmUnsupported('ts');
+        return;
+      }
+      AppState.wasmPlayback = true;
+      directPlaybackDiag.file = (fileName || 'без имени') + ' · WASM';
+      WasmPlayback.attach(videoPlayer, playURL, {
+        time: initialSeek > 0 ? initialSeek : 0,
+        audio: nativeAudioPref,
+        onInfo: function (info) {
+          if (!signal.aborted) wasmAudioList(info);
+        },
+        onError: function (code, msg) {
+          if (signal.aborted || AppState.currentScreen !== 'player') return;
+          detachDirectListeners();
+          showWasmUnsupported(code, msg);
+        }
+      });
+      nativeAudioPref = -1;
+    } else {
+      videoPlayer.src = playURL;
+      videoPlayer.load();
+    }
     webosSubsStart(videoPlayer, staleMediaId);
     directProbeStart();
     AppState.nativeVideoPlayer = videoPlayer;
@@ -5018,6 +5071,14 @@ function switchAudioTrack(_x77) {
 function _switchAudioTrack() {
   _switchAudioTrack = _asyncToGenerator(function* (trackIndex) {
     if (trackIndex === currentAudioTrack) {
+      toggleAudioPanel();
+      return;
+    }
+    if (AppState.transcodingFullOnOff && AppState.wasmPlayback && WasmPlayback.active()) {
+      WasmPlayback.switchAudio(trackIndex);
+      currentAudioTrack = trackIndex;
+      if (currentTimecodeData.hash && currentTimecodeData.fileId) saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
+      renderAudioTracks();
       toggleAudioPanel();
       return;
     }

@@ -143,22 +143,22 @@
       "js/catalog-worker-posters-batch-patch.js": "0ba6a595",
       "js/catalog-worker-posters-patch.js": "d7d7dcc3",
       "js/catalog-worker.js": "a8782e3d",
-      "js/catalog.js": "462445e2",
+      "js/catalog.js": "c4059b49",
       "js/category-banners.js": "46ea538e",
-      "js/config.js": "900397df",
-      "js/control.js": "512cddce",
+      "js/config.js": "7848017b",
+      "js/control.js": "f4530bd0",
       "js/donate.js": "7d86fb27",
       "js/episode-picker.js": "06c66e2c",
       "js/extensions.js": "8d2a0a9a",
       "js/favorites-db.js": "8772a3b7",
-      "js/home.js": "94cef2fb",
+      "js/home.js": "c60de464",
       "js/magnet-store.js": "773f87d4",
       "js/nav.js": "02a98d5e",
       "js/osk.js": "a9e73b09",
       "js/perf-probe.js": "7143cc61",
       "js/player-diag.js": "776a28db",
       "js/player-memory-fix.js": "2fbf8c05",
-      "js/player.js": "26ba9364",
+      "js/player.js": "7aba8527",
       "js/poster-db.js": "5133286b",
       "js/poster-prefetch.js": "2a856e18",
       "js/screensaver.js": "01f61cc9",
@@ -174,7 +174,9 @@
       "js/torrents-worker.js": "f76474cd",
       "js/torrents.js": "0497f869",
       "js/torrserverstats.js": "2f006d35",
-      "js/ui-customizer.js": "614e6e55"
+      "js/ui-customizer.js": "614e6e55",
+      "js/wasm-audio-worker.js": "fbecd74f",
+      "js/wasm-playback.js": "333273d2"
       // ASSET_V:end
     };
     function assetV(p) {
@@ -1685,6 +1687,9 @@
     //document.write('<script src="https://cash94.github.io/msx/js/catalog-worker-posters-patch.js?v=' + assetV('js/catalog-worker-posters-patch.js') + '"><\/script>');
     //document.write('<script src="https://cash94.github.io/msx/js/catalog-worker-posters-batch-patch.js?v=' + assetV('js/catalog-worker-posters-batch-patch.js') + '"><\/script>');
     document.write('<script src="https://cash94.github.io/msx/js/player.js?v=' + assetV('js/player.js') + '"><\/script>');
+    // Прямой файл через WASM (браузер, VIDAA ниже 9.5): маленькая склейка, сам
+    // воркер и libav.js (wasm-audio/) грузятся только при запуске такого видео
+    document.write('<script src="https://cash94.github.io/msx/js/wasm-playback.js?v=' + assetV('js/wasm-playback.js') + '"><\/script>');
     // Samsung Tizen: прямой файл через нативный AVPlay (дорожки, субтитры)
     document.write('<script src="https://cash94.github.io/msx/js/tizen-avplay.js?v=' + assetV('js/tizen-avplay.js') + '"><\/script>');
     // Диагностика плеера: <video>, буфер и читатель TorrServer поверх видео
