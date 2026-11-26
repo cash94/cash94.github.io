@@ -32,6 +32,19 @@
  * (только эти цели: build-<вариант> собирает ещё thr/asm/dbg). h264/hevc —
  * демуксеру для DTS при B-кадрах, видео не перекодируется.
  *
+ * .wasm — ТОЛЬКО базовый WebAssembly (MVP). Свежий Emscripten включает
+ * bulk memory, sign-ext, nontrapping float-to-int (Chrome 74–75), и Chrome 68
+ * (VIDAA ниже 9.5) падал: «Wasm decoding failed: unexpected section: Code».
+ * После make — на VPS:
+ *   B=~/wasm-build/emsdk/upstream/bin; W=dist/libav-6.11.9.0.2-torrstream.wasm.wasm
+ *   $B/wasm-opt $W --enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int \
+ *     --enable-mutable-globals --llvm-memory-copy-fill-lowering --signext-lowering \
+ *     --llvm-nontrapping-fptoint-lowering -o step1.wasm
+ *   $B/wasm-opt step1.wasm --mvp-features -o libav-mvp.wasm   (заодно проверка: только MVP)
+ * и libav-mvp.wasm → msx/js/wasm-audio/libav-6.11.9.0.2-torrstream.wasm.wasm.
+ * Секций должно быть 1–7, 9–11, без 12 (DataCount). Цена — ~16 % скорости
+ * воркера на ПК (×7,4 вместо ×8,8 на 1080p 40 Мбит/с), запас всё равно большой.
+ *
  * Запуск: node tools/wasm-audio/build.js, потом tools/legacy-build (ASSET_V).
  */
 'use strict';
