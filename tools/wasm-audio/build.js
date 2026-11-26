@@ -32,16 +32,20 @@
  * (только эти цели: build-<вариант> собирает ещё thr/asm/dbg). h264/hevc —
  * демуксеру для DTS при B-кадрах, видео не перекодируется.
  *
- * .wasm — ТОЛЬКО базовый WebAssembly (MVP). Свежий Emscripten включает
- * bulk memory, sign-ext, nontrapping float-to-int (Chrome 74–75), и Chrome 68
- * (VIDAA ниже 9.5) падал: «Wasm decoding failed: unexpected section: Code».
- * После make — на VPS:
+ * Две сборки .wasm одного кода, воркер берёт одну (wasmBulkMemory в worker.src.js):
+ *   libav-…-torrstream.wasm.wasm — быстрая, как вышла из make (bulk memory —
+ *     memory.copy/fill и секция DataCount, Chrome 75+);
+ *   libav-…-torrstream.mvp.wasm — только базовый WebAssembly (Chrome 57–74):
+ *     Chrome 68 (VIDAA ниже 9.5) быструю не открывал — «Wasm decoding failed:
+ *     unexpected section: Code». Клей .wasm.js у них общий (wasm-opt меняет
+ *     только код, импорты/экспорты те же). Отладка на ПК: ?wasm=mvp у страницы.
+ * Совместимая — после make, на VPS:
  *   B=~/wasm-build/emsdk/upstream/bin; W=dist/libav-6.11.9.0.2-torrstream.wasm.wasm
  *   $B/wasm-opt $W --enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int \
  *     --enable-mutable-globals --llvm-memory-copy-fill-lowering --signext-lowering \
  *     --llvm-nontrapping-fptoint-lowering -o step1.wasm
  *   $B/wasm-opt step1.wasm --mvp-features -o libav-mvp.wasm   (заодно проверка: только MVP)
- * и libav-mvp.wasm → msx/js/wasm-audio/libav-6.11.9.0.2-torrstream.wasm.wasm.
+ * и libav-mvp.wasm → msx/js/wasm-audio/libav-6.11.9.0.2-torrstream.mvp.wasm.
  * Секций должно быть 1–7, 9–11, без 12 (DataCount). Цена — ~16 % скорости
  * воркера на ПК (×7,4 вместо ×8,8 на 1080p 40 Мбит/с), запас всё равно большой.
  *

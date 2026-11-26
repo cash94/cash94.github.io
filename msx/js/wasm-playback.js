@@ -103,7 +103,9 @@ var WasmPlayback = (function () {
       }
       fail('', 'Ошибка воркера: ' + (e && e.message || ''));
     };
-    st.worker.postMessage({ type: 'open', url: st.url, base: assetBase(), audio: st.opts.audio >= 0 ? st.opts.audio : 0, time: st.startTime });
+    // ?wasm=mvp — отладка: совместимая сборка libav.js, как у браузеров до Chrome 75
+    st.worker.postMessage({ type: 'open', url: st.url, base: assetBase(), audio: st.opts.audio >= 0 ? st.opts.audio : 0, time: st.startTime,
+      mvp: location.search.indexOf('wasm=mvp') !== -1 });
   }
 
   /** Снять всё: воркер, MediaSource, дорожки субтитров, слушатели */

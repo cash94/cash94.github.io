@@ -23,7 +23,21 @@
 self.LibAV = { nothreads: true };
 
 var LIBAV_JS = 'libav-6.11.9.0.2-torrstream.js';
-var LIBAV_WASM = 'libav-6.11.9.0.2-torrstream.wasm.wasm';
+// Две сборки одного кода: быстрая — с bulk memory (memory.copy/fill,
+// Chrome 75+), совместимая — только базовый WebAssembly (Chrome 57–74, в том
+// числе VIDAA ниже 9.5: Chrome 68 быструю не открывал — «unexpected section:
+// Code»). Скачивается одна — какую браузер поймёт (wasmBulkMemory). Совместимая
+// на ПК медленнее примерно на 16 % (tools/wasm-audio/build.js)
+var LIBAV_WASM_FAST = 'libav-6.11.9.0.2-torrstream.wasm.wasm';
+var LIBAV_WASM_MVP = 'libav-6.11.9.0.2-torrstream.mvp.wasm';
+
+/** Понимает ли WebAssembly браузера memory.copy (bulk memory) */
+function wasmBulkMemory() {
+  // (module (memory 1) (func (memory.copy (i32.const 0) (i32.const 0) (i32.const 0))))
+  var bytes = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 5, 3, 1, 0, 1,
+    10, 14, 1, 12, 0, 65, 0, 65, 0, 65, 0, 252, 10, 0, 0, 11]);
+  try { return WebAssembly.validate(bytes); } catch (e) { return false; }
+}
 var libName = 'torrstream';
 
 var CHUNK = 2 << 20;          // кусок одного запроса Range
@@ -275,8 +289,10 @@ async function open(m) {
   var tl = performance.now();
   importScripts(base + '/' + LIBAV_JS);
   // без base/wasmurl сборка ищет .wasm.js и .wasm рядом с воркером
-  libav = await LibAV.LibAV({ noworker: true, nothreads: true, base: base, wasmurl: base + '/' + LIBAV_WASM });
-  log('libav.js ' + LibAV.VER + ', загрузка ' + Math.round(performance.now() - tl) + ' мс');
+  // m.mvp — отладка (?wasm=mvp у страницы): путь старых браузеров на ПК
+  var fast = !m.mvp && wasmBulkMemory();
+  libav = await LibAV.LibAV({ noworker: true, nothreads: true, base: base, wasmurl: base + '/' + (fast ? LIBAV_WASM_FAST : LIBAV_WASM_MVP) });
+  log('libav.js ' + LibAV.VER + (fast ? '' : ' (совместимая сборка)') + ', загрузка ' + Math.round(performance.now() - tl) + ' мс');
   libav.onblockread = onBlockRead;
   libav.onwrite = onWrite;
   size = await fileSize(url);

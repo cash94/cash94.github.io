@@ -91,7 +91,8 @@ var WasmPlayback = function () {
       url: st.url,
       base: assetBase(),
       audio: st.opts.audio >= 0 ? st.opts.audio : 0,
-      time: st.startTime
+      time: st.startTime,
+      mvp: location.search.indexOf('wasm=mvp') !== -1
     });
   }
   function detach() {
