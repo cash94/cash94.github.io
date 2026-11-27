@@ -125,7 +125,8 @@ var WasmPlayback = function () {
     var line;
     if (a.to === 'copy') line = from + ' как есть';else line = from + ' → ' + (a.to === 'ac3' ? 'AC3 (Dolby Digital)' : audioName(a.to)) + (a.outCh ? ' ' + chName(a.outCh) : '');
     if (a.coreOnly) line += ', только ядро DTS';
-    if (st.encode === 'ac3' && a.to !== 'ac3' && a.to !== 'copy') line += ' (AC3 просили — воркер старый, ' + (st.info && st.info.rev ? st.info.rev : 'без версии') + ')';else if (a.to === 'aac' && ac3Available()) line += ' (не AC3: ' + (st.nativeOff ? 'связку видео + ac-3 MSE не взял' : st.encodeWhy || '?') + ')';
+    if (st.encode === 'ac3' && a.to !== 'ac3' && a.to !== 'copy') line += ' (AC3 просили — воркер старый, ' + (st.info && st.info.rev ? st.info.rev : 'без версии') + ')';else if (a.to === 'aac' && ac3Available()) line += ' (не AC3: ' + (st.nativeOff ? st.splitFailed ? 'MSE не взял ac-3 ни в связке, ни отдельным буфером: ' + st.splitFailed : 'связку видео + ac-3 MSE не взял' : st.encodeWhy || '?') + ')';
+    if (st.info && st.info.split) line += ' · видео и звук — раздельные буферы MSE';
     return line;
   }
   function assetBase() {
@@ -254,8 +255,8 @@ var WasmPlayback = function () {
       worker: null,
       usedBlob: false,
       ms: null,
-      sb: null,
-      queue: [],
+      bufs: [],
+      pendingData: [],
       gen: 0,
       info: null,
       ended: false,
@@ -346,6 +347,7 @@ var WasmPlayback = function () {
     };
     st.encodeWhy = st.nativeOff ? '' : ac3Why();
     st.encode = !st.nativeOff && !st.encodeWhy ? 'ac3' : 'aac';
+    st.split = splitWanted(st);
     st.worker.postMessage({
       type: 'open',
       url: st.url,
@@ -355,12 +357,19 @@ var WasmPlayback = function () {
       mvp: location.search.indexOf('wasm=mvp') !== -1,
       native: st.nativeOff ? {} : nativeAudio(),
       encode: st.encode,
+      split: st.split,
       auth: torrServerAuth(),
       dv: !!AppState.dvPreferred,
       size: st.opts.size > 0 ? st.opts.size : 0,
       maxAhead: managed() ? 40e6 : 0,
       libavMux: location.search.indexOf('wasm=libavmux') !== -1
     });
+  }
+  function splitWanted(st) {
+    if (location.search.indexOf('wasm=split') !== -1) return true;
+    if (st.forceSplit) return true;
+    if (st.encode !== 'ac3' || !ac3Available()) return false;
+    return !typeOk('video/mp4; codecs="avc1.640028,ac-3"') && typeOk('audio/mp4; codecs="ac-3"');
   }
   function torrServerAuth() {
     try {
@@ -428,10 +437,10 @@ var WasmPlayback = function () {
       if (m.gen !== s.gen) return;
       if (m.t) s.outT = m.t;
       if (s.dump) {
-        s.dump.push(m.bytes);
+        s.dump.push(m);
         return;
       }
-      s.queue.push(m.bytes);
+      s.pendingData.push(m);
       pump();
     } else if (m.type === 'eof') {
       if (m.gen === s.gen) {
@@ -464,6 +473,29 @@ var WasmPlayback = function () {
       return false;
     }
   }
+  function restartWorker(flags) {
+    for (var k in flags) s[k] = flags[k];
+    s.info = null;
+    try {
+      s.worker.terminate();
+    } catch (e) {}
+    if (s.objectUrl) {
+      if (s.video.src === s.objectUrl) {
+        s.video.removeAttribute('src');
+        try {
+          s.video.load();
+        } catch (e) {}
+      }
+      try {
+        URL.revokeObjectURL(s.objectUrl);
+      } catch (e) {}
+      s.objectUrl = null;
+    }
+    s.ms = null;
+    s.bufs = [];
+    s.pendingData = [];
+    startWorker(s.usedBlob);
+  }
   function pad2(n) {
     return ('0' + n).slice(-2);
   }
@@ -490,26 +522,33 @@ var WasmPlayback = function () {
       }
     }
     var mime = 'video/mp4; codecs="' + m.vCodec + (m.aCodec ? ',' + m.aCodec : '') + '"';
+    var mimes = m.split ? ['video/mp4; codecs="' + m.vCodec + '"', 'audio/mp4; codecs="' + m.aCodec + '"'] : [mime];
+    var mimesOk = mimes.every(typeOk);
     note({
       stage: 'файл разобран',
       rev: m.rev || 'старый (без версии)',
-      stream: describe() + ' → ' + m.vCodec + (m.aCodec ? ',' + m.aCodec : '') + ' (MSE ' + (typeOk(mime) ? 'берёт' : 'не берёт') + ')'
+      stream: describe() + ' → ' + m.vCodec + (m.aCodec ? ',' + m.aCodec : '') + (m.split ? ' раздельно' : '') + ' (MSE ' + (mimesOk ? 'берёт' : 'не берёт') + ')'
     });
     console.log('🧩 WASM: ' + m.streams.map(function (x) {
       return x.codec + (x.channels ? ' ' + x.channels + 'ch' : '');
     }).join(', ') + ' → ' + mime + (m.dv || m.hdr && m.hdr !== 'SDR' ? ' · ' + describe() : '') + ' · запрос до ' + Math.round((m.chunkMax || 0) / 1048576) + ' МБ');
-    if (!typeOk(mime) && location.search.indexOf('wasm=dump') === -1) {
+    if (!mimesOk && location.search.indexOf('wasm=dump') === -1) {
       var vOnly = typeOk('video/mp4; codecs="' + m.vCodec + '"');
       var aOnly = m.aCodec ? typeOk('audio/mp4; codecs="' + m.aCodec + '"') : true;
       console.warn('🧩 WASM: MSE не берёт ' + mime + ' — видео отдельно: ' + (vOnly ? 'да' : 'нет') + (m.aCodec ? ', звук отдельно: ' + (aOnly ? 'да' : 'нет') : ''));
+      if (vOnly && aOnly && !m.split && !s.nativeOff && m.aCodec === 'ac-3' && s.encode === 'ac3' && ac3Available()) {
+        console.warn('🧩 WASM: связку ' + mime + ' MSE не берёт — видео и звук раздельными буферами');
+        restartWorker({
+          forceSplit: true
+        });
+        return;
+      }
       if (vOnly && /^(ac-3|ec-3)$/.test(m.aCodec || '') && !s.nativeOff) {
         console.warn('🧩 WASM: звук ' + m.aCodec + ' не в связке с видео — перевожу в AAC');
-        s.nativeOff = true;
-        s.info = null;
-        try {
-          s.worker.terminate();
-        } catch (e) {}
-        startWorker(s.usedBlob);
+        restartWorker({
+          nativeOff: true,
+          forceSplit: false
+        });
         return;
       }
       fail('video', vOnly ? 'Браузер не поддерживает связку видео и звука ' + m.vCodec + ' + ' + m.aCodec : 'Браузер не поддерживает видео ' + m.vCodec + (m.dv ? ' (Dolby Vision P' + m.dv.profile + ')' : m.hdr && m.hdr !== 'SDR' ? ' (HDR ' + m.hdr + ')' : ''));
@@ -534,57 +573,103 @@ var WasmPlayback = function () {
     ms.addEventListener('sourceopen', function () {
       if (s !== st) return;
       if (m.duration > 0) ms.duration = m.duration;
+      var tracks = m.split ? ['v', 'a'] : [''];
       try {
-        st.sb = ms.addSourceBuffer(mime);
+        for (var i = 0; i < mimes.length; i++) st.bufs.push({
+          track: tracks[i],
+          sb: ms.addSourceBuffer(mimes[i]),
+          q: [],
+          t0: 0
+        });
       } catch (e) {
+        if (m.split && !st.nativeOff) {
+          console.warn('🧩 WASM: раздельные буферы — ' + e.message + ', перевожу звук в AAC');
+          restartWorker({
+            nativeOff: true,
+            forceSplit: false,
+            splitFailed: e.message
+          });
+          return;
+        }
         fail('video', 'MediaSource: ' + e.message);
         return;
       }
       note({
-        stage: 'MediaSource открыт'
+        stage: 'MediaSource открыт' + (m.split ? ' (видео и звук раздельно)' : '')
       });
-      st.sb.mode = 'segments';
-      st.sb.timestampOffset = -(m.offset || 0);
-      st.sb.addEventListener('updateend', function () {
-        if (s !== st) return;
-        if (st.mse.t0) {
-          st.mse.ms += performance.now() - st.mse.t0;
-          st.mse.n++;
-          st.mse.t0 = 0;
-        }
-        pump();
-        jumpStartGap();
+      st.bufs.forEach(function (bf) {
+        bf.sb.mode = 'segments';
+        bf.sb.timestampOffset = -(m.offset || 0);
+        bf.sb.addEventListener('updateend', function () {
+          if (s !== st) return;
+          if (bf.t0) {
+            st.mse.ms += performance.now() - bf.t0;
+            st.mse.n++;
+            bf.t0 = 0;
+          }
+          pump();
+          jumpStartGap();
+        });
       });
       pump();
     });
     s.video.src = s.objectUrl;
   }
-  function pump() {
-    var sb = s && s.sb;
-    if (!sb || sb.updating) return;
-    if (s.needClear) {
-      s.needClear = false;
-      try {
-        sb.abort();
-      } catch (e) {}
-      sb.timestampOffset = -(s.info.offset || 0);
-      if (sb.buffered.length) {
-        sb.remove(0, Infinity);
-        return;
-      }
+  function route() {
+    if (!s.bufs.length) return;
+    while (s.pendingData.length) {
+      var m = s.pendingData.shift(),
+        bf = s.bufs[0];
+      for (var i = 0; i < s.bufs.length; i++) if (s.bufs[i].track === (m.track || '')) bf = s.bufs[i];
+      bf.q.push(m.bytes);
     }
-    var b = sb.buffered,
-      t = s.video.currentTime;
+  }
+  function queued() {
+    var n = s.pendingData.length;
+    for (var i = 0; i < s.bufs.length; i++) n += s.bufs[i].q.length;
+    return n;
+  }
+  function pump() {
+    if (!s || !s.bufs.length) return;
+    route();
+    if (s.needClear) {
+      if (s.bufs.some(function (bf) {
+        return bf.sb.updating;
+      })) return;
+      s.needClear = false;
+      s.bufs.forEach(function (bf) {
+        try {
+          bf.sb.abort();
+        } catch (e) {}
+        bf.sb.timestampOffset = -(s.info.offset || 0);
+        if (bf.sb.buffered.length) bf.sb.remove(0, Infinity);
+      });
+      if (s.bufs.some(function (bf) {
+        return bf.sb.updating;
+      })) return;
+    }
+    var t = s.video.currentTime;
     var bps = s.info.duration ? s.info.size / s.info.duration : 1e6;
     var keep = Math.max(3, Math.min(20, (managed() ? BEHIND_BYTES / 2 : BEHIND_BYTES) / bps));
-    if (b.length && t - b.start(0) > keep * 2) {
-      sb.remove(0, t - keep);
-      return;
-    }
-    if (s.queue.length) {
-      var chunk = s.queue.shift();
+    var idle = true;
+    for (var i = 0; i < s.bufs.length; i++) {
+      var bf = s.bufs[i],
+        sb = bf.sb;
+      if (sb.updating) {
+        idle = false;
+        continue;
+      }
+      var b = sb.buffered;
+      if (b.length && t - b.start(0) > keep * 2) {
+        sb.remove(0, t - keep);
+        idle = false;
+        continue;
+      }
+      if (!bf.q.length) continue;
+      idle = false;
+      var chunk = bf.q.shift();
       try {
-        s.mse.t0 = performance.now();
+        bf.t0 = performance.now();
         sb.appendBuffer(chunk);
         s.appended += chunk.byteLength;
         if (!s.firstAppendAt) {
@@ -595,13 +680,15 @@ var WasmPlayback = function () {
         }
       } catch (e) {
         if (e.name === 'QuotaExceededError') {
-          s.queue.unshift(chunk);
+          bf.q.unshift(chunk);
           sb.remove(0, Math.max(0.1, t - 3));
-        } else fail('video', 'appendBuffer: ' + e.message);
+        } else {
+          fail('video', 'appendBuffer: ' + e.message);
+          return;
+        }
       }
-      return;
     }
-    if (s.ended && s.ms.readyState === 'open') {
+    if (idle && s.ended && s.ms.readyState === 'open') {
       try {
         s.ms.endOfStream();
       } catch (e) {}
@@ -626,7 +713,7 @@ var WasmPlayback = function () {
   var GAP_MS = 3000;
   function recoverGap() {
     var v = s.video;
-    if (!s.info || !s.played || v.paused || v.seeking || v.ended || v.readyState >= 3 || inBuffer(v.currentTime) || s.queue.length || !(s.outT > v.currentTime + 2)) {
+    if (!s.info || !s.played || v.paused || v.seeking || v.ended || v.readyState >= 3 || inBuffer(v.currentTime) || queued() || !(s.outT > v.currentTime + 2)) {
       s.gapSince = 0;
       return;
     }
@@ -693,7 +780,10 @@ var WasmPlayback = function () {
   }
   function restart(msg, time) {
     s.gen++;
-    s.queue = [];
+    s.pendingData = [];
+    s.bufs.forEach(function (bf) {
+      bf.q = [];
+    });
     s.ended = false;
     s.outT = 0;
     msg.time = time;
@@ -819,16 +909,19 @@ var WasmPlayback = function () {
     active: function () {
       return !!s;
     },
-    dump: function () {
+    dump: function (track) {
       if (!s || !s.dump) return null;
+      var list = s.dump.filter(function (m) {
+        return !track || m.track === track;
+      });
       var n = 0,
         i;
-      for (i = 0; i < s.dump.length; i++) n += s.dump[i].length;
+      for (i = 0; i < list.length; i++) n += list[i].bytes.length;
       var all = new Uint8Array(n),
         off = 0;
-      for (i = 0; i < s.dump.length; i++) {
-        all.set(s.dump[i], off);
-        off += s.dump[i].length;
+      for (i = 0; i < list.length; i++) {
+        all.set(list[i].bytes, off);
+        off += list[i].bytes.length;
       }
       return all;
     },

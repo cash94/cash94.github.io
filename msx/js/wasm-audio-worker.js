@@ -79,7 +79,7 @@ var outCodec = 'flac',
 // Версия воркера — в «Диагностику» и «Об устройстве»: сервер TorrStream отдаёт
 // воркер из своего кэша зеркала (5 мин), а без зеркала — свою копию из
 // установки, и тогда страница новее воркера. Повышать при заметных правках
-var WORKER_REV = '1.0.68-ac3';
+var WORKER_REV = '1.0.68-ac3-split';
 var dec = null,
   enc = null,
   mux = null;
@@ -847,6 +847,7 @@ function _open() {
     knownSize = m.size > 0 ? m.size : 0;
     dvPreferred = !!m.dv;
     jsMuxOff = !!m.libavMux;
+    splitOut = !!m.split;
     nativeAudio = m.native || {};
     // Сборка libav.js лежит не рядом с воркером (он идёт через маршрут сервера
     // или Blob): адрес папки wasm-audio/ присылает страница — зеркало или
@@ -942,9 +943,13 @@ function _open() {
     yield inspectVideo();
     var vCodec = yield videoCodecString(streams[vIdx].codecpar, streams[vIdx].name);
     yield setupAudio();
+    // Раздельный выход — только когда есть звук; фрагменты тогда всегда свои (jsWrite)
+    splitOut = splitOut && !!aCodecString();
+    if (splitOut) jsMuxOff = false;
     postMessage({
       type: 'info',
       rev: WORKER_REV,
+      split: splitOut,
       duration: duration,
       size: size,
       streams: list,
@@ -1560,8 +1565,12 @@ function resetOut() {
 function openMuxer(_x8, _x9, _x0) {
   return _openMuxer.apply(this, arguments);
 }
+/**
+ * Звук, ради которого mov ждёт пакеты (delay_moov), прогоняем через libav
+ * заранее: свой кодер AC3 всегда, AC3 как есть — при раздельном выходе
+ */
 function _openMuxer() {
-  _openMuxer = _asyncToGenerator(function* (g, strictFallback, firstA) {
+  _openMuxer = _asyncToGenerator(function* (g, strictFallback, firstAs) {
     var cfg = [];
     var vpar = yield libav.avcodec_parameters_alloc();
     yield libav.avcodec_parameters_copy(vpar, streams[vIdx].codecpar);
@@ -1607,9 +1616,10 @@ function _openMuxer() {
     // пакета — moov пишем вместе с первым фрагментом (delay_moov), иначе
     // «Cannot write moov atom before AC3 packets»
     // AC3 из своего кодера — так же (extradata mov для AC3 не читает), но moov
-    // выталкиваем сразу первым пакетом звука (firstA, см. ниже)
+    // выталкиваем сразу первыми пакетами звука (firstAs, см. ниже)
     var ac3Enc = !copyAudio && !!enc && outCodec === 'ac3';
     var delay = copyAudio && aIdx >= 0 && /^e?ac3$/.test(streams[aIdx].name) || ac3Enc ? '+delay_moov' : '';
+    var prime = !!delay && primeAudio();
     yield libav.av_opt_set(oc, 'movflags', 'frag_keyframe+empty_moov+default_base_moof+frag_discont' + delay, 1 /* AV_OPT_SEARCH_CHILDREN */);
     yield libav.av_opt_set(oc, 'use_editlist', '0', 1);
     // фрагмент не длиннее секунды (иначе ждём ключевой кадр, а GOP бывает 5–10 с)
@@ -1630,21 +1640,25 @@ function _openMuxer() {
       for (var k = 0; k < cfg.length; k++) try {
         yield libav.avcodec_parameters_free_js(cfg[k][0]);
       } catch (e) {}
-      return openMuxer(g, true, firstA);
+      return openMuxer(g, true, firstAs);
     }
     if (ret < 0) throw new Error('avformat_write_header: ' + ret);
     // метки дальше переводим сами — в time_base, который выбрал мультиплексор
     mux.vTbOut = [yield libav.AVStream_time_base_num(yield libav.AVFormatContext_streams_a(oc, 0)), yield libav.AVStream_time_base_den(yield libav.AVFormatContext_streams_a(oc, 0))];
     if (cfg.length > 1) mux.aTbOut = [yield libav.AVStream_time_base_num(yield libav.AVFormatContext_streams_a(oc, 1)), yield libav.AVStream_time_base_den(yield libav.AVFormatContext_streams_a(oc, 1))];
-    // AC3 из своего кодера: один пакет звука (копия — у самого пакета метки
-    // не трогаем, он пойдёт в первый фрагмент) и сброс av_write_frame(NULL) —
-    // mov с delay_moov пишет ftyp+moov с dac3 и выходит, не начиная фрагмент.
-    // Пакет остаётся в libav и пропадает вместе с ним, а фрагменты дальше
-    // собирает jsWrite — тот же быстрый путь, что у AAC
+    // AC3 из своего кодера (и AC3 как есть при раздельном выходе): первые
+    // пакеты звука (копии — у самих пакетов метки не трогаем, они пойдут в
+    // первый фрагмент) и сброс av_write_frame(NULL) — mov с delay_moov пишет
+    // ftyp+moov с dac3 и выходит, не начиная фрагмент. Пакеты остаются в libav
+    // и пропадают вместе с ним, а фрагменты дальше собирает jsWrite — тот же
+    // быстрый путь, что у AAC
     var primed = false;
-    if (ac3Enc && firstA && !jsMuxOff && mux.aTbOut) {
-      var p0 = rescale(Object.assign({}, firstA), [1, enc.sr], mux.aTbOut, 1);
-      yield libav.ff_write_multi(oc, mux.pkt, [p0], false);
+    if (prime && firstAs && firstAs.length && !jsMuxOff && mux.aTbOut) {
+      var from = copyAudio ? aTb : [1, enc.sr];
+      var ps = firstAs.slice(0, 8).map(function (p) {
+        return rescale(Object.assign({}, p), from, mux.aTbOut, 1);
+      });
+      yield libav.ff_write_multi(oc, mux.pkt, ps, false);
       yield libav.av_write_frame(oc, 0);
       primed = true;
     }
@@ -1655,7 +1669,7 @@ function _openMuxer() {
       } catch (e) {}
     }
     var hasMoov = topBoxes().indexOf('moov') >= 0;
-    var initBytes = flushOut(g, 0); // init-сегмент (ftyp+moov)
+    var initBytes = splitOut && hasMoov ? flushSplitInit(g) : flushOut(g, 0); // init-сегмент (ftyp+moov)
     // Дальше фрагменты собираем сами (jsWrite), если заголовок вышел целиком.
     // AC3/E-AC3 как есть (delay_moov): moov ещё не записан — остаётся libav
     if ((!delay || primed) && !jsMuxOff && hasMoov && initBytes > 0 && out.len === 0) {
@@ -1679,8 +1693,14 @@ function _openMuxer() {
         } : null]
       };
     }
+    if (splitOut && !(mux && mux.js)) throw new Error('Раздельный выход: заголовок fMP4 не собрался (' + topBoxes().join(',') + ')');
   });
   return _openMuxer.apply(this, arguments);
+}
+function primeAudio() {
+  if (aIdx < 0) return false;
+  if (!copyAudio) return outCodec === 'ac3';
+  return splitOut && /^e?ac3$/.test(streams[aIdx].name);
 }
 function closeMuxer() {
   return _closeMuxer.apply(this, arguments);
@@ -1721,6 +1741,114 @@ function flushOut(g, t) {
   return n;
 }
 
+// ---------- раздельный выход: видео и звук в разные SourceBuffer ----------
+// Tizen 5.0 берёт «audio/mp4; ac-3», но не связку «video/mp4; avc1…,ac-3» в
+// одном SourceBuffer (hls.js и Shaka буферы всегда держат раздельно). Тогда
+// заголовок режем на два (moov с одной дорожкой и её trex), а фрагменты
+// jsWrite шлёт по дорожкам — сообщения с track 'v' / 'a'
+
+function u32(b, o) {
+  return (b[o] << 24 >>> 0) + (b[o + 1] << 16) + (b[o + 2] << 8) + b[o + 3];
+}
+function childBoxes(b, from, to) {
+  var list = [];
+  while (from + 8 <= to) {
+    var size = u32(b, from);
+    if (size < 8 || from + size > to) break;
+    list.push({
+      type: String.fromCharCode(b[from + 4], b[from + 5], b[from + 6], b[from + 7]),
+      start: from,
+      size: size
+    });
+    from += size;
+  }
+  return list;
+}
+function joinBox(type, parts) {
+  var n = 8;
+  parts.forEach(function (p) {
+    n += p.length;
+  });
+  var r = new Uint8Array(n),
+    o = 8;
+  new DataView(r.buffer).setUint32(0, n);
+  for (var c = 0; c < 4; c++) r[4 + c] = type.charCodeAt(c);
+  parts.forEach(function (p) {
+    r.set(p, o);
+    o += p.length;
+  });
+  return r;
+}
+
+/** ftyp+moov → { v, a }: тот же заголовок, но в каждом одна дорожка */
+function splitInit(b, len) {
+  var top = childBoxes(b, 0, len),
+    ftyp = null,
+    moov = null;
+  top.forEach(function (x) {
+    if (x.type === 'ftyp') ftyp = x;else if (x.type === 'moov') moov = x;
+  });
+  if (!ftyp || !moov) throw new Error('Раздельный выход: нет ftyp/moov (' + top.map(function (x) {
+    return x.type;
+  }).join(',') + ')');
+  var kids = childBoxes(b, moov.start + 8, moov.start + moov.size);
+  var slice = function (x) {
+    return b.subarray(x.start, x.start + x.size);
+  };
+  var trakId = function (t) {
+    var tk = childBoxes(b, t.start + 8, t.start + t.size).filter(function (x) {
+      return x.type === 'tkhd';
+    })[0];
+    if (!tk) return -1;
+    return u32(b, tk.start + (b[tk.start + 8] === 1 ? 28 : 20));
+  };
+  var build = function (id) {
+    var parts = [];
+    kids.forEach(function (x) {
+      if (x.type === 'trak') {
+        if (trakId(x) === id) parts.push(slice(x));
+      } else if (x.type === 'mvex') {
+        parts.push(joinBox('mvex', childBoxes(b, x.start + 8, x.start + x.size).filter(function (y) {
+          return y.type !== 'trex' || u32(b, y.start + 12) === id;
+        }).map(slice)));
+      } else parts.push(slice(x));
+    });
+    var m = joinBox('moov', parts),
+      f = slice(ftyp);
+    var r = new Uint8Array(f.length + m.length);
+    r.set(f, 0);
+    r.set(m, f.length);
+    return r;
+  };
+  return {
+    v: build(1),
+    a: build(2)
+  };
+}
+function flushSplitInit(g) {
+  var n = completeBoxes();
+  if (!n) return 0;
+  var parts = splitInit(out.buf, n);
+  out.buf.copyWithin(0, n, out.len);
+  out.len -= n;
+  out.base += n;
+  postMessage({
+    type: 'data',
+    gen: g,
+    bytes: parts.v,
+    t: 0,
+    track: 'v'
+  }, [parts.v.buffer]);
+  postMessage({
+    type: 'data',
+    gen: g,
+    bytes: parts.a,
+    t: 0,
+    track: 'a'
+  }, [parts.a.buffer]);
+  return n;
+}
+
 // ---------- свой сборщик фрагментов fMP4 ----------
 // Мультиплексор libav на каждом пакете: копия данных из JS обратно в WASM,
 // копия в буфер фрагмента, копия фрагмента из WASM наружу и ещё срез — на
@@ -1731,6 +1859,7 @@ function flushOut(g, t) {
 // default_base_moof, без editlist): tfdt = DTS первого сэмпла (+OFFSET).
 // ?wasm=libavmux — отладка: фрагменты снова собирает libav
 var jsMuxOff = false;
+var splitOut = false; // видео и звук отдельными потоками (см. splitInit)
 var FLAG_SYNC = 0x02000000; // sample_depends_on = 2 (ни от кого)
 var FLAG_NON_SYNC = 0x01010000; // depends_on = 1, is_non_sync_sample
 
@@ -1858,6 +1987,19 @@ function jsWrite(vOut, aOut, final) {
     });
   }
   if (!trafs.length) return;
+  if (splitOut) {
+    trafs.forEach(function (t) {
+      var b = jsFragment([t]);
+      postMessage({
+        type: 'data',
+        gen: gen,
+        bytes: b,
+        t: outTime,
+        track: t.video ? 'v' : 'a'
+      }, [b.buffer]);
+    });
+    return;
+  }
   var bytes = jsFragment(trafs);
   postMessage({
     type: 'data',
@@ -1973,13 +2115,14 @@ function _run() {
         }
       }
       if (!mux && (vOut.length || aOut.length)) {
-        // AC3 из своего кодера — ещё и первый пакет: из него mov берёт dac3
-        if (!copyAudio && aIdx >= 0 && (!enc || outCodec === 'ac3' && !aOut.length)) {
+        // AC3 (свой кодер или как есть при раздельном выходе) — ещё и первые
+        // пакеты: из них mov берёт dac3
+        if (aIdx >= 0 && (!copyAudio && !enc || primeAudio() && !aOut.length)) {
           // звук ещё не пошёл (видео впереди звука) — подождём кодер, видео придержим
           heldVideo = heldVideo.concat(vOut);
           if (heldVideo.length < 400) continue;
         }
-        yield openMuxer(gen, false, aOut[0]);
+        yield openMuxer(gen, false, aOut);
         vOut = heldVideo.concat(vOut);
         heldVideo = [];
       }

@@ -127,7 +127,8 @@ var WasmPlayback = (function () {
    * телевизор декодирует сам или отдаёт саундбару битстримом. Настройка
    * «Преобразовать DTS в Dolby Digital…» (app.js: setupDtsAc3Setting),
    * включена по умолчанию — хранится как «выключена». Связку видео + ac-3
-   * проверит onInfo и при отказе перезапустит с AAC.
+   * в одном SourceBuffer Tizen 5.0 не берёт — тогда видео и звук идут в два
+   * буфера (splitWanted); не взял и так — onInfo перезапустит с AAC.
    * Отладка на ПК: ?wasm=ac3 — без проверки поддержки (вместе с ?wasm=dump)
    */
   function ac3Available() { return AppState.platform === 'tizen' || !!AppState.tizenApp; }
@@ -163,7 +164,9 @@ var WasmPlayback = (function () {
     else line = from + ' → ' + (a.to === 'ac3' ? 'AC3 (Dolby Digital)' : audioName(a.to)) + (a.outCh ? ' ' + chName(a.outCh) : '');
     if (a.coreOnly) line += ', только ядро DTS';
     if (st.encode === 'ac3' && a.to !== 'ac3' && a.to !== 'copy') line += ' (AC3 просили — воркер старый, ' + (st.info && st.info.rev ? st.info.rev : 'без версии') + ')';
-    else if (a.to === 'aac' && ac3Available()) line += ' (не AC3: ' + (st.nativeOff ? 'связку видео + ac-3 MSE не взял' : st.encodeWhy || '?') + ')';
+    else if (a.to === 'aac' && ac3Available()) line += ' (не AC3: ' + (st.nativeOff ? (st.splitFailed ? 'MSE не взял ac-3 ни в связке, ни отдельным буфером: ' + st.splitFailed
+      : 'связку видео + ac-3 MSE не взял') : st.encodeWhy || '?') + ')';
+    if (st.info && st.info.split) line += ' · видео и звук — раздельные буферы MSE';
     return line;
   }
 
@@ -307,8 +310,8 @@ var WasmPlayback = (function () {
   function attach(video, url, opts) {
     detach();
     s = {
-      video: video, url: url, opts: opts || {}, worker: null, usedBlob: false, ms: null, sb: null,
-      queue: [], gen: 0, info: null, ended: false, needClear: false, selfSeek: false,
+      video: video, url: url, opts: opts || {}, worker: null, usedBlob: false, ms: null, bufs: [],
+      pendingData: [], gen: 0, info: null, ended: false, needClear: false, selfSeek: false,
       startTime: (opts && opts.time > 0) ? opts.time : 0, tickTimer: null, objectUrl: null,
       subs: {}, listeners: [], appended: 0, firstAppendAt: 0, played: false,
       mse: { ms: 0, n: 0, t0: 0 }, msePrev: { ms: 0, n: 0 }, perfLine: '', perfVerdict: '', perfLogAt: 0
@@ -362,12 +365,15 @@ var WasmPlayback = (function () {
     };
     st.encodeWhy = st.nativeOff ? '' : ac3Why();
     st.encode = !st.nativeOff && !st.encodeWhy ? 'ac3' : 'aac';
+    st.split = splitWanted(st);
     // ?wasm=mvp — отладка: совместимая сборка libav.js, как у браузеров до Chrome 75
     // Файл воркер читает только напрямую с TorrServer/MonoServer — не через сервер TorrStream
     st.worker.postMessage({ type: 'open', url: st.url, base: assetBase(), audio: st.opts.audio >= 0 ? st.opts.audio : 0, time: st.startTime,
       mvp: location.search.indexOf('wasm=mvp') !== -1, native: st.nativeOff ? {} : nativeAudio(),
       // AC3 со всеми каналами вместо AAC 2.0 (Tizen); связку не взял — откат nativeOff
       encode: st.encode,
+      // видео и звук отдельными потоками — в два SourceBuffer (см. splitWanted)
+      split: st.split,
       auth: torrServerAuth(), dv: !!AppState.dvPreferred,
       // размер файла из списка раздачи: старый Chrome не читает Content-Range
       size: st.opts.size > 0 ? st.opts.size : 0,
@@ -375,6 +381,21 @@ var WasmPlayback = (function () {
       maxAhead: managed() ? 40e6 : 0,
       // ?wasm=libavmux — отладка: фрагменты fMP4 собирает libav, как до 1.0.68
       libavMux: location.search.indexOf('wasm=libavmux') !== -1 });
+  }
+
+  /**
+   * Раздельные буферы MSE (видео / звук), если связку с ac-3 в одном буфере
+   * браузер не берёт, а ac-3 отдельно — берёт. Так на Tizen 5.0: «audio/mp4;
+   * ac-3» да, «video/mp4; avc1…,ac-3» нет. Видео ещё не знаем — пробуем H.264;
+   * с другим видео onInfo проверит связку снова и при отказе запросит раздельный.
+   * Только Tizen: на других ТВ два буфера с AC3 не проверены.
+   * ?wasm=split — отладка на ПК
+   */
+  function splitWanted(st) {
+    if (location.search.indexOf('wasm=split') !== -1) return true;
+    if (st.forceSplit) return true;
+    if (st.encode !== 'ac3' || !ac3Available()) return false;
+    return !typeOk('video/mp4; codecs="avc1.640028,ac-3"') && typeOk('audio/mp4; codecs="ac-3"');
   }
 
   /** Вход TorrServer (Basic) из настроек — воркер шлёт его сам */
@@ -427,8 +448,8 @@ var WasmPlayback = (function () {
     else if (m.type === 'data') {
       if (m.gen !== s.gen) return;
       if (m.t) s.outT = m.t;
-      if (s.dump) { s.dump.push(m.bytes); return; }
-      s.queue.push(m.bytes); pump();
+      if (s.dump) { s.dump.push(m); return; }
+      s.pendingData.push(m); pump();
     }
     else if (m.type === 'eof') { if (m.gen === s.gen) { s.ended = true; pump(); } }
     else if (m.type === 'cues') addCues(m.cues);
@@ -447,6 +468,23 @@ var WasmPlayback = (function () {
   }
 
   function typeOk(t) { try { return mediaSourceCtor().isTypeSupported(t); } catch (e) { return false; } }
+
+  /**
+   * Тот же файл с того же места другим воркером (иной звук / раздельные
+   * буферы). MediaSource ещё не открыт или сносится вместе с <video>.src
+   */
+  function restartWorker(flags) {
+    for (var k in flags) s[k] = flags[k];
+    s.info = null;
+    try { s.worker.terminate(); } catch (e) { }
+    if (s.objectUrl) {
+      if (s.video.src === s.objectUrl) { s.video.removeAttribute('src'); try { s.video.load(); } catch (e) { } }
+      try { URL.revokeObjectURL(s.objectUrl); } catch (e) { }
+      s.objectUrl = null;
+    }
+    s.ms = null; s.bufs = []; s.pendingData = [];
+    startWorker(s.usedBlob);
+  }
 
   function pad2(n) { return ('0' + n).slice(-2); }
 
@@ -473,23 +511,31 @@ var WasmPlayback = (function () {
       }
     }
     var mime ='video/mp4; codecs="' + m.vCodec + (m.aCodec ? ',' + m.aCodec : '') + '"';
+    // Раздельный выход воркера: два буфера — видео и звук отдельно
+    var mimes = m.split ? ['video/mp4; codecs="' + m.vCodec + '"', 'audio/mp4; codecs="' + m.aCodec + '"'] : [mime];
+    var mimesOk = mimes.every(typeOk);
     note({ stage: 'файл разобран', rev: m.rev || 'старый (без версии)', stream: describe() + ' → ' + m.vCodec + (m.aCodec ? ',' + m.aCodec : '') +
-      ' (MSE ' + (typeOk(mime) ? 'берёт' : 'не берёт') + ')' });
+      (m.split ? ' раздельно' : '') + ' (MSE ' + (mimesOk ? 'берёт' : 'не берёт') + ')' });
     console.log('🧩 WASM: ' + m.streams.map(function (x) { return x.codec + (x.channels ? ' ' + x.channels + 'ch' : ''); }).join(', ') + ' → ' + mime +
       (m.dv || (m.hdr && m.hdr !== 'SDR') ? ' · ' + describe() : '') +
       ' · запрос до ' + Math.round((m.chunkMax || 0) / 1048576) + ' МБ');
-    if (!typeOk(mime) && location.search.indexOf('wasm=dump') === -1) {
+    if (!mimesOk && location.search.indexOf('wasm=dump') === -1) {
       var vOnly = typeOk('video/mp4; codecs="' + m.vCodec + '"');
       var aOnly = m.aCodec ? typeOk('audio/mp4; codecs="' + m.aCodec + '"') : true;
       console.warn('🧩 WASM: MSE не берёт ' + mime + ' — видео отдельно: ' + (vOnly ? 'да' : 'нет') + (m.aCodec ? ', звук отдельно: ' + (aOnly ? 'да' : 'нет') : ''));
+      // AC3 (Tizen): связку в одном буфере ТВ не берёт, а звук отдельно
+      // берёт — тот же файл раздельными буферами (видео не H.264, и
+      // splitWanted не угадал)
+      if (vOnly && aOnly && !m.split && !s.nativeOff && m.aCodec === 'ac-3' && s.encode === 'ac3' && ac3Available()) {
+        console.warn('🧩 WASM: связку ' + mime + ' MSE не берёт — видео и звук раздельными буферами');
+        restartWorker({ forceSplit: true });
+        return;
+      }
       // Звук шёл как есть (VIDAA) или в AC3 (Tizen), а связку ТВ не берёт —
       // тот же файл с переводом звука в AAC 2.0, без ошибки и с того же места
       if (vOnly && /^(ac-3|ec-3)$/.test(m.aCodec || '') && !s.nativeOff) {
         console.warn('🧩 WASM: звук ' + m.aCodec + ' не в связке с видео — перевожу в AAC');
-        s.nativeOff = true;
-        s.info = null;
-        try { s.worker.terminate(); } catch (e) { }
-        startWorker(s.usedBlob);
+        restartWorker({ nativeOff: true, forceSplit: false });
         return;
       }
       fail('video', vOnly ? 'Браузер не поддерживает связку видео и звука ' + m.vCodec + ' + ' + m.aCodec
@@ -510,16 +556,28 @@ var WasmPlayback = (function () {
     ms.addEventListener('sourceopen', function () {
       if (s !== st) return;
       if (m.duration > 0) ms.duration = m.duration;
-      try { st.sb = ms.addSourceBuffer(mime); }
-      catch (e) { fail('video', 'MediaSource: ' + e.message); return; }
-      note({ stage: 'MediaSource открыт' });
-      st.sb.mode = 'segments';
-      // воркер сдвигает все метки на +offset (fMP4 не любит отрицательные DTS)
-      st.sb.timestampOffset = -(m.offset || 0);
-      st.sb.addEventListener('updateend', function () {
-        if (s !== st) return;
-        if (st.mse.t0) { st.mse.ms += performance.now() - st.mse.t0; st.mse.n++; st.mse.t0 = 0; }
-        pump(); jumpStartGap();
+      var tracks = m.split ? ['v', 'a'] : [''];
+      try {
+        for (var i = 0; i < mimes.length; i++) st.bufs.push({ track: tracks[i], sb: ms.addSourceBuffer(mimes[i]), q: [], t0: 0 });
+      } catch (e) {
+        // Раздельно с AC3 не взял — последний шанс: AAC 2.0 в одном буфере
+        if (m.split && !st.nativeOff) {
+          console.warn('🧩 WASM: раздельные буферы — ' + e.message + ', перевожу звук в AAC');
+          restartWorker({ nativeOff: true, forceSplit: false, splitFailed: e.message });
+          return;
+        }
+        fail('video', 'MediaSource: ' + e.message); return;
+      }
+      note({ stage: 'MediaSource открыт' + (m.split ? ' (видео и звук раздельно)' : '') });
+      st.bufs.forEach(function (bf) {
+        bf.sb.mode = 'segments';
+        // воркер сдвигает все метки на +offset (fMP4 не любит отрицательные DTS)
+        bf.sb.timestampOffset = -(m.offset || 0);
+        bf.sb.addEventListener('updateend', function () {
+          if (s !== st) return;
+          if (bf.t0) { st.mse.ms += performance.now() - bf.t0; st.mse.n++; bf.t0 = 0; }
+          pump(); jumpStartGap();
+        });
       });
       pump();
     });
@@ -528,34 +586,60 @@ var WasmPlayback = (function () {
 
   // ---------- MediaSource ----------
 
-  function pump() {
-    var sb = s && s.sb;
-    if (!sb || sb.updating) return;
-    if (s.needClear) {
-      // после перемотки: сначала убрать старое, потом добавлять новое
-      s.needClear = false;
-      try { sb.abort(); } catch (e) { }
-      sb.timestampOffset = -(s.info.offset || 0);
-      if (sb.buffered.length) { sb.remove(0, Infinity); return; }
+  /** Данные воркера — в очередь своего буфера (раздельный выход: track 'v' / 'a') */
+  function route() {
+    if (!s.bufs.length) return;
+    while (s.pendingData.length) {
+      var m = s.pendingData.shift(), bf = s.bufs[0];
+      for (var i = 0; i < s.bufs.length; i++) if (s.bufs[i].track === (m.track || '')) bf = s.bufs[i];
+      bf.q.push(m.bytes);
     }
-    var b = sb.buffered, t = s.video.currentTime;
+  }
+
+  function queued() {
+    var n = s.pendingData.length;
+    for (var i = 0; i < s.bufs.length; i++) n += s.bufs[i].q.length;
+    return n;
+  }
+
+  function pump() {
+    if (!s || !s.bufs.length) return;
+    route();
+    if (s.needClear) {
+      // после перемотки: сначала убрать старое, потом добавлять новое — во
+      // всех буферах сразу, иначе в один уйдёт новое, пока другой занят
+      if (s.bufs.some(function (bf) { return bf.sb.updating; })) return;
+      s.needClear = false;
+      s.bufs.forEach(function (bf) {
+        try { bf.sb.abort(); } catch (e) { }
+        bf.sb.timestampOffset = -(s.info.offset || 0);
+        if (bf.sb.buffered.length) bf.sb.remove(0, Infinity);
+      });
+      if (s.bufs.some(function (bf) { return bf.sb.updating; })) return;
+    }
+    var t = s.video.currentTime;
     var bps = s.info.duration ? s.info.size / s.info.duration : 1e6;
     var keep = Math.max(3, Math.min(20, (managed() ? BEHIND_BYTES / 2 : BEHIND_BYTES) / bps));
-    if (b.length && t - b.start(0) > keep * 2) { sb.remove(0, t - keep); return; }
-    if (s.queue.length) {
-      var chunk = s.queue.shift();
+    var idle = true;
+    for (var i = 0; i < s.bufs.length; i++) {
+      var bf = s.bufs[i], sb = bf.sb;
+      if (sb.updating) { idle = false; continue; }
+      var b = sb.buffered;
+      if (b.length && t - b.start(0) > keep * 2) { sb.remove(0, t - keep); idle = false; continue; }
+      if (!bf.q.length) continue;
+      idle = false;
+      var chunk = bf.q.shift();
       try {
-        s.mse.t0 = performance.now(); sb.appendBuffer(chunk);
+        bf.t0 = performance.now(); sb.appendBuffer(chunk);
         s.appended += chunk.byteLength;
         if (!s.firstAppendAt) { s.firstAppendAt = Date.now(); note({ stage: 'фрагменты идут в <video>' }); }
       }
       catch (e) {
-        if (e.name === 'QuotaExceededError') { s.queue.unshift(chunk); sb.remove(0, Math.max(0.1, t - 3)); }
-        else fail('video', 'appendBuffer: ' + e.message);
+        if (e.name === 'QuotaExceededError') { bf.q.unshift(chunk); sb.remove(0, Math.max(0.1, t - 3)); }
+        else { fail('video', 'appendBuffer: ' + e.message); return; }
       }
-      return;
     }
-    if (s.ended && s.ms.readyState === 'open') { try { s.ms.endOfStream(); } catch (e) { } }
+    if (idle && s.ended && s.ms.readyState === 'open') { try { s.ms.endOfStream(); } catch (e) { } }
   }
 
   // ---------- поток собран, а показа нет ----------
@@ -599,7 +683,7 @@ var WasmPlayback = (function () {
     // Воркер уже отдал данные дальше этого места, а в буфере их нет — их
     // выбросили. Просто медленная сеть (воркер ещё не дошёл) — не дыра
     if (!s.info || !s.played || v.paused || v.seeking || v.ended || v.readyState >= 3 || inBuffer(v.currentTime) ||
-      s.queue.length || !(s.outT > v.currentTime + 2)) { s.gapSince = 0; return; }
+      queued() || !(s.outT > v.currentTime + 2)) { s.gapSince = 0; return; }
     if (!s.gapSince) { s.gapSince = Date.now(); return; }
     if (Date.now() - s.gapSince < GAP_MS) return;
     s.gapSince = 0;
@@ -658,7 +742,7 @@ var WasmPlayback = (function () {
 
   function restart(msg, time) {
     s.gen++;
-    s.queue = []; s.ended = false; s.outT = 0;
+    s.pendingData = []; s.bufs.forEach(function (bf) { bf.q = []; }); s.ended = false; s.outT = 0;
     msg.time = time; msg.gen = s.gen;
     s.worker.postMessage(msg);
     s.needClear = true;
@@ -795,12 +879,13 @@ var WasmPlayback = (function () {
     detach: detach,
     switchAudio: switchAudio,
     active: function () { return !!s; },
-    // ?wasm=dump: собранный fMP4 одним массивом
-    dump: function () {
+    // ?wasm=dump: собранный fMP4 одним массивом (раздельный выход — track 'v' / 'a')
+    dump: function (track) {
       if (!s || !s.dump) return null;
-      var n = 0, i; for (i = 0; i < s.dump.length; i++) n += s.dump[i].length;
+      var list = s.dump.filter(function (m) { return !track || m.track === track; });
+      var n = 0, i; for (i = 0; i < list.length; i++) n += list[i].bytes.length;
       var all = new Uint8Array(n), off = 0;
-      for (i = 0; i < s.dump.length; i++) { all.set(s.dump[i], off); off += s.dump[i].length; }
+      for (i = 0; i < list.length; i++) { all.set(list[i].bytes, off); off += list[i].bytes.length; }
       return all;
     },
     // Строка для «Диагностики» плеера: замеры за последние ~2 с и вывод
