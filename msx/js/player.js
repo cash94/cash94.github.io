@@ -2095,6 +2095,34 @@ function findLoadedTorrent(hash) {
   return null;
 }
 
+/**
+ * Размер файла раздачи в байтах (file_stats[].length у TorrServer) или 0.
+ * Нужен WASM-воркеру: старый Chrome (VIDAA ниже 9.5 и др., до Chrome 76) без
+ * Access-Control-Expose-Headers не даёт прочитать у чужого ответа ни
+ * Content-Range, ни Content-Length, а TorrServer (MatriX) его не шлёт —
+ * воркер падал «Не узнать размер файла». Раздача ещё не в списке — спросим
+ * TorrServer (недолго: без размера воркер всё равно попробует заголовки)
+ */
+async function getTorrentFileLength(hash, fileId, timeoutMs) {
+  if (!hash || fileId === undefined || fileId === null) return 0;
+  var h = String(hash).toLowerCase();
+  function pick(t) {
+    var files = t && Array.isArray(t.file_stats) ? t.file_stats : [];
+    for (var i = 0; i < files.length; i++) if (files[i] && files[i].id == fileId && files[i].length > 0) return Number(files[i].length);
+    return 0;
+  }
+  var n = pick(findLoadedTorrent(h));
+  if (n) return n;
+  try {
+    var got = await Promise.race([
+      torrServerFetch('/torrents', { method: 'POST', body: JSON.stringify({ action: 'get', hash: h }) })
+        .then(function (r) { return r.ok ? r.json() : null; }),
+      new Promise(function (resolve) { setTimeout(function () { resolve(null); }, timeoutMs || 2500); })
+    ]);
+    return pick(got);
+  } catch (e) { return 0; }
+}
+
 /** Единственный сезон раздачи или null (сезонов несколько или не знаем) */
 function getTorrentSingleSeason(torrent) {
   if (!torrent || typeof window.getTorrentSeasons !== 'function') return null;
@@ -4851,8 +4879,12 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
     }
     AppState.wasmPlayback = true;
     directPlaybackDiag.file = (fileName || 'без имени') + ' · WASM';
+    // Размер файла — из списка файлов раздачи (см. getTorrentFileLength)
+    var wasmFileSize = await getTorrentFileLength(currentTimecodeData.hash, currentTimecodeData.fileId);
+    if (signal.aborted) return;
     WasmPlayback.attach(videoPlayer, playURL, {
       time: initialSeek > 0 ? initialSeek : 0,
+      size: wasmFileSize,
       audio: nativeAudioPref,
       onInfo: function (info) { if (!signal.aborted) wasmAudioList(info); },
       onError: function (code, msg) {

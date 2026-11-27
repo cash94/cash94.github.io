@@ -311,6 +311,7 @@ var WasmPlayback = function () {
       encode: !st.nativeOff && ac3Wanted() ? 'ac3' : 'aac',
       auth: torrServerAuth(),
       dv: !!AppState.dvPreferred,
+      size: st.opts.size > 0 ? st.opts.size : 0,
       maxAhead: managed() ? 40e6 : 0,
       libavMux: location.search.indexOf('wasm=libavmux') !== -1
     });

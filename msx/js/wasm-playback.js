@@ -338,6 +338,8 @@ var WasmPlayback = (function () {
       // AC3 со всеми каналами вместо AAC 2.0 (Tizen); связку не взял — откат nativeOff
       encode: !st.nativeOff && ac3Wanted() ? 'ac3' : 'aac',
       auth: torrServerAuth(), dv: !!AppState.dvPreferred,
+      // размер файла из списка раздачи: старый Chrome не читает Content-Range
+      size: st.opts.size > 0 ? st.opts.size : 0,
       // iPhone: памяти под MediaSource меньше — запас впереди скромнее
       maxAhead: managed() ? 40e6 : 0,
       // ?wasm=libavmux — отладка: фрагменты fMP4 собирает libav, как до 1.0.68

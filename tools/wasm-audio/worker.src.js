@@ -369,6 +369,9 @@ function onBlockRead(name, pos, len) {
   });
 }
 
+// Размер файла от страницы (file_stats TorrServer) — запасной путь, см. fileSize
+var knownSize = 0;
+
 async function fileSize() {
   var r;
   try {
@@ -390,13 +393,17 @@ async function fileSize() {
   // тело не нужно (а на 200 без Range это был бы весь файл)
   try { if (r.body && r.body.cancel) r.body.cancel(); } catch (e) { }
   if (cr && /\/(\d+)$/.test(cr)) return Number(RegExp.$1);
+  // Старый Chrome (до 76) без Access-Control-Expose-Headers не показывает
+  // ни Content-Range, ни Content-Length чужого ответа, а TorrServer MatriX
+  // этот заголовок не шлёт. Тогда — размер из списка файлов раздачи
+  if (knownSize > 0) { log('размер файла — из списка раздачи (заголовки ответа браузеру не видны)'); return knownSize; }
   // Content-Range не выставлен для CORS — пробуем HEAD
   var init = reqInit({});
   init.method = 'HEAD';
   var h = await fetch(url, init);
   var cl = Number(h.headers.get('Content-Length'));
   if (cl > 0) return cl;
-  throw new Error('Не узнать размер файла (нет Content-Range/Content-Length)');
+  throw new Error('Не узнать размер файла (нет Content-Range/Content-Length: TorrServer не шлёт Access-Control-Expose-Headers, а этот браузер без него их не видит)');
 }
 
 // ---------- 64-битные метки ----------
@@ -552,6 +559,7 @@ async function open(m) {
   // отдаёт саундбару (настройка «Преобразовать DTS в Dolby Digital»)
   outCodec = m.encode === 'ac3' ? 'ac3' : 'aac';
   net = { auth: m.auth || '' };
+  knownSize = m.size > 0 ? m.size : 0;
   dvPreferred = !!m.dv;
   jsMuxOff = !!m.libavMux;
   nativeAudio = m.native || {};
