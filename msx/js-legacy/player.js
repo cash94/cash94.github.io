@@ -4054,6 +4054,12 @@ function showWasmUnsupported(code, msg) {
   if (code === 'ts') {
     title = 'Формат TS не поддерживается';
     text = 'Файлы MPEG-TS (.ts, .m2ts) напрямую с TorrServer в браузере не воспроизводятся. ' + (AppState.serverHlsOff ? 'Выберите другую раздачу.' : 'Выберите другую раздачу или включите перекодирование.');
+  } else if (code === 'cors') {
+    title = 'TorrServer не отдаёт файл этому браузеру';
+    text = (msg ? msg + '. ' : '') + 'Используйте MonoServer' + (AppState.serverHlsOff ? '.' : ' или включите перекодирование.');
+  } else if (code === 'stall') {
+    title = 'Видео не воспроизводится на этом устройстве';
+    text = (msg ? msg + '. ' : '') + (AppState.serverHlsOff ? 'Выберите другую раздачу (например, SDR).' : 'Выберите другую раздачу (например, SDR) или включите перекодирование.');
   } else if (code === 'video') {
     title = 'Видео не поддерживается браузером';
     text = (msg ? msg + '. ' : '') + (AppState.serverHlsOff ? 'Выберите другую раздачу.' : 'Выберите другую раздачу или включите перекодирование.');

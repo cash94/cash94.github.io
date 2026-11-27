@@ -106,15 +106,19 @@ var WasmPlayback = (function () {
       video: video, url: url, opts: opts || {}, worker: null, usedBlob: false, ms: null, sb: null,
       queue: [], gen: 0, info: null, ended: false, needClear: false, selfSeek: false,
       startTime: (opts && opts.time > 0) ? opts.time : 0, tickTimer: null, objectUrl: null,
-      subs: {}, listeners: [],
+      subs: {}, listeners: [], appended: 0, firstAppendAt: 0, played: false,
       mse: { ms: 0, n: 0, t0: 0 }, msePrev: { ms: 0, n: 0 }, perfLine: '', perfVerdict: '', perfLogAt: 0
     };
     startWorker(false);
     on(video, 'seeking', onSeeking);
     on(video, 'loadedmetadata', onLoadedMetadata);
+    on(video, 'playing', function () { if (s) s.played = true; });
+    on(video, 'error', onVideoError);
     s.startPending = s.startTime > 0;
     s.tickTimer = setInterval(function () {
       if (!s || !s.worker) return;
+      checkStall();
+      if (!s) return;
       // Старт с таймкода: пока <video> не встал на стартовую позицию (это
       // случится только после первого сегмента), он стоит на 0 — и воркер,
       // решив, что собрал далеко вперёд, засыпал, не отдав даже заголовок
@@ -141,8 +145,15 @@ var WasmPlayback = (function () {
       fail('', 'Ошибка воркера: ' + (e && e.message || ''));
     };
     // ?wasm=mvp — отладка: совместимая сборка libav.js, как у браузеров до Chrome 75
+    // Файл воркер читает только напрямую с TorrServer/MonoServer — не через сервер TorrStream
     st.worker.postMessage({ type: 'open', url: st.url, base: assetBase(), audio: st.opts.audio >= 0 ? st.opts.audio : 0, time: st.startTime,
-      mvp: location.search.indexOf('wasm=mvp') !== -1, native: st.nativeOff ? {} : nativeAudio() });
+      mvp: location.search.indexOf('wasm=mvp') !== -1, native: st.nativeOff ? {} : nativeAudio(),
+      auth: torrServerAuth(), dv: !!AppState.dvPreferred });
+  }
+
+  /** Вход TorrServer (Basic) из настроек — воркер шлёт его сам */
+  function torrServerAuth() {
+    try { return (typeof getAuthHeaders === 'function' && getAuthHeaders().Authorization) || ''; } catch (e) { return ''; }
   }
 
   /** Снять всё: воркер, MediaSource, дорожки субтитров, слушатели */
@@ -199,7 +210,9 @@ var WasmPlayback = (function () {
   function onInfo(m) {
     s.info = m;
     var mime = 'video/mp4; codecs="' + m.vCodec + (m.aCodec ? ',' + m.aCodec : '') + '"';
-    console.log('🧩 WASM: ' + m.streams.map(function (x) { return x.codec + (x.channels ? ' ' + x.channels + 'ch' : ''); }).join(', ') + ' → ' + mime);
+    console.log('🧩 WASM: ' + m.streams.map(function (x) { return x.codec + (x.channels ? ' ' + x.channels + 'ch' : ''); }).join(', ') + ' → ' + mime +
+      (m.dv || (m.hdr && m.hdr !== 'SDR') ? ' · ' + describe() : '') +
+      ' · запрос до ' + Math.round((m.chunkMax || 0) / 1048576) + ' МБ');
     if (!typeOk(mime) && location.search.indexOf('wasm=dump') === -1) {
       var vOnly = typeOk('video/mp4; codecs="' + m.vCodec + '"');
       var aOnly = m.aCodec ? typeOk('audio/mp4; codecs="' + m.aCodec + '"') : true;
@@ -214,7 +227,8 @@ var WasmPlayback = (function () {
         startWorker(s.usedBlob);
         return;
       }
-      fail('video', vOnly ? 'Браузер не поддерживает связку видео и звука ' + m.vCodec + ' + ' + m.aCodec : 'Браузер не поддерживает видео ' + m.vCodec);
+      fail('video', vOnly ? 'Браузер не поддерживает связку видео и звука ' + m.vCodec + ' + ' + m.aCodec
+        : 'Браузер не поддерживает видео ' + m.vCodec + (m.dv ? ' (Dolby Vision P' + m.dv.profile + ')' : m.hdr && m.hdr !== 'SDR' ? ' (HDR ' + m.hdr + ')' : ''));
       return;
     }
     createSubTracks(m.streams);
@@ -260,7 +274,11 @@ var WasmPlayback = (function () {
     if (b.length && t - b.start(0) > keep * 2) { sb.remove(0, t - keep); return; }
     if (s.queue.length) {
       var chunk = s.queue.shift();
-      try { s.mse.t0 = performance.now(); sb.appendBuffer(chunk); }
+      try {
+        s.mse.t0 = performance.now(); sb.appendBuffer(chunk);
+        s.appended += chunk.byteLength;
+        if (!s.firstAppendAt) s.firstAppendAt = Date.now();
+      }
       catch (e) {
         if (e.name === 'QuotaExceededError') { s.queue.unshift(chunk); sb.remove(0, Math.max(0.1, t - 3)); }
         else fail('video', 'appendBuffer: ' + e.message);
@@ -268,6 +286,48 @@ var WasmPlayback = (function () {
       return;
     }
     if (s.ended && s.ms.readyState === 'open') { try { s.ms.endOfStream(); } catch (e) { } }
+  }
+
+  // ---------- поток собран, а показа нет ----------
+  //
+  // На VIDAA HDR/Dolby Vision через MSE висел на «Буферизации», а потом
+  // выпадал с общим «выберите другую раздачу» — по нему не понять, где стоит.
+  // Если фрагменты в <video> ушли (впереди больше 2 с или 20+ МБ), а кадров
+  // нет STALL_MS — говорим прямо: декодер устройства этот поток не показывает
+  var STALL_MS = 25000;
+
+  function describe() {
+    var i = s.info || {};
+    var d = (i.vCodec || '?') + (i.aCodec ? ' + ' + i.aCodec : '');
+    if (i.dv) d += ', Dolby Vision P' + i.dv.profile + '.' + i.dv.compat + (i.dv.kept ? '' : ' как HDR10');
+    else if (i.hdr && i.hdr !== 'SDR') d += ', HDR ' + i.hdr;
+    return d;
+  }
+
+  function checkStall() {
+    if (!s.info || s.played || !s.firstAppendAt || s.video.readyState >= 3) return;
+    if (Date.now() - s.firstAppendAt < STALL_MS) return;
+    if (aheadSeconds() < 2 && s.appended < 20e6) return;   // данных ещё нет — это сеть, не декодер
+    var v = s.video;
+    console.warn('🧩 WASM: показ не начался за ' + (STALL_MS / 1000) + ' с: readyState ' + v.readyState + ', networkState ' + v.networkState +
+      ', буфер ' + bufferedText() + ', передано ' + Math.round(s.appended / 1048576) + ' МБ, ' + describe());
+    var hdr = s.info.dv || (s.info.hdr && s.info.hdr !== 'SDR');
+    fail('stall', 'Устройство приняло поток, но не показывает его (' + describe() + ')' +
+      (hdr ? '. Похоже, HDR через браузер этот телевизор не воспроизводит' : ''));
+  }
+
+  function bufferedText() {
+    var b = s.video.buffered, out = [];
+    for (var i = 0; i < b.length; i++) out.push(b.start(i).toFixed(1) + '–' + b.end(i).toFixed(1));
+    return out.join(', ') || 'пуст';
+  }
+
+  // Ошибка самого <video> (декодер, MSE) — баннер покажет player.js, а сюда в
+  // консоль — подробности: код, текст браузера и что за поток
+  function onVideoError() {
+    var e = s.video.error;
+    console.warn('🧩 WASM: ошибка <video>: ' + (e ? 'код ' + e.code + (e.message ? ' — ' + e.message : '') : '?') +
+      ', буфер ' + bufferedText() + ', ' + describe());
   }
 
   function inBuffer(t) {
@@ -444,7 +504,11 @@ var WasmPlayback = (function () {
       return all;
     },
     // Строка для «Диагностики» плеера: замеры за последние ~2 с и вывод
-    statsLine: function () { return s && s.perfLine ? { line: s.perfLine, verdict: s.perfVerdict } : null; },
+    statsLine: function () {
+      if (!s || !s.perfLine) return null;
+      var extra = s.info && (s.info.dv || s.info.hdr !== 'SDR') ? ' · ' + describe() : '';
+      return { line: s.perfLine + extra, verdict: s.perfVerdict };
+    },
     // Отладка из консоли: WasmPlayback.report().then(console.log) — что
     // держит воркер (кучи WASM, кэш Range), запросы к TorrServer, позиция
     report: function () {

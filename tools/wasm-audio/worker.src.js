@@ -41,9 +41,20 @@ function wasmBulkMemory() {
 }
 var libName = 'torrstream';
 
-var CHUNK = 2 << 20;          // кусок одного запроса Range
-var CACHE_CHUNKS = 8;         // сколько кусков держим (перемотка назад рядом)
+// Запросы Range: после старта и каждой перемотки первый — CHUNK_MIN (быстрый
+// старт на холодной раздаче), каждый следующий подряд — вдвое больше, до
+// chunkMax (~6 с фильма по среднему битрейту, 2–16 МБ). По 2 МБ на 4K
+// (30 Мбит/с) выходило 2–4 запроса в секунду: у TorrServer/MonoServer
+// «читатель» то появлялся, то исчезал, и его окно докачки каждый раз
+// начиналось заново
+var CHUNK_MIN = 2 << 20;
+var CHUNK_MAX = 16 << 20;
+var chunkMax = CHUNK_MIN;
+var cacheBytes = 16 << 20;    // сколько держим прочитанного (перемотка назад рядом)
 var AHEAD = 25;               // секунд держим собранными впереди плеера
+// Проснувшись, воркер собирает до AHEAD и засыпает, пока запас не станет
+// меньше AHEAD − WAKE_GAP: чтение идёт заметными заходами, а не по полсекунды
+var WAKE_GAP = 6;
 // За один заход демуксера — около полсекунды фильма (по среднему битрейту):
 // между заходами воркер замечает перемотку, крупные заходы её тормозили
 var READ_LIMIT = 256 * 1024;
@@ -56,8 +67,7 @@ var outCodec = 'flac', copyAudio = false;
 var dec = null, enc = null, mux = null;
 var gen = 0, playhead = 0, outTime = 0, eof = false;
 var pending = null;           // {kind:'seek'|'audio', time, gen, index}
-var wake = null;
-var chunks = new Map();       // start -> Promise<Uint8Array>
+var wake = null, sleeping = false;
 var stats = { bytes: 0, requests: 0, workMs: 0, mediaSec: 0, aFrames: 0 };
 
 // ---------- замеры скорости (диагностика: где теряется время) ----------
@@ -118,7 +128,7 @@ function memReport() {
     return -1;
   };
   var cached = 0;
-  chunks.forEach(function (p) { cached += CHUNK; });
+  chunks.forEach(function (c) { cached += c.buf.length; });
   return {
     libavHeap: heap(libav),
     eac3Heap: dec && dec.kind === 'eac3' ? heap(dec.d.m) : 0,
@@ -127,7 +137,7 @@ function memReport() {
     rechunk: rechunk ? rechunk.planes.reduce(function (s, p) { return s + p.byteLength; }, 0) : 0,
     heldVideo: heldVideo.length,
     requests: stats.requests, bytes: stats.bytes, outTime: outTime, playhead: playhead, sleeping: !!wake,
-    keepAlive: stats.keepAlive || 0
+    keepAlive: stats.keepAlive || 0, chunkMax: chunkMax, chunks: chunks.length
   };
 }
 
@@ -160,8 +170,22 @@ function keepAlive() {
   lastNetAt = Date.now();
   var pos = Math.min(nextPos, size - 1);
   stats.keepAlive = (stats.keepAlive || 0) + 1;
-  fetch(url, { headers: { Range: 'bytes=' + pos + '-' + pos } }).then(function (r) { return r.arrayBuffer(); })
+  fetch(url, reqInit({ Range: 'bytes=' + pos + '-' + pos })).then(function (r) { return r.arrayBuffer(); })
     .catch(function () { }).then(function () { keepAliveBusy = false; });
+}
+
+// ---------- заголовки запросов ----------
+// Только напрямую к TorrServer/MonoServer — через сервер TorrStream поток не
+// ходит (решение пользователя). m.auth — вход TorrServer (Basic) из настроек
+var net = { auth: '' };
+
+function reqInit(extra, signal) {
+  var h = {}, k;
+  if (net.auth) h.Authorization = net.auth;
+  for (k in extra) h[k] = extra[k];
+  var init = { headers: h };
+  if (signal) init.signal = signal;
+  return init;
 }
 
 // ---------- чтение по Range ----------
@@ -169,100 +193,207 @@ function keepAlive() {
 // После долгой паузы TorrServer мог выгрузить раздачу, перезапуститься или
 // отвечать медленно (снова ищет пиров). Без повторов первая же ошибка
 // останавливала воркер, и видео вставало в конце буфера. Повторяем с
-// нарастающей паузой около минуты; у каждой попытки свой тайм-аут.
+// нарастающей паузой около минуты; у каждой попытки свой тайм-аут; повтор
+// продолжает кусок с того места, где оборвалось.
 var RETRY_DELAYS = [1000, 2000, 4000, 8000, 15000, 15000, 15000];
 var ATTEMPT_TIMEOUT = 30000;
 
-function fetchRange(start, end) {
-  var attempt = 0;
-  function once() {
-    stats.requests++;
-    lastNetAt = Date.now(); nextPos = end + 1;
-    netStart();
-    var netDone = false, endNet = function () { if (!netDone) { netDone = true; netEnd(); } };
-    // Тайм-аут — на тишину, а не на весь запрос: с середины раздачи TorrServer
-    // качает куски медленно (бывало 2 МБ дольше 30 с), и обрыв по общему
-    // таймеру начинал запрос заново, хотя данные шли
-    var ac = typeof AbortController === 'function' ? new AbortController() : null;
-    var timer = null;
-    var arm = function () { clearTimeout(timer); timer = setTimeout(function () { if (ac) ac.abort(); }, ATTEMPT_TIMEOUT); };
-    arm();
-    return fetch(url, { headers: { Range: 'bytes=' + start + '-' + end }, signal: ac ? ac.signal : undefined }).then(function (r) {
-      if (r.status !== 206 && r.status !== 200) throw new Error('HTTP ' + r.status);
-      return readBody(r, arm);
-    }).then(function (b) {
-      clearTimeout(timer);
-      endNet();
-      // 200 вместо 206 — сервер не умеет Range; берём нужный кусок
-      var u = new Uint8Array(b);
-      if (u.length > end - start + 1) u = u.subarray(start, end + 1);
-      if (!u.length) throw new Error('пустой ответ');
-      stats.bytes += u.length; perf.netBytes += u.length;
-      if (attempt) postMessage({ type: 'net', ok: true, attempt: attempt });
-      return u;
-    }, function (e) { clearTimeout(timer); endNet(); throw e; }).catch(function (e) {
-      if (attempt >= RETRY_DELAYS.length) throw e;
-      var delay = RETRY_DELAYS[attempt++];
-      postMessage({ type: 'net', ok: false, attempt: attempt, delay: delay, error: (e && e.name === 'AbortError') ? 'тайм-аут' : String(e && e.message || e) });
-      return new Promise(function (r) { setTimeout(r, delay); }).then(once);
-    });
+// Куски файла: { start, end, buf, got — сколько уже пришло, done, failed,
+// waiters — кто ждёт байты, ac — обрыв запроса, prefetch }. Порядок — по
+// давности использования (последний — свежий). Разбор получает данные по мере
+// прихода, не дожидаясь конца куска: крупный кусок не задерживает старт
+var chunks = [];
+var lastEnd = -1, lastLen = 0;   // последний запрошенный кусок — для разгона
+function noop() { }
+
+function findChunk(pos, touch) {
+  for (var i = chunks.length - 1; i >= 0; i--) {
+    var c = chunks[i];
+    if (pos >= c.start && pos <= c.end) {
+      if (touch && i !== chunks.length - 1) { chunks.splice(i, 1); chunks.push(c); }
+      return c;
+    }
   }
-  return once();
+  return null;
 }
 
-/** Тело ответа целиком; onProgress — на каждый пришедший кусок (сброс тайм-аута) */
-function readBody(r, onProgress) {
-  if (!r.body || typeof r.body.getReader !== 'function') return r.arrayBuffer();
-  var reader = r.body.getReader(), parts = [], total = 0;
+function newChunk(start, prefetch) {
+  var len = start === lastEnd + 1 ? Math.min(chunkMax, Math.max(CHUNK_MIN, lastLen * 2)) : CHUNK_MIN;
+  var end = Math.min(start + len, size) - 1;
+  // не перекрывать уже прочитанное дальше
+  for (var i = 0; i < chunks.length; i++) if (chunks[i].start > start && chunks[i].start <= end) end = chunks[i].start - 1;
+  lastEnd = end; lastLen = end - start + 1;
+  var c = { start: start, end: end, buf: new Uint8Array(end - start + 1), got: 0, done: false, failed: null,
+    waiters: [], ac: null, prefetch: !!prefetch, aborted: false, next: false };
+  chunks.push(c);
+  trimCache();
+  loadChunk(c);
+  return c;
+}
+
+/** Держим не больше cacheBytes; идущие запросы и два свежих куска не трогаем */
+function trimCache() {
+  var total = 0, i;
+  for (i = 0; i < chunks.length; i++) total += chunks[i].buf.length;
+  for (i = 0; total > cacheBytes && i < chunks.length - 2;) {
+    var c = chunks[i];
+    if (!c.done) { i++; continue; }
+    total -= c.buf.length;
+    chunks.splice(i, 1);
+  }
+}
+
+function dropChunk(c) { var i = chunks.indexOf(c); if (i >= 0) chunks.splice(i, 1); }
+
+function notify(c) {
+  c.waiters = c.waiters.filter(function (w) {
+    if (c.failed) { w.rej(c.failed); return false; }
+    if (c.got >= w.need || c.done) { w.res(); return false; }
+    return true;
+  });
+}
+
+/** Дождаться, пока у куска будет need байт с начала (или он кончится) */
+function waitChunk(c, need) {
+  if (c.got >= need || c.done) return Promise.resolve();
+  if (c.failed) return Promise.reject(c.failed);
+  return new Promise(function (res, rej) { c.waiters.push({ need: need, res: res, rej: rej }); });
+}
+
+/** Положить пришедшие байты; true — кусок полон */
+function put(c, v) {
+  if (c.aborted) return true;
+  var room = c.buf.length - c.got;
+  if (v.length > room) v = v.subarray(0, room);
+  c.buf.set(v, c.got);
+  c.got += v.length;
+  stats.bytes += v.length; perf.netBytes += v.length;
+  notify(c);
+  return c.got >= c.buf.length;
+}
+
+function readInto(r, c, onProgress) {
+  if (!r.body || typeof r.body.getReader !== 'function') {
+    return r.arrayBuffer().then(function (b) { put(c, new Uint8Array(b)); });
+  }
+  var reader = r.body.getReader();
   function next() {
     return reader.read().then(function (x) {
-      if (x.done) {
-        var all = new Uint8Array(total), off = 0;
-        for (var i = 0; i < parts.length; i++) { all.set(parts[i], off); off += parts[i].length; }
-        return all.buffer;
-      }
-      parts.push(x.value); total += x.value.length;
+      if (x.done) return;
       onProgress();
+      // 200 на весь файл (сервер без Range) — берём сколько надо и обрываем
+      if (put(c, x.value)) { try { reader.cancel(); } catch (e) { } return; }
       return next();
     });
   }
   return next();
 }
 
-function getChunk(start) {
-  var p = chunks.get(start);
-  if (p) { chunks.delete(start); chunks.set(start, p); return p; }   // LRU
-  var end = Math.min(start + CHUNK, size) - 1;
-  p = fetchRange(start, end);
-  p.then(function () { p.done = true; }, function () { });
-  p.catch(function () { chunks.delete(start); });
-  chunks.set(start, p);
-  while (chunks.size > CACHE_CHUNKS) chunks.delete(chunks.keys().next().value);
-  return p;
+function loadChunk(c) {
+  var attempt = 0;
+  function once() {
+    if (c.aborted) return;
+    var from = c.start + c.got;
+    stats.requests++;
+    lastNetAt = Date.now(); nextPos = c.end + 1;
+    netStart();
+    var netDone = false, endNet = function () { if (!netDone) { netDone = true; netEnd(); } };
+    // Тайм-аут — на тишину, а не на весь запрос: с середины раздачи TorrServer
+    // качает куски медленно (бывало 2 МБ дольше 30 с), и обрыв по общему
+    // таймеру начинал запрос заново, хотя данные шли
+    var ac = typeof AbortController === 'function' ? new AbortController() : null;
+    c.ac = ac;
+    var timer = null;
+    var arm = function () { clearTimeout(timer); timer = setTimeout(function () { if (ac) ac.abort(); }, ATTEMPT_TIMEOUT); };
+    arm();
+    var gotBefore = c.got;
+    fetch(url, reqInit({ Range: 'bytes=' + from + '-' + c.end }, ac && ac.signal)).then(function (r) {
+      if (r.status === 200 && from > 0) throw codedError('net', 'сервер не отдаёт файл по частям (Range)');
+      if (r.status !== 206 && r.status !== 200) throw new Error('HTTP ' + r.status);
+      return readInto(r, c, arm);
+    }).then(function () {
+      clearTimeout(timer); endNet();
+      if (c.aborted) return;
+      if (c.got < c.buf.length) throw new Error(c.got > gotBefore ? 'ответ оборвался' : 'пустой ответ');
+      c.done = true; c.ac = null;
+      if (attempt) postMessage({ type: 'net', ok: true, attempt: attempt });
+      notify(c);
+    }, function (e) { clearTimeout(timer); endNet(); throw e; }).catch(function (e) {
+      if (c.aborted) return;
+      if (c.got > gotBefore) attempt = 0;   // данные шли — счёт попыток заново
+      if (attempt >= RETRY_DELAYS.length) { c.failed = e; dropChunk(c); notify(c); return; }
+      var delay = RETRY_DELAYS[attempt++];
+      postMessage({ type: 'net', ok: false, attempt: attempt, delay: delay, error: (e && e.name === 'AbortError') ? 'тайм-аут' : String(e && e.message || e) });
+      setTimeout(once, delay);
+    });
+  }
+  once();
 }
 
-// Чтение — запросами по 2 МБ (getChunk), а не одним длинным соединением:
-// на VIDAA одно соединение на весь огромный файл как раз и подвешивало
-// воспроизведение (проверено пользователем, 2026-11-26)
+/**
+ * Перемотка: недокачанные куски никому больше не нужны — обрываем, чтобы не
+ * делили скорость с новым местом. Пришедшее оставляем (кусок укорачиваем)
+ */
+function abortLoads() {
+  chunks = chunks.filter(function (c) {
+    if (c.done || c.failed || c.waiters.length) return true;
+    c.aborted = true;
+    if (c.ac) try { c.ac.abort(); } catch (e) { }
+    if (!c.got) return false;
+    c.buf = c.buf.slice(0, c.got);
+    c.end = c.start + c.got - 1;
+    c.done = true;
+    return true;
+  });
+  lastEnd = -1;
+}
+
+// Чтение — запросами с концом (Range a-b), а не одним длинным соединением на
+// весь файл: на VIDAA такое соединение подвешивало воспроизведение
+// (проверено пользователем, 2026-11-26)
 function onBlockRead(name, pos, len) {
-  var start = Math.floor(pos / CHUNK) * CHUNK;
-  var p = getChunk(start);
-  // Следующий кусок — заранее, но после текущего: на холодном старте с
+  var c = findChunk(pos, true) || newChunk(pos, false);
+  // Следующий кусок — заранее, но когда этот догружен: на холодном старте с
   // середины раздачи они делили скорость, и нужный приходил вдвое позже
-  if (start + CHUNK < size) p.then(function () { getChunk(start + CHUNK); }, function () { });
-  var tw = p.done ? 0 : performance.now();
-  return p.then(function (buf) {
+  if (!c.next && c.end + 1 < size) {
+    c.next = true;
+    waitChunk(c, c.buf.length).then(function () {
+      if (!c.aborted && !findChunk(c.end + 1, false)) newChunk(c.end + 1, true);
+    }, noop);
+  }
+  var need = Math.min(c.end, pos + Math.max(1, len) - 1) - c.start + 1;
+  var tw = c.got >= need || c.done ? 0 : performance.now();
+  return waitChunk(c, need).then(function () {
     if (tw) perf.waitMs += performance.now() - tw;
-    return libav.ff_block_reader_dev_send(name, start, buf);
+    return libav.ff_block_reader_dev_send(name, pos, c.buf.subarray(pos - c.start, c.got));
   });
 }
 
-async function fileSize(u) {
-  var r = await fetch(u, { headers: { Range: 'bytes=0-0' } });
+async function fileSize() {
+  var r;
+  try {
+    r = await fetch(url, reqInit({ Range: 'bytes=0-0' }));
+  } catch (e) {
+    // TypeError без ответа: CORS или сеть. Старые браузеры (Chrome 68 на VIDAA
+    // ниже 9.5) на fetch с Range шлют предзапрос OPTIONS, а TorrServer MatriX
+    // Range в нём не разрешает: «Request header field Range is not allowed by
+    // Access-Control-Allow-Headers». Свежий Chrome Range не проверяет,
+    // MonoServer его разрешает. Обхода без посредника нет — говорим прямо
+    var echo = null;
+    try { echo = await fetch(url.replace(/\/(stream|play)([/?].*)?$/, '/echo')).then(function (x) { return x.ok ? x.text() : null; }); } catch (e2) { }
+    if (echo !== null) throw codedError('cors', 'TorrServer ' + String(echo).trim().slice(0, 40) + ' не разрешает этому браузеру читать файл по частям (заголовок Range в CORS)');
+    throw codedError('net', 'TorrServer не отвечает: ' + (e && e.message || e));
+  }
+  if (r.status === 401 || r.status === 403) throw codedError('net', 'TorrServer: нужен вход (HTTP ' + r.status + ')');
+  if (r.status !== 206 && r.status !== 200) throw codedError('net', 'TorrServer: HTTP ' + r.status);
   var cr = r.headers.get('Content-Range');
+  // тело не нужно (а на 200 без Range это был бы весь файл)
+  try { if (r.body && r.body.cancel) r.body.cancel(); } catch (e) { }
   if (cr && /\/(\d+)$/.test(cr)) return Number(RegExp.$1);
   // Content-Range не выставлен для CORS — пробуем HEAD
-  var h = await fetch(u, { method: 'HEAD' });
+  var init = reqInit({});
+  init.method = 'HEAD';
+  var h = await fetch(url, init);
   var cl = Number(h.headers.get('Content-Length'));
   if (cl > 0) return cl;
   throw new Error('Не узнать размер файла (нет Content-Range/Content-Length)');
@@ -315,10 +446,57 @@ var nativeAudio = {};
 
 function hex2(n) { return ('0' + (n & 255).toString(16)).slice(-2).toUpperCase(); }
 
+// ---------- HDR и Dolby Vision ----------
+// Как серверный HLS (services/hls.js, doviPlan): HEVC — всегда с тегом hvc1
+// (ffmpeg по умолчанию пишет hev1, а строка кодека для MSE была hvc1);
+// Dolby Vision: P5 (без базового HDR10) — dvh1 с dvcC и строкой dvh1.05.LL;
+// P8 и прочие с совместимым слоем — dvcC только если в настройках выбран
+// Dolby Vision, иначе поток идёт как обычный HDR10. mov пишет dvcC/dvvC лишь
+// при strict ≤ unofficial — этим и включаем/выключаем
+var TAG_HVC1 = 0x31637668, TAG_DVH1 = 0x31687664;   // MKTAG('h','v','c','1'), ('d','v','h','1')
+var AV_PKT_DATA_DOVI_CONF = 29;
+var dvPreferred = false;
+var video = { hdr: 'SDR', dv: null, dvKeep: false, tag: 0 };
+
+/** AVDOVIDecoderConfigurationRecord из параметров кодека или null */
+async function doviConf(par) {
+  var n = await libav.AVCodecParameters_nb_coded_side_data(par);
+  if (!(n > 0)) return null;
+  var sd = await libav.AVCodecParameters_coded_side_data(par);
+  for (var i = 0; i < n; i++) {
+    if ((await libav.AVPacketSideData_type(sd, i)) !== AV_PKT_DATA_DOVI_CONF) continue;
+    var size = await libav.AVPacketSideData_size(sd, i);
+    if (size < 8) return null;
+    var b = await libav.copyout_u8(await libav.AVPacketSideData_data(sd, i), 8);
+    // dv_version_major, minor, dv_profile, dv_level, rpu, el, bl, dv_bl_signal_compatibility_id
+    return { profile: b[2], level: b[3], compat: b[7] };
+  }
+  return null;
+}
+
+async function inspectVideo() {
+  var s = streams[vIdx], par = s.codecpar;
+  var trc = await libav.AVCodecParameters_color_trc(par);
+  video = { hdr: trc === 16 ? 'PQ' : trc === 18 ? 'HLG' : 'SDR', dv: null, dvKeep: false, tag: 0 };
+  if (s.name !== 'hevc') return;
+  video.tag = TAG_HVC1;
+  try { video.dv = await doviConf(par); } catch (e) { log('Dolby Vision: ' + e.message); }
+  if (!video.dv) return;
+  if (video.dv.compat === 0) {
+    // P5: базового HDR10 нет — без DV картинка с неверными цветами
+    video.tag = TAG_DVH1; video.dvKeep = true;
+    if (video.hdr === 'SDR') video.hdr = 'PQ';
+  } else if (dvPreferred && [1, 2, 4].indexOf(video.dv.compat) >= 0) video.dvKeep = true;
+  log('Dolby Vision P' + video.dv.profile + '.' + video.dv.compat + ' L' + video.dv.level + (video.dvKeep ? ' — как Dolby Vision' : ' — как HDR10 (Dolby Vision выключен в настройках)'));
+}
+
+function pad2(n) { return ('0' + n).slice(-2); }
+
 async function videoCodecString(par, name) {
   var profile = await libav.AVCodecParameters_profile(par);
   var level = await libav.AVCodecParameters_level(par);
   if (name === 'h264') return 'avc1.' + hex2(profile > 0 ? profile : 100) + '00' + hex2(level > 0 ? level : 40);
+  if (name === 'hevc' && video.tag === TAG_DVH1) return 'dvh1.' + pad2(video.dv.profile) + '.' + pad2(video.dv.level || 6);
   if (name === 'hevc') return 'hvc1.' + (profile > 0 ? profile : 1) + '.' + (profile === 2 ? '4' : '6') + '.L' + (level > 0 ? level : 120) + '.B0';
   if (name === 'av1') return 'av01.0.08M.08';
   if (name === 'vp9') return 'vp09.00.40.08';
@@ -327,6 +505,8 @@ async function videoCodecString(par, name) {
 
 async function open(m) {
   url = m.url; outCodec = 'aac';
+  net = { auth: m.auth || '' };
+  dvPreferred = !!m.dv;
   nativeAudio = m.native || {};
   // Сборка libav.js лежит не рядом с воркером (он идёт через маршрут сервера
   // или Blob): адрес папки wasm-audio/ присылает страница — зеркало или
@@ -342,12 +522,13 @@ async function open(m) {
   log('libav.js ' + LibAV.VER + (fast ? '' : ' (совместимая сборка)') + ', загрузка ' + Math.round(performance.now() - tl) + ' мс');
   libav.onblockread = onBlockRead;
   libav.onwrite = onWrite;
-  size = await fileSize(url);
+  size = await fileSize();
   // MPEG-TS (.ts, .m2ts) не поддерживаем: у libav.js в нём раздувается куча
   // (сотни МБ) и после перемотки пропадает звук. Узнаём по синхробайту 0x47
   // каждые 188 байт (у M2TS — 192, со сдвигом 4) — по имени файла не всегда
-  var head = await getChunk(0);
-  if (isMpegTs(head)) throw codedError('ts', 'MPEG-TS не поддерживается');
+  var head = newChunk(0, false);
+  await waitChunk(head, Math.min(1024, size));
+  if (isMpegTs(head.buf.subarray(0, head.got))) throw codedError('ts', 'MPEG-TS не поддерживается');
   await libav.mkblockreaderdev('in', size);
   var t0 = performance.now();
   var r = await libav.ff_init_demuxer_file('in');
@@ -393,13 +574,20 @@ async function open(m) {
     // запас впереди — не больше ~80 МБ: у Chrome лимит MSE на видео около
     // 150 МБ, а 25 с ремукса на 80 Мбит/с — это 250 МБ
     AHEAD = Math.max(6, Math.min(25, 80e6 / bps));
+    WAKE_GAP = Math.min(6, AHEAD / 3);
+    // запрос — около 6 с фильма; кэш — два таких и ещё немного
+    chunkMax = Math.max(CHUNK_MIN, Math.min(CHUNK_MAX, Math.round(bps * 6)));
+    cacheBytes = Math.max(16 << 20, 2 * chunkMax + CHUNK_MIN);
   }
+  await inspectVideo();
   var vCodec = await videoCodecString(streams[vIdx].codecpar, streams[vIdx].name);
   await setupAudio();
   postMessage({
     type: 'info', duration: duration, size: size, streams: list,
     audioTracks: audioList.map(function (i) { return { index: i, codec: streams[i].name, channels: streams[i].channels }; }),
     audio: audioList.indexOf(aIdx), vCodec: vCodec, aCodec: aCodecString(), offset: OFFSET,
+    hdr: video.hdr, dv: video.dv ? { profile: video.dv.profile, level: video.dv.level, compat: video.dv.compat, kept: video.dvKeep } : null,
+    chunkMax: chunkMax,
     openMs: Math.round(performance.now() - t0)
   });
   pending = { kind: 'seek', time: m.time || 0, gen: 0, first: true };
@@ -700,11 +888,11 @@ function completeBoxes() {
 
 function resetOut() { out = { base: 0, buf: new Uint8Array(1 << 20), len: 0 }; }
 
-async function openMuxer(g) {
+async function openMuxer(g, strictFallback) {
   var cfg = [];
   var vpar = await libav.avcodec_parameters_alloc();
   await libav.avcodec_parameters_copy(vpar, streams[vIdx].codecpar);
-  await libav.AVCodecParameters_codec_tag_s(vpar, 0);
+  await libav.AVCodecParameters_codec_tag_s(vpar, video.tag);
   cfg.push([vpar, vTb[0], vTb[1]]);
   var apar = 0;
   if (aIdx >= 0 && (copyAudio || enc)) {
@@ -721,10 +909,17 @@ async function openMuxer(g) {
   var name = 'out' + g + '.mp4';
   var r = await libav.ff_init_muxer({ format_name: 'mp4', filename: name, device: true, open: true, codecpars: true }, cfg);
   var oc = r[0], pb = r[2];
+  // ff_init_muxer обнуляет codec_tag у потоков — тег hvc1/dvh1 ставим после
+  if (video.tag) {
+    var vst = await libav.AVFormatContext_streams_a(oc, 0);
+    await libav.AVCodecParameters_codec_tag_s(await libav.AVStream_codecpar(vst), video.tag);
+  }
   // свои метки сохраняем как есть (иначе после перемотки всё съедет к нулю)
   await libav.av_opt_set(oc, 'avoid_negative_ts', 'disabled', 0);
   lastVDts = null;
-  await libav.av_opt_set(oc, 'strict', 'experimental', 0);
+  // dvcC/dvvC mov пишет только при strict ≤ unofficial (см. inspectVideo).
+  // Не принял заголовок на normal — повтор с experimental, как было до 1.0.69
+  await libav.av_opt_set(oc, 'strict', strictFallback ? 'experimental' : video.dvKeep ? 'unofficial' : 'normal', 0);
   // frag_discont + use_editlist=0: tfdt первого фрагмента = DTS первого
   // пакета (как у сегментатора HLS в ffmpeg). Без этого mov сдвигает начало
   // каждой дорожки к нулю — рассинхрон и время «с нуля» после перемотки.
@@ -739,6 +934,12 @@ async function openMuxer(g) {
   resetOut();
   mux = { oc: oc, pb: pb, name: name, pkt: await libav.av_packet_alloc(), gen: g, pars: [vpar, apar] };
   var ret = await libav.avformat_write_header(oc, 0);
+  if (ret < 0 && !strictFallback) {
+    log('avformat_write_header: ' + ret + ' — повтор со strict experimental');
+    await closeMuxer();
+    for (var k = 0; k < cfg.length; k++) try { await libav.avcodec_parameters_free_js(cfg[k][0]); } catch (e) { }
+    return openMuxer(g, true);
+  }
   if (ret < 0) throw new Error('avformat_write_header: ' + ret);
   // метки дальше переводим сами — в time_base, который выбрал мультиплексор
   mux.vTbOut = [await libav.AVStream_time_base_num(await libav.AVFormatContext_streams_a(oc, 0)), await libav.AVStream_time_base_den(await libav.AVFormatContext_streams_a(oc, 0))];
@@ -769,6 +970,8 @@ function flushOut(g, t) {
 
 async function doPending() {
   var p = pending; pending = null;
+  sleeping = false;
+  if (!p.first && p.kind === 'seek') abortLoads();
   await closeMuxer();
   if (p.kind === 'audio') {
     aIdx = audioList[p.index];
@@ -792,7 +995,9 @@ async function run() {
   for (;;) {
     await yieldTask();
     if (pending) { await doPending(); continue; }
-    if (eof || outTime - playhead > AHEAD) { await sleep(); continue; }
+    var ahead = outTime - playhead;
+    if (eof || ahead > AHEAD || (sleeping && ahead > AHEAD - WAKE_GAP)) { sleeping = true; await sleep(); continue; }
+    sleeping = false;
 
     var t0 = performance.now(), w0 = perf.waitMs;
     var r = await libav.ff_read_frame_multi(fmt, pkt, { limit: READ_LIMIT, unify: true });

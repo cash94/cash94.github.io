@@ -22,21 +22,28 @@ var WasmPlayback = function () {
   function isLocal() {
     return location.search.indexOf('local=1') !== -1;
   }
+  var nativeLogged = false;
   function nativeAudio() {
     var force = location.search.indexOf('wasm=native') !== -1;
-    if (AppState.platform !== 'vidaa' && !force) return {};
+    if (!force) return {};
     var cand = {
         ac3: 'ac-3',
         eac3: 'ec-3',
         aac: 'mp4a.40.2'
       },
-      out = {};
+      out = {},
+      seen = [];
     for (var k in cand) {
       var ok = force;
       try {
-        ok = ok || MediaSource.isTypeSupported('audio/mp4; codecs="' + cand[k] + '"');
+        ok = ok || MediaSource.isTypeSupported('video/mp4; codecs="avc1.640028,' + cand[k] + '"');
       } catch (e) {}
       if (ok) out[k] = cand[k];
+      seen.push(cand[k] + (ok ? ' да' : ' нет'));
+    }
+    if (!nativeLogged) {
+      nativeLogged = true;
+      console.log('🧩 WASM: звук как есть (MSE, связка с H.264): ' + seen.join(', '));
     }
     return out;
   }
@@ -72,6 +79,9 @@ var WasmPlayback = function () {
       objectUrl: null,
       subs: {},
       listeners: [],
+      appended: 0,
+      firstAppendAt: 0,
+      played: false,
       mse: {
         ms: 0,
         n: 0,
@@ -88,9 +98,15 @@ var WasmPlayback = function () {
     startWorker(false);
     on(video, 'seeking', onSeeking);
     on(video, 'loadedmetadata', onLoadedMetadata);
+    on(video, 'playing', function () {
+      if (s) s.played = true;
+    });
+    on(video, 'error', onVideoError);
     s.startPending = s.startTime > 0;
     s.tickTimer = setInterval(function () {
       if (!s || !s.worker) return;
+      checkStall();
+      if (!s) return;
       var t = s.startPending ? s.startTime : s.video.currentTime;
       s.worker.postMessage({
         type: 'tick',
@@ -130,8 +146,17 @@ var WasmPlayback = function () {
       audio: st.opts.audio >= 0 ? st.opts.audio : 0,
       time: st.startTime,
       mvp: location.search.indexOf('wasm=mvp') !== -1,
-      native: nativeAudio()
+      native: st.nativeOff ? {} : nativeAudio(),
+      auth: torrServerAuth(),
+      dv: !!AppState.dvPreferred
     });
+  }
+  function torrServerAuth() {
+    try {
+      return typeof getAuthHeaders === 'function' && getAuthHeaders().Authorization || '';
+    } catch (e) {
+      return '';
+    }
   }
   function detach() {
     if (!s) return;
@@ -194,14 +219,34 @@ var WasmPlayback = function () {
       if (!m.ok) console.warn('🧩 WASM: TorrServer — ' + m.error + ', повтор ' + m.attempt + ' через ' + m.delay / 1000 + ' с');
     } else if (m.type === 'log') console.log('🧩 WASM: ' + m.msg);
   }
+  function typeOk(t) {
+    try {
+      return MediaSource.isTypeSupported(t);
+    } catch (e) {
+      return false;
+    }
+  }
   function onInfo(m) {
     s.info = m;
     var mime = 'video/mp4; codecs="' + m.vCodec + (m.aCodec ? ',' + m.aCodec : '') + '"';
     console.log('🧩 WASM: ' + m.streams.map(function (x) {
       return x.codec + (x.channels ? ' ' + x.channels + 'ch' : '');
-    }).join(', ') + ' → ' + mime);
-    if (!MediaSource.isTypeSupported(mime) && location.search.indexOf('wasm=dump') === -1) {
-      fail('video', 'Браузер не поддерживает видео ' + m.vCodec);
+    }).join(', ') + ' → ' + mime + (m.dv || m.hdr && m.hdr !== 'SDR' ? ' · ' + describe() : '') + ' · запрос до ' + Math.round((m.chunkMax || 0) / 1048576) + ' МБ');
+    if (!typeOk(mime) && location.search.indexOf('wasm=dump') === -1) {
+      var vOnly = typeOk('video/mp4; codecs="' + m.vCodec + '"');
+      var aOnly = m.aCodec ? typeOk('audio/mp4; codecs="' + m.aCodec + '"') : true;
+      console.warn('🧩 WASM: MSE не берёт ' + mime + ' — видео отдельно: ' + (vOnly ? 'да' : 'нет') + (m.aCodec ? ', звук отдельно: ' + (aOnly ? 'да' : 'нет') : ''));
+      if (vOnly && /^(ac-3|ec-3)$/.test(m.aCodec || '') && !s.nativeOff) {
+        console.warn('🧩 WASM: звук ' + m.aCodec + ' не в связке с видео — перевожу в AAC');
+        s.nativeOff = true;
+        s.info = null;
+        try {
+          s.worker.terminate();
+        } catch (e) {}
+        startWorker(s.usedBlob);
+        return;
+      }
+      fail('video', vOnly ? 'Браузер не поддерживает связку видео и звука ' + m.vCodec + ' + ' + m.aCodec : 'Браузер не поддерживает видео ' + m.vCodec + (m.dv ? ' (Dolby Vision P' + m.dv.profile + ')' : m.hdr && m.hdr !== 'SDR' ? ' (HDR ' + m.hdr + ')' : ''));
       return;
     }
     createSubTracks(m.streams);
@@ -267,6 +312,8 @@ var WasmPlayback = function () {
       try {
         s.mse.t0 = performance.now();
         sb.appendBuffer(chunk);
+        s.appended += chunk.byteLength;
+        if (!s.firstAppendAt) s.firstAppendAt = Date.now();
       } catch (e) {
         if (e.name === 'QuotaExceededError') {
           s.queue.unshift(chunk);
@@ -280,6 +327,32 @@ var WasmPlayback = function () {
         s.ms.endOfStream();
       } catch (e) {}
     }
+  }
+  var STALL_MS = 25000;
+  function describe() {
+    var i = s.info || {};
+    var d = (i.vCodec || '?') + (i.aCodec ? ' + ' + i.aCodec : '');
+    if (i.dv) d += ', Dolby Vision P' + i.dv.profile + '.' + i.dv.compat + (i.dv.kept ? '' : ' как HDR10');else if (i.hdr && i.hdr !== 'SDR') d += ', HDR ' + i.hdr;
+    return d;
+  }
+  function checkStall() {
+    if (!s.info || s.played || !s.firstAppendAt || s.video.readyState >= 3) return;
+    if (Date.now() - s.firstAppendAt < STALL_MS) return;
+    if (aheadSeconds() < 2 && s.appended < 20e6) return;
+    var v = s.video;
+    console.warn('🧩 WASM: показ не начался за ' + STALL_MS / 1000 + ' с: readyState ' + v.readyState + ', networkState ' + v.networkState + ', буфер ' + bufferedText() + ', передано ' + Math.round(s.appended / 1048576) + ' МБ, ' + describe());
+    var hdr = s.info.dv || s.info.hdr && s.info.hdr !== 'SDR';
+    fail('stall', 'Устройство приняло поток, но не показывает его (' + describe() + ')' + (hdr ? '. Похоже, HDR через браузер этот телевизор не воспроизводит' : ''));
+  }
+  function bufferedText() {
+    var b = s.video.buffered,
+      out = [];
+    for (var i = 0; i < b.length; i++) out.push(b.start(i).toFixed(1) + '–' + b.end(i).toFixed(1));
+    return out.join(', ') || 'пуст';
+  }
+  function onVideoError() {
+    var e = s.video.error;
+    console.warn('🧩 WASM: ошибка <video>: ' + (e ? 'код ' + e.code + (e.message ? ' — ' + e.message : '') : '?') + ', буфер ' + bufferedText() + ', ' + describe());
   }
   function inBuffer(t) {
     var b = s.video.buffered;
@@ -452,10 +525,12 @@ var WasmPlayback = function () {
       return all;
     },
     statsLine: function () {
-      return s && s.perfLine ? {
-        line: s.perfLine,
+      if (!s || !s.perfLine) return null;
+      var extra = s.info && (s.info.dv || s.info.hdr !== 'SDR') ? ' · ' + describe() : '';
+      return {
+        line: s.perfLine + extra,
         verdict: s.perfVerdict
-      } : null;
+      };
     },
     report: function () {
       return new Promise(function (resolve) {
