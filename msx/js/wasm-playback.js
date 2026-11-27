@@ -25,25 +25,56 @@ var WasmPlayback = (function () {
 
   var s = null;   // текущее воспроизведение (attach … detach)
 
-  /** Нужен ли WASM сейчас: прямой режим, устройство подходит и не выключен в настройках */
-  function eligible() {
+  /**
+   * Нужен ли WASM сейчас: прямой режим, устройство подходит и не выключен в
+   * настройках. opts.audioUnsupported — у выбранной дорожки звук, который
+   * телевизор сам не играет (Tizen: DTS, TrueHD)
+   */
+  function eligible(opts) {
     if (!AppState.transcodingFullOnOff) return false;
     // «Обработка файла в браузере (WASM)» в настройках плеера (app.js: setupWasmSetting)
     try { if (localStorage.getItem('wasmPlaybackOff') === 'true') return false; } catch (e) { }
-    return available();
+    return available(opts);
   }
 
-  /** Возможен ли WASM-путь на этом устройстве вообще (без учёта настроек) */
-  function available() {
-    if (window.AndroidJS) return false;
-    var p = AppState.platform;
-    // Android и Android TV — внешние плееры (и в браузере там WASM не нужен)
-    if (p === 'webos' || p === 'tizen' || p === 'ios' || p === 'android' || p === 'androidtv' || AppState.tizenApp) return false;
-    if (AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple') return false;
-    if (p === 'vidaa' && AppState.vidaaDirectPlay) return false;
-    return typeof WebAssembly === 'object' && typeof Worker === 'function' &&
-      typeof window.MediaSource === 'function' && typeof MediaSource.isTypeSupported === 'function';
+  /**
+   * MediaSource этого браузера. iPhone (iOS 17.1+) знает только
+   * ManagedMediaSource: тот же API, но система сама решает, когда ему качать, и
+   * может выбросить буфер (это ловит recoverGap)
+   */
+  function mediaSourceCtor() {
+    if (typeof window.MediaSource === 'function' && typeof MediaSource.isTypeSupported === 'function') return window.MediaSource;
+    if (typeof window.ManagedMediaSource === 'function' && typeof ManagedMediaSource.isTypeSupported === 'function') return window.ManagedMediaSource;
+    return null;
   }
+
+  /** iPhone/iPad: в «Плеер для видео» выбран «Встроенный TorrStream», а не внешнее приложение */
+  function appleBuiltIn() {
+    var ap = typeof getApplePlayer === 'function' ? getApplePlayer() : null;
+    return !ap || !ap.template;
+  }
+
+  /**
+   * Возможен ли WASM-путь на этом устройстве вообще (без учёта настроек).
+   *  - iPhone/iPad — со встроенным плеером: Safari сам MKV не открывает;
+   *  - Tizen — только для звука, которого Samsung не декодирует (DTS, TrueHD):
+   *    остальное AVPlay играет сам, со всеми каналами;
+   *  - webOS, VIDAA 9.5+, Apple TV, Android — файл играет сам телевизор или
+   *    внешний плеер.
+   */
+  function available(opts) {
+    if (window.AndroidJS) return false;
+    if (!(typeof WebAssembly === 'object' && typeof Worker === 'function' && mediaSourceCtor())) return false;
+    var p = AppState.platform, apple = AppState.applePlatform;
+    if (apple === 'apple_tv') return false;
+    if (apple === 'apple') return appleBuiltIn();
+    if (p === 'tizen' || AppState.tizenApp) return !!(opts && opts.audioUnsupported);
+    if (p === 'webos' || p === 'ios' || p === 'android' || p === 'androidtv') return false;
+    if (p === 'vidaa' && AppState.vidaaDirectPlay) return false;
+    return true;
+  }
+
+  function managed() { return mediaSourceCtor() !== window.MediaSource; }
 
   function isLocal() { return location.search.indexOf('local=1') !== -1; }
 
@@ -67,7 +98,7 @@ var WasmPlayback = (function () {
     var cand = { ac3: 'ac-3', eac3: 'ec-3', aac: 'mp4a.40.2' }, out = {}, seen = [];
     for (var k in cand) {
       var ok = force;
-      try { ok = ok || MediaSource.isTypeSupported('video/mp4; codecs="avc1.640028,' + cand[k] + '"'); } catch (e) { }
+      ok = ok || typeOk('video/mp4; codecs="avc1.640028,' + cand[k] + '"');
       if (ok) out[k] = cand[k];
       seen.push(cand[k] + (ok ? ' да' : ' нет'));
     }
@@ -119,6 +150,7 @@ var WasmPlayback = (function () {
       if (!s || !s.worker) return;
       checkStall();
       if (!s) return;
+      recoverGap();
       // Старт с таймкода: пока <video> не встал на стартовую позицию (это
       // случится только после первого сегмента), он стоит на 0 — и воркер,
       // решив, что собрал далеко вперёд, засыпал, не отдав даже заголовок
@@ -148,7 +180,9 @@ var WasmPlayback = (function () {
     // Файл воркер читает только напрямую с TorrServer/MonoServer — не через сервер TorrStream
     st.worker.postMessage({ type: 'open', url: st.url, base: assetBase(), audio: st.opts.audio >= 0 ? st.opts.audio : 0, time: st.startTime,
       mvp: location.search.indexOf('wasm=mvp') !== -1, native: st.nativeOff ? {} : nativeAudio(),
-      auth: torrServerAuth(), dv: !!AppState.dvPreferred });
+      auth: torrServerAuth(), dv: !!AppState.dvPreferred,
+      // iPhone: памяти под MediaSource меньше — запас впереди скромнее
+      maxAhead: managed() ? 40e6 : 0 });
   }
 
   /** Вход TorrServer (Basic) из настроек — воркер шлёт его сам */
@@ -175,6 +209,7 @@ var WasmPlayback = (function () {
       if (st.video.src === st.objectUrl) { st.video.removeAttribute('src'); try { st.video.load(); } catch (e) { } }
       try { URL.revokeObjectURL(st.objectUrl); } catch (e) { }
     }
+    if (st.remoteOff) st.video.disableRemotePlayback = false;
   }
 
   function on(el, type, fn) { el.addEventListener(type, fn); s.listeners.push([el, type, fn]); }
@@ -193,6 +228,7 @@ var WasmPlayback = (function () {
     if (m.type === 'info') onInfo(m);
     else if (m.type === 'data') {
       if (m.gen !== s.gen) return;
+      if (m.t) s.outT = m.t;
       if (s.dump) { s.dump.push(m.bytes); return; }
       s.queue.push(m.bytes); pump();
     }
@@ -205,7 +241,7 @@ var WasmPlayback = (function () {
     } else if (m.type === 'log') console.log('🧩 WASM: ' + m.msg);
   }
 
-  function typeOk(t) { try { return MediaSource.isTypeSupported(t); } catch (e) { return false; } }
+  function typeOk(t) { try { return mediaSourceCtor().isTypeSupported(t); } catch (e) { return false; } }
 
   function onInfo(m) {
     s.info = m;
@@ -235,8 +271,12 @@ var WasmPlayback = (function () {
     if (s.opts.onInfo) s.opts.onInfo(m);
     // ?wasm=dump — отладка: fMP4 не в MSE, а в WasmPlayback.dump() (ffprobe на ПК)
     if (location.search.indexOf('wasm=dump') !== -1) { s.dump = []; console.log('🧩 WASM: дамп вместо MSE, ' + mime); return; }
-    var ms = new MediaSource(), st = s;
+    var MS = mediaSourceCtor(), st = s;
+    var ms = new MS();
     s.ms = ms;
+    // ManagedMediaSource (iPhone) не откроется, пока у <video> разрешён
+    // AirPlay, — второго источника для AirPlay у нас нет
+    if (managed() && !s.video.disableRemotePlayback) { s.video.disableRemotePlayback = true; s.remoteOff = true; }
     s.objectUrl = URL.createObjectURL(ms);
     ms.addEventListener('sourceopen', function () {
       if (s !== st) return;
@@ -270,7 +310,7 @@ var WasmPlayback = (function () {
     }
     var b = sb.buffered, t = s.video.currentTime;
     var bps = s.info.duration ? s.info.size / s.info.duration : 1e6;
-    var keep = Math.max(3, Math.min(20, BEHIND_BYTES / bps));
+    var keep = Math.max(3, Math.min(20, (managed() ? BEHIND_BYTES / 2 : BEHIND_BYTES) / bps));
     if (b.length && t - b.start(0) > keep * 2) { sb.remove(0, t - keep); return; }
     if (s.queue.length) {
       var chunk = s.queue.shift();
@@ -314,6 +354,27 @@ var WasmPlayback = (function () {
     var hdr = s.info.dv || (s.info.hdr && s.info.hdr !== 'SDR');
     fail('stall', 'Устройство приняло поток, но не показывает его (' + describe() + ')' +
       (hdr ? '. Похоже, HDR через браузер этот телевизор не воспроизводит' : ''));
+  }
+
+  // ---------- дыра в буфере под плеером ----------
+  //
+  // ManagedMediaSource (iPhone) может сам выбросить собранное впереди, когда
+  // системе не хватает памяти, а воркер думает, что запас набран, и спит —
+  // видео встало бы навсегда. Плеер стоит GAP_MS там, где буфера нет, хотя не
+  // перематывается и не на паузе, — собираем заново с этого места
+  var GAP_MS = 3000;
+
+  function recoverGap() {
+    var v = s.video;
+    // Воркер уже отдал данные дальше этого места, а в буфере их нет — их
+    // выбросили. Просто медленная сеть (воркер ещё не дошёл) — не дыра
+    if (!s.info || !s.played || v.paused || v.seeking || v.ended || v.readyState >= 3 || inBuffer(v.currentTime) ||
+      s.queue.length || !(s.outT > v.currentTime + 2)) { s.gapSince = 0; return; }
+    if (!s.gapSince) { s.gapSince = Date.now(); return; }
+    if (Date.now() - s.gapSince < GAP_MS) return;
+    s.gapSince = 0;
+    console.warn('🧩 WASM: под плеером нет данных (' + v.currentTime.toFixed(1) + ' c, буфер ' + bufferedText() + ') — собираю заново');
+    restart({ type: 'seek' }, v.currentTime);
   }
 
   function bufferedText() {
@@ -366,7 +427,7 @@ var WasmPlayback = (function () {
 
   function restart(msg, time) {
     s.gen++;
-    s.queue = []; s.ended = false;
+    s.queue = []; s.ended = false; s.outT = 0;
     msg.time = time; msg.gen = s.gen;
     s.worker.postMessage(msg);
     s.needClear = true;

@@ -851,7 +851,8 @@ function _open() {
       READ_LIMIT = Math.max(64 * 1024, Math.min(4 << 20, Math.round(bps * 0.5)));
       // запас впереди — не больше ~80 МБ: у Chrome лимит MSE на видео около
       // 150 МБ, а 25 с ремукса на 80 Мбит/с — это 250 МБ
-      AHEAD = Math.max(6, Math.min(25, 80e6 / bps));
+      // m.maxAhead — меньше на iPhone (ManagedMediaSource, памяти меньше)
+      AHEAD = Math.max(6, Math.min(25, (m.maxAhead > 0 ? m.maxAhead : 80e6) / bps));
       WAKE_GAP = Math.min(6, AHEAD / 3);
       // запрос — около 6 с фильма; кэш — два таких и ещё немного
       chunkMax = Math.max(CHUNK_MIN, Math.min(CHUNK_MAX, Math.round(bps * 6)));

@@ -4,20 +4,36 @@ var WasmPlayback = function () {
   var TICK_MS = 500;
   var BEHIND_BYTES = 30e6;
   var s = null;
-  function eligible() {
+  function eligible(opts) {
     if (!AppState.transcodingFullOnOff) return false;
     try {
       if (localStorage.getItem('wasmPlaybackOff') === 'true') return false;
     } catch (e) {}
-    return available();
+    return available(opts);
   }
-  function available() {
+  function mediaSourceCtor() {
+    if (typeof window.MediaSource === 'function' && typeof MediaSource.isTypeSupported === 'function') return window.MediaSource;
+    if (typeof window.ManagedMediaSource === 'function' && typeof ManagedMediaSource.isTypeSupported === 'function') return window.ManagedMediaSource;
+    return null;
+  }
+  function appleBuiltIn() {
+    var ap = typeof getApplePlayer === 'function' ? getApplePlayer() : null;
+    return !ap || !ap.template;
+  }
+  function available(opts) {
     if (window.AndroidJS) return false;
-    var p = AppState.platform;
-    if (p === 'webos' || p === 'tizen' || p === 'ios' || p === 'android' || p === 'androidtv' || AppState.tizenApp) return false;
-    if (AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple') return false;
+    if (!(typeof WebAssembly === 'object' && typeof Worker === 'function' && mediaSourceCtor())) return false;
+    var p = AppState.platform,
+      apple = AppState.applePlatform;
+    if (apple === 'apple_tv') return false;
+    if (apple === 'apple') return appleBuiltIn();
+    if (p === 'tizen' || AppState.tizenApp) return !!(opts && opts.audioUnsupported);
+    if (p === 'webos' || p === 'ios' || p === 'android' || p === 'androidtv') return false;
     if (p === 'vidaa' && AppState.vidaaDirectPlay) return false;
-    return typeof WebAssembly === 'object' && typeof Worker === 'function' && typeof window.MediaSource === 'function' && typeof MediaSource.isTypeSupported === 'function';
+    return true;
+  }
+  function managed() {
+    return mediaSourceCtor() !== window.MediaSource;
   }
   function isLocal() {
     return location.search.indexOf('local=1') !== -1;
@@ -35,9 +51,7 @@ var WasmPlayback = function () {
       seen = [];
     for (var k in cand) {
       var ok = force;
-      try {
-        ok = ok || MediaSource.isTypeSupported('video/mp4; codecs="avc1.640028,' + cand[k] + '"');
-      } catch (e) {}
+      ok = ok || typeOk('video/mp4; codecs="avc1.640028,' + cand[k] + '"');
       if (ok) out[k] = cand[k];
       seen.push(cand[k] + (ok ? ' да' : ' нет'));
     }
@@ -107,6 +121,7 @@ var WasmPlayback = function () {
       if (!s || !s.worker) return;
       checkStall();
       if (!s) return;
+      recoverGap();
       var t = s.startPending ? s.startTime : s.video.currentTime;
       s.worker.postMessage({
         type: 'tick',
@@ -148,7 +163,8 @@ var WasmPlayback = function () {
       mvp: location.search.indexOf('wasm=mvp') !== -1,
       native: st.nativeOff ? {} : nativeAudio(),
       auth: torrServerAuth(),
-      dv: !!AppState.dvPreferred
+      dv: !!AppState.dvPreferred,
+      maxAhead: managed() ? 40e6 : 0
     });
   }
   function torrServerAuth() {
@@ -189,6 +205,7 @@ var WasmPlayback = function () {
         URL.revokeObjectURL(st.objectUrl);
       } catch (e) {}
     }
+    if (st.remoteOff) st.video.disableRemotePlayback = false;
   }
   function on(el, type, fn) {
     el.addEventListener(type, fn);
@@ -204,6 +221,7 @@ var WasmPlayback = function () {
   function onWorker(m) {
     if (m.type === 'info') onInfo(m);else if (m.type === 'data') {
       if (m.gen !== s.gen) return;
+      if (m.t) s.outT = m.t;
       if (s.dump) {
         s.dump.push(m.bytes);
         return;
@@ -221,7 +239,7 @@ var WasmPlayback = function () {
   }
   function typeOk(t) {
     try {
-      return MediaSource.isTypeSupported(t);
+      return mediaSourceCtor().isTypeSupported(t);
     } catch (e) {
       return false;
     }
@@ -256,9 +274,14 @@ var WasmPlayback = function () {
       console.log('🧩 WASM: дамп вместо MSE, ' + mime);
       return;
     }
-    var ms = new MediaSource(),
+    var MS = mediaSourceCtor(),
       st = s;
+    var ms = new MS();
     s.ms = ms;
+    if (managed() && !s.video.disableRemotePlayback) {
+      s.video.disableRemotePlayback = true;
+      s.remoteOff = true;
+    }
     s.objectUrl = URL.createObjectURL(ms);
     ms.addEventListener('sourceopen', function () {
       if (s !== st) return;
@@ -302,7 +325,7 @@ var WasmPlayback = function () {
     var b = sb.buffered,
       t = s.video.currentTime;
     var bps = s.info.duration ? s.info.size / s.info.duration : 1e6;
-    var keep = Math.max(3, Math.min(20, BEHIND_BYTES / bps));
+    var keep = Math.max(3, Math.min(20, (managed() ? BEHIND_BYTES / 2 : BEHIND_BYTES) / bps));
     if (b.length && t - b.start(0) > keep * 2) {
       sb.remove(0, t - keep);
       return;
@@ -343,6 +366,24 @@ var WasmPlayback = function () {
     console.warn('🧩 WASM: показ не начался за ' + STALL_MS / 1000 + ' с: readyState ' + v.readyState + ', networkState ' + v.networkState + ', буфер ' + bufferedText() + ', передано ' + Math.round(s.appended / 1048576) + ' МБ, ' + describe());
     var hdr = s.info.dv || s.info.hdr && s.info.hdr !== 'SDR';
     fail('stall', 'Устройство приняло поток, но не показывает его (' + describe() + ')' + (hdr ? '. Похоже, HDR через браузер этот телевизор не воспроизводит' : ''));
+  }
+  var GAP_MS = 3000;
+  function recoverGap() {
+    var v = s.video;
+    if (!s.info || !s.played || v.paused || v.seeking || v.ended || v.readyState >= 3 || inBuffer(v.currentTime) || s.queue.length || !(s.outT > v.currentTime + 2)) {
+      s.gapSince = 0;
+      return;
+    }
+    if (!s.gapSince) {
+      s.gapSince = Date.now();
+      return;
+    }
+    if (Date.now() - s.gapSince < GAP_MS) return;
+    s.gapSince = 0;
+    console.warn('🧩 WASM: под плеером нет данных (' + v.currentTime.toFixed(1) + ' c, буфер ' + bufferedText() + ') — собираю заново');
+    restart({
+      type: 'seek'
+    }, v.currentTime);
   }
   function bufferedText() {
     var b = s.video.buffered,
@@ -394,6 +435,7 @@ var WasmPlayback = function () {
     s.gen++;
     s.queue = [];
     s.ended = false;
+    s.outT = 0;
     msg.time = time;
     msg.gen = s.gen;
     s.worker.postMessage(msg);

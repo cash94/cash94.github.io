@@ -1574,7 +1574,7 @@ function _seekStream() {
                 throw error;
               }
             });
-            return function retrySeek(_x94, _x95) {
+            return function retrySeek(_x96, _x97) {
               return _ref2.apply(this, arguments);
             };
           }();
@@ -4048,6 +4048,74 @@ function wasmAudioList(info) {
   renderAudioTracks();
   applyDirectProbe();
 }
+var WASM_ONLY_AUDIO = {
+  dts: 1,
+  dca: 1,
+  truehd: 1,
+  mlp: 1
+};
+function isTizenDevice() {
+  return AppState.platform === 'tizen' || !!AppState.tizenApp;
+}
+function wasmOnlyCodec(codec) {
+  return !!WASM_ONLY_AUDIO[String(codec || '').toLowerCase()];
+}
+function tizenAudioNeedsWasm(index) {
+  if (!isTizenDevice()) return false;
+  var audio = serverInfoStreams(directProbe.serverInfo, currentTimecodeData.hash, currentTimecodeData.fileId).filter(function (s) {
+    return s.codec_type === 'audio';
+  });
+  if (!audio.length) return false;
+  var k = index >= 0 && index < audio.length ? index : 0;
+  if (!(index >= 0)) {
+    for (var i = 0; i < audio.length; i++) if (audio[i].disposition && audio[i].disposition.default) {
+      k = i;
+      break;
+    }
+  }
+  return wasmOnlyCodec(audio[k].codec_name);
+}
+function tizenTrackNeedsWasm(index) {
+  var t = currentAudioTracks && currentAudioTracks[index];
+  return isTizenDevice() && !!t && t.probed && wasmOnlyCodec(t.codec) && !!window.WasmPlayback && WasmPlayback.eligible({
+    audioUnsupported: true
+  });
+}
+function restartDirectInWasm(_x58, _x59) {
+  return _restartDirectInWasm.apply(this, arguments);
+}
+function _restartDirectInWasm() {
+  _restartDirectInWasm = _asyncToGenerator(function* (index, reason) {
+    if (!AppState.videoUrl || AppState.currentScreen !== 'player') return;
+    var videoPlayer = getEl('video-player');
+    var at = videoPlayer.currentTime || 0;
+    console.log('🧩 WASM: ' + reason + ' — перезапуск с ' + at.toFixed(1) + ' c через WASM, звук в AAC 2.0');
+    if (currentTimecodeData.hash && currentTimecodeData.fileId) saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, index);
+    setPlayerPanel('audio', false);
+    getEl('playback-overlay').classList.add('active');
+    document.querySelector('.playback-text').textContent = 'Звук ' + reason + ' — перевожу в AAC 2.0...';
+    try {
+      AppState.wasmForceOnce = true;
+      destroyHls();
+      yield startHLSPlayback(AppState.videoUrl, at, lastPlaybackFromSearch, currentEpisodeIndex, index);
+    } catch (error) {
+      showSwitchFailedBanner('аудиодорожку', error && error.message);
+    } finally {
+      AppState.wasmForceOnce = false;
+      getEl('playback-overlay').classList.remove('active');
+      document.querySelector('.playback-text').textContent = 'Воспроизведение...';
+    }
+  });
+  return _restartDirectInWasm.apply(this, arguments);
+}
+function tizenWasmCheckPlaying() {
+  var k = currentAudioTrack;
+  if (!tizenTrackNeedsWasm(k)) return;
+  var codec = currentAudioTracks[k].codec;
+  setTimeout(function () {
+    restartDirectInWasm(k, codec);
+  }, 0);
+}
 function showWasmUnsupported(code, msg) {
   hidePlayerLoading();
   var title, text;
@@ -4069,7 +4137,7 @@ function showWasmUnsupported(code, msg) {
   }
   if (typeof window.showErrorBanner === 'function') window.showErrorBanner(title, text);else alert(title);
 }
-function initTranscodingOffPlayback(_x58, _x59, _x60) {
+function initTranscodingOffPlayback(_x60, _x61, _x62) {
   return _initTranscodingOffPlayback.apply(this, arguments);
 }
 function _initTranscodingOffPlayback() {
@@ -4084,7 +4152,12 @@ function _initTranscodingOffPlayback() {
     directPlaybackDiag.subs = '';
     var videoPlayer = getEl('video-player');
     destroyHls();
-    if (window.TizenAVPlay && TizenAVPlay.enabled()) TizenAVPlay.attach(videoPlayer);
+    var wasmForced = !!AppState.wasmForceOnce;
+    AppState.wasmForceOnce = false;
+    var useWasm = !!window.WasmPlayback && (WasmPlayback.eligible() || (wasmForced || tizenAudioNeedsWasm(nativeAudioPref)) && WasmPlayback.eligible({
+      audioUnsupported: true
+    }));
+    if (!useWasm && window.TizenAVPlay && TizenAVPlay.enabled()) TizenAVPlay.attach(videoPlayer);
     resetNativeSubtitles();
     currentSubTracks = [];
     renderSubtitleTracks();
@@ -4189,7 +4262,7 @@ function _initTranscodingOffPlayback() {
       if (!started && !signal.aborted) startPlayback();
     }, LOADING_TIMEOUT_MS);
     var staleMediaId = videoPlayer.mediaId;
-    if (window.WasmPlayback && WasmPlayback.eligible()) {
+    if (useWasm) {
       if (/\.(m2?ts|mts)$/i.test(fileName || '')) {
         detachDirectListeners();
         showWasmUnsupported('ts');
@@ -4221,7 +4294,7 @@ function _initTranscodingOffPlayback() {
   });
   return _initTranscodingOffPlayback.apply(this, arguments);
 }
-function initServerProxyPlayback(_x61, _x62, _x63) {
+function initServerProxyPlayback(_x63, _x64, _x65) {
   return _initServerProxyPlayback.apply(this, arguments);
 }
 function _initServerProxyPlayback() {
@@ -4500,7 +4573,7 @@ function cancelPlaybackLaunch() {
   cancelCurrentPlayback();
 }
 window.cancelPlaybackLaunch = cancelPlaybackLaunch;
-function startHLSPlayback(_x64, _x65, _x66, _x67, _x68) {
+function startHLSPlayback(_x66, _x67, _x68, _x69, _x70) {
   return _startHLSPlayback.apply(this, arguments);
 }
 function _startHLSPlayback() {
@@ -4515,7 +4588,7 @@ function _startHLSPlayback() {
   });
   return _startHLSPlayback.apply(this, arguments);
 }
-function startHLSPlaybackNow(_x69, _x70, _x71, _x72, _x73) {
+function startHLSPlaybackNow(_x71, _x72, _x73, _x74, _x75) {
   return _startHLSPlaybackNow.apply(this, arguments);
 }
 function _startHLSPlaybackNow() {
@@ -4911,7 +4984,7 @@ function showDetailView(field = null) {
     }, 250);
   }
 }
-function updateDetailProgress(_x74) {
+function updateDetailProgress(_x76) {
   return _updateDetailProgress.apply(this, arguments);
 }
 function _updateDetailProgress() {
@@ -5015,7 +5088,7 @@ function updateCurrentFileProgress(hash, fileId, timecode, duration) {
     if (progressPercent > 5) targetItem.classList.add('has-progress');
   }
 }
-function loadFileInfo(_x75, _x76) {
+function loadFileInfo(_x77, _x78) {
   return _loadFileInfo.apply(this, arguments);
 }
 function _loadFileInfo() {
@@ -5080,7 +5153,7 @@ function applyNativeAudioPref(videoPlayer) {
   for (var i = 0; i < list.length; i++) list[i].enabled = i === index;
   return index;
 }
-function switchAudioTrack(_x77) {
+function switchAudioTrack(_x79) {
   return _switchAudioTrack.apply(this, arguments);
 }
 function _switchAudioTrack() {
@@ -5095,6 +5168,10 @@ function _switchAudioTrack() {
       if (currentTimecodeData.hash && currentTimecodeData.fileId) saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, trackIndex);
       renderAudioTracks();
       toggleAudioPanel();
+      return;
+    }
+    if (AppState.transcodingFullOnOff && tizenTrackNeedsWasm(trackIndex)) {
+      yield restartDirectInWasm(trackIndex, currentAudioTracks[trackIndex].codec);
       return;
     }
     if (AppState.transcodingFullOnOff) {
@@ -5586,7 +5663,9 @@ function applyProbeAudioList(streams) {
     if (item >= 0) currentAudioTrack = item;
     break;
   }
+  if (chosen < 0 && wanted >= 0 && wanted < streams.length && wasmOnlyCodec(streams[wanted].codec_name)) currentAudioTrack = wanted;
   renderAudioTracks();
+  tizenWasmCheckPlaying();
   return true;
 }
 function tizenAudioMap(native, streams) {
@@ -6150,7 +6229,7 @@ function setupAudioButton() {
   });
   setupPlayerPanelsOutsideClick();
 }
-function saveAudioPreference(_x78, _x79, _x80) {
+function saveAudioPreference(_x80, _x81, _x82) {
   return _saveAudioPreference.apply(this, arguments);
 }
 function _saveAudioPreference() {
@@ -6173,7 +6252,7 @@ function _saveAudioPreference() {
   });
   return _saveAudioPreference.apply(this, arguments);
 }
-function loadMediaPreferences(_x81, _x82) {
+function loadMediaPreferences(_x83, _x84) {
   return _loadMediaPreferences.apply(this, arguments);
 }
 function _loadMediaPreferences() {
@@ -6200,7 +6279,7 @@ function _loadMediaPreferences() {
   });
   return _loadMediaPreferences.apply(this, arguments);
 }
-function loadPlaybackPrepare(_x83, _x84, _x85) {
+function loadPlaybackPrepare(_x85, _x86, _x87) {
   return _loadPlaybackPrepare.apply(this, arguments);
 }
 function _loadPlaybackPrepare() {
@@ -6250,7 +6329,7 @@ function _loadPlaybackPrepare() {
   });
   return _loadPlaybackPrepare.apply(this, arguments);
 }
-function loadAudioPreference(_x86, _x87) {
+function loadAudioPreference(_x88, _x89) {
   return _loadAudioPreference.apply(this, arguments);
 }
 function _loadAudioPreference() {
@@ -6291,7 +6370,7 @@ function renderSubtitleTracks() {
   subtitlesList.innerHTML = html;
   setupSubtitlesListDelegation();
 }
-function switchSubtitleTrack(_x88) {
+function switchSubtitleTrack(_x90) {
   return _switchSubtitleTrack.apply(this, arguments);
 }
 function _switchSubtitleTrack() {
@@ -6988,7 +7067,7 @@ function setupSubtitlesButton() {
   });
   setupPlayerPanelsOutsideClick();
 }
-function saveSubtitlePreference(_x89, _x90, _x91) {
+function saveSubtitlePreference(_x91, _x92, _x93) {
   return _saveSubtitlePreference.apply(this, arguments);
 }
 function _saveSubtitlePreference() {
@@ -7011,7 +7090,7 @@ function _saveSubtitlePreference() {
   });
   return _saveSubtitlePreference.apply(this, arguments);
 }
-function loadSubtitlePreference(_x92, _x93) {
+function loadSubtitlePreference(_x94, _x95) {
   return _loadSubtitlePreference.apply(this, arguments);
 }
 function _loadSubtitlePreference() {

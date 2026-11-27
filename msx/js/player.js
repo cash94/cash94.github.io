@@ -4578,6 +4578,74 @@ function wasmAudioList(info) {
   applyDirectProbe();
 }
 
+// ==================== TIZEN: DTS И TRUEHD ЧЕРЕЗ WASM ====================
+// Samsung с 2018 года DTS не декодирует, TrueHD — никогда: AVPlay с такой
+// дорожкой молчит. Тогда файл разбирает WASM (wasm-playback.js), а звук
+// уходит в AAC 2.0. Остальные дорожки играет AVPlay сам, со всеми каналами
+var WASM_ONLY_AUDIO = { dts: 1, dca: 1, truehd: 1, mlp: 1 };
+
+function isTizenDevice() { return AppState.platform === 'tizen' || !!AppState.tizenApp; }
+
+function wasmOnlyCodec(codec) { return !!WASM_ONLY_AUDIO[String(codec || '').toLowerCase()]; }
+
+/**
+ * Перед стартом (Tizen): играет ли выбранная дорожка (номер по порядку в
+ * файле, −1 — по умолчанию) звуком, которого телевизор не умеет. Знаем по
+ * разбору сервера (/api/playback/prepare); нет его — решит позже
+ * tizenWasmCheckPlaying, когда придёт разбор файла
+ */
+function tizenAudioNeedsWasm(index) {
+  if (!isTizenDevice()) return false;
+  var audio = serverInfoStreams(directProbe.serverInfo, currentTimecodeData.hash, currentTimecodeData.fileId)
+    .filter(function (s) { return s.codec_type === 'audio'; });
+  if (!audio.length) return false;
+  var k = index >= 0 && index < audio.length ? index : 0;
+  if (!(index >= 0)) {
+    for (var i = 0; i < audio.length; i++) if (audio[i].disposition && audio[i].disposition.default) { k = i; break; }
+  }
+  return wasmOnlyCodec(audio[k].codec_name);
+}
+
+/** Дорожка списка звука (номер по порядку в файле) — DTS/TrueHD на Tizen */
+function tizenTrackNeedsWasm(index) {
+  var t = currentAudioTracks && currentAudioTracks[index];
+  return isTizenDevice() && !!t && t.probed && wasmOnlyCodec(t.codec) &&
+    !!window.WasmPlayback && WasmPlayback.eligible({ audioUnsupported: true });
+}
+
+/** Перезапустить этот файл с того же места через WASM с дорожкой index */
+async function restartDirectInWasm(index, reason) {
+  if (!AppState.videoUrl || AppState.currentScreen !== 'player') return;
+  var videoPlayer = getEl('video-player');
+  var at = videoPlayer.currentTime || 0;
+  console.log('🧩 WASM: ' + reason + ' — перезапуск с ' + at.toFixed(1) + ' c через WASM, звук в AAC 2.0');
+  if (currentTimecodeData.hash && currentTimecodeData.fileId) saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, index);
+  setPlayerPanel('audio', false);
+  getEl('playback-overlay').classList.add('active');
+  document.querySelector('.playback-text').textContent = 'Звук ' + reason + ' — перевожу в AAC 2.0...';
+  try {
+    AppState.wasmForceOnce = true;
+    destroyHls();
+    await startHLSPlayback(AppState.videoUrl, at, lastPlaybackFromSearch, currentEpisodeIndex, index);
+  } catch (error) { showSwitchFailedBanner('аудиодорожку', error && error.message); }
+  finally {
+    AppState.wasmForceOnce = false;
+    getEl('playback-overlay').classList.remove('active');
+    document.querySelector('.playback-text').textContent = 'Воспроизведение...';
+  }
+}
+
+/**
+ * Разбор файла пришёл, когда AVPlay уже играет (applyProbeAudioList): играет
+ * DTS/TrueHD — значит, молча. Переводим в WASM с той же дорожкой
+ */
+function tizenWasmCheckPlaying() {
+  var k = currentAudioTrack;
+  if (!tizenTrackNeedsWasm(k)) return;
+  var codec = currentAudioTracks[k].codec;
+  setTimeout(function () { restartDirectInWasm(k, codec); }, 0);
+}
+
 /** Файл не сыграть через WASM: TS, кодек видео, сеть — баннер вместо чёрного экрана */
 function showWasmUnsupported(code, msg) {
   hidePlayerLoading();
@@ -4618,10 +4686,18 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
   directPlaybackDiag.audio = null; directPlaybackDiag.text = null; directPlaybackDiag.kinds = ''; directPlaybackDiag.probe = ''; directPlaybackDiag.subs = '';
   var videoPlayer = getEl('video-player');
   destroyHls();   // заодно снимает слушатели прошлого прямого файла
+  // WASM (wasm-playback.js) решаем до AVPlay: браузер, VIDAA ниже 9.5, iPhone
+  // со встроенным плеером — всегда; Tizen — если у выбранной дорожки звук,
+  // который Samsung не декодирует (DTS, TrueHD): либо известно по разбору
+  // сервера, либо дорожку уже выбрали/нашли во время показа (wasmForceOnce)
+  var wasmForced = !!AppState.wasmForceOnce;
+  AppState.wasmForceOnce = false;
+  var useWasm = !!window.WasmPlayback && (WasmPlayback.eligible() ||
+    ((wasmForced || tizenAudioNeedsWasm(nativeAudioPref)) && WasmPlayback.eligible({ audioUnsupported: true })));
   // Samsung Tizen (приложение): файл играет нативный AVPlay — у <video> там нет
   // ни аудиодорожек, ни встроенных субтитров. tizen-avplay.js подменяет
   // свойства <video>, и всё ниже работает как обычно
-  if (window.TizenAVPlay && TizenAVPlay.enabled()) TizenAVPlay.attach(videoPlayer);
+  if (!useWasm && window.TizenAVPlay && TizenAVPlay.enabled()) TizenAVPlay.attach(videoPlayer);
 
   // Прямой файл — без hls.js, отдаём ссылку нативному <video>
   // Субтитры — дорожки самого <video> (refreshNativeSubtitles), не ffprobe
@@ -4760,7 +4836,7 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
   var staleMediaId = videoPlayer.mediaId;
   // Браузер и VIDAA ниже 9.5: файл разбирает WASM (wasm-playback.js) — сам
   // <video> там MKV не открывает или молчит на AC3/EAC3/DTS. Остальные — как было
-  if (window.WasmPlayback && WasmPlayback.eligible()) {
+  if (useWasm) {
     if (/\.(m2?ts|mts)$/i.test(fileName || '')) {
       detachDirectListeners();
       showWasmUnsupported('ts');
@@ -5691,6 +5767,12 @@ async function switchAudioTrack(trackIndex) {
     toggleAudioPanel();
     return;
   }
+  // Tizen: выбрали DTS/TrueHD, а играет AVPlay (он такой звук не декодирует) —
+  // тот же файл с того же места через WASM
+  if (AppState.transcodingFullOnOff && tizenTrackNeedsWasm(trackIndex)) {
+    await restartDirectInWasm(trackIndex, currentAudioTracks[trackIndex].codec);
+    return;
+  }
   if (AppState.transcodingFullOnOff) {
     // nativeVideoPlayer обнуляет destroyHls(), а элемент <video> никуда не
     // девается — берём его напрямую, иначе тут падало на null.audioTracks
@@ -6100,7 +6182,11 @@ function applyProbeAudioList(streams) {
     if (item >= 0) currentAudioTrack = item;
     break;
   }
+  // Сохранённая дорожка — DTS/TrueHD, AVPlay её не включил (map −1): играем ею
+  // через WASM, а не первой попавшейся
+  if (chosen < 0 && wanted >= 0 && wanted < streams.length && wasmOnlyCodec(streams[wanted].codec_name)) currentAudioTrack = wanted;
   renderAudioTracks();
+  tizenWasmCheckPlaying();
   return true;
 }
 
