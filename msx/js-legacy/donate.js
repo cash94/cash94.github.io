@@ -217,10 +217,10 @@ function setupDonateButton() {
   donateTab.addEventListener('click', function (e) {
     e.preventDefault();
     e.stopPropagation();
-    console.log('❤️ Открытие окна доната');
+    tsLog('❤️ Открытие окна доната');
     showDonateOverlay();
   });
-  console.log('✅ Кнопка доната настроена');
+  tsLog('✅ Кнопка доната настроена');
 }
 function addDonateStyles() {
   var styleId = 'donate-styles';
@@ -235,7 +235,7 @@ function addDonateStyles() {
   document.head.appendChild(style);
 }
 function initDonate() {
-  console.log('❤️ Модуль доната инициализирован');
+  tsLog('❤️ Модуль доната инициализирован');
   addDonateStyles();
   setupDonateButton();
   registerDonateStrategy();

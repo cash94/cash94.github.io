@@ -383,7 +383,7 @@
             .then(function (summary) {
                 _prefetchDone = true;
                 _prefetchPromise = null;
-                console.log('📦 Каталоги прогреты в IndexedDB:', summary);
+                tsLog('📦 Каталоги прогреты в IndexedDB:', summary);
                 return summary;
             })
             .catch(function (error) {
@@ -785,7 +785,7 @@
         _catalogIdbUpdating = true;
 
         try {
-            console.log('⏳ Каталог "' + id + '" старше ' + thresholdHours + ' часов, отправляем запрос на обновление');
+            tsLog('⏳ Каталог "' + id + '" старше ' + thresholdHours + ' часов, отправляем запрос на обновление');
 
             // 1. Серверное обновление каталога
             var updateResponse = await safeFetch(
@@ -806,7 +806,7 @@
                 return false;
             }
 
-            console.log('✅ Каталог "' + id + '" обновлён на сервере');
+            tsLog('✅ Каталог "' + id + '" обновлён на сервере');
 
             // Помечаем попытку как отработавшую: если следующий проход придёт с
             // той же lastModifiedISO, значит обновление ничего не изменило —
@@ -1000,5 +1000,5 @@
         startedAt: function () { return _startupCheck ? _startupCheck.startedAt : 0; }
     };
 
-    console.log('✅ Catalog IndexedDB patch applied: limit=' + CATALOG_FULL_LIMIT + ', ttl=6h');
+    tsLog('✅ Catalog IndexedDB patch applied: limit=' + CATALOG_FULL_LIMIT + ', ttl=6h');
 })();

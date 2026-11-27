@@ -86,34 +86,34 @@ function _searchPoster() {
     var cleanTitleStr = cleanTitle(title);
     var cacheKey = cleanTitleStr + '_' + (year || 'any') + '_' + (mediaType || 'any');
     if (posterCache.has(cacheKey)) {
-      console.log('📦 Используем кэшированный постер для:', cleanTitleStr);
+      tsLog('📦 Используем кэшированный постер для:', cleanTitleStr);
       return posterCache.get(cacheKey);
     }
     var type = mediaType || detectMediaType(title);
-    console.log('🔍 Поиск постера для: "' + cleanTitleStr + '" (' + (year ? 'год: ' + year : 'год не указан') + ', тип: ' + type + ')');
+    tsLog('🔍 Поиск постера для: "' + cleanTitleStr + '" (' + (year ? 'год: ' + year : 'год не указан') + ', тип: ' + type + ')');
     try {
       var url = TMDB_API_URL + '?query=' + encodeURIComponent(cleanTitleStr) + '&type=' + type;
       if (year) {
         url += '&year=' + year;
       }
-      console.log('📡 Запрос к своему прокси:', url);
+      tsLog('📡 Запрос к своему прокси:', url);
       var response = yield fetch(url);
       if (!response.ok) {
         throw new Error('HTTP ' + response.status);
       }
       var data = yield response.json();
       if (!data.results || data.results.length === 0) {
-        console.log('❌ Ничего не найдено в TMDB');
+        tsLog('❌ Ничего не найдено в TMDB');
         if (retry) {
           if (type === 'tv') {
-            console.log('🔄 Пробуем поиск как фильм...');
+            tsLog('🔄 Пробуем поиск как фильм...');
             return yield searchPoster(title, year, 'movie', false);
           } else if (type === 'movie') {
-            console.log('🔄 Пробуем поиск как сериал...');
+            tsLog('🔄 Пробуем поиск как сериал...');
             return yield searchPoster(title, year, 'tv', false);
           }
         } else {
-          console.log('⏹️ Достигнут лимит попыток, прекращаем поиск');
+          tsLog('⏹️ Достигнут лимит попыток, прекращаем поиск');
         }
         posterCache.set(cacheKey, null);
         return null;
@@ -127,7 +127,7 @@ function _searchPoster() {
           resultYear = firstResult.release_date ? new Date(firstResult.release_date).getFullYear() : null;
         }
         if (resultYear && Math.abs(resultYear - year) > 1) {
-          console.log('⚠️ Год не совпадает: ожидался ' + year + ', получен ' + resultYear);
+          tsLog('⚠️ Год не совпадает: ожидался ' + year + ', получен ' + resultYear);
           var betterMatch = null;
           for (var i = 0; i < data.results.length; i++) {
             var r = data.results[i];
@@ -143,20 +143,20 @@ function _searchPoster() {
             }
           }
           if (betterMatch) {
-            console.log('✅ Найдено лучшее совпадение по году');
+            tsLog('✅ Найдено лучшее совпадение по году');
             firstResult = betterMatch;
           }
         }
       }
       var posterPath = firstResult.poster_path;
       if (!posterPath) {
-        console.log('❌ Нет постера в результате');
+        tsLog('❌ Нет постера в результате');
         if (retry) {
           if (type === 'tv') {
-            console.log('🔄 Пробуем поиск как фильм (нет постера)...');
+            tsLog('🔄 Пробуем поиск как фильм (нет постера)...');
             return yield searchPoster(title, year, 'movie', false);
           } else if (type === 'movie') {
-            console.log('🔄 Пробуем поиск как сериал (нет постера)...');
+            tsLog('🔄 Пробуем поиск как сериал (нет постера)...');
             return yield searchPoster(title, year, 'tv', false);
           }
         }
@@ -164,7 +164,7 @@ function _searchPoster() {
         return null;
       }
       var posterUrl = window.getTmdbImageUrl ? window.getTmdbImageUrl(posterPath, 'w342') : tmdbImageUrl(posterPath);
-      console.log('✅ Найден прямой URL постера:', posterUrl);
+      tsLog('✅ Найден прямой URL постера:', posterUrl);
       posterCache.set(cacheKey, posterUrl);
       return posterUrl;
     } catch (error) {
@@ -185,11 +185,11 @@ function _findPosterFromSearchResult() {
     var displayTitle = result.name || result.title || '';
     var year = result.relased || null;
     var mediaType = result.types && result.types.indexOf('tv') !== -1 ? 'tv' : 'movie';
-    console.log('Поиск постера для выбранного:');
-    console.log('   Название:', displayTitle);
-    console.log('   Год из результата:', year);
-    console.log('   Тип:', mediaType);
-    console.log('   Полный результат:', result);
+    tsLog('Поиск постера для выбранного:');
+    tsLog('   Название:', displayTitle);
+    tsLog('   Год из результата:', year);
+    tsLog('   Тип:', mediaType);
+    tsLog('   Полный результат:', result);
     return yield searchPoster(displayTitle, year, mediaType, true);
   });
   return _findPosterFromSearchResult.apply(this, arguments);

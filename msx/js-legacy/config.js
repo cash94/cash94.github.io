@@ -1,4 +1,15 @@
 /* Сборка для старых браузеров (Chrome 53) из js/config.js — tools/legacy-build/build.js. Руками не править. */
+var TS_DEBUG = function () {
+  if (/[?&]debug=1/.test(String(window.location && window.location.search))) return true;
+  try {
+    return localStorage.getItem('tsDebug') === 'true';
+  } catch (e) {
+    return false;
+  }
+}();
+function tsLog() {
+  if (TS_DEBUG) console.log.apply(console, arguments);
+}
 var SERVER_URL = window.TS_SERVER || window.location.origin;
 function tsAuthToken() {
   try {
@@ -189,7 +200,7 @@ function loadClientConfig() {
     }
     if (data.skipApi) AppState.skipApiHost = String(data.skipApi);
     if (data.subsApi !== undefined) AppState.subsApiHost = String(data.subsApi || '');
-    console.log('🌐 Зеркала картинок: ' + AppState.imageMirrors.join(', ') + '; заставки: ' + AppState.skipApiHost + '; субтитры: ' + (AppState.subsApiHost || 'напрямую'));
+    tsLog('🌐 Зеркала картинок: ' + AppState.imageMirrors.join(', ') + '; заставки: ' + AppState.skipApiHost + '; субтитры: ' + (AppState.subsApiHost || 'напрямую'));
   })['catch'](function () {});
 }
 function getSkipApiBase() {
@@ -202,7 +213,7 @@ function loadSkipApiBase() {
   }).then(function (data) {
     if (!data || !data.ok) return;
     AppState.skipApiBase = SERVER_URL + '/api/skip';
-    console.log('🎬 Заставки через модуль сервера: ' + data.primary + ' → ' + data.fallback);
+    tsLog('🎬 Заставки через модуль сервера: ' + data.primary + ' → ' + data.fallback);
   })['catch'](function () {});
 }
 var SERVER_HLS_OFF_TEXT = 'На этом сервере транскодирование отключено — видео идёт напрямую с TorrServer';
@@ -228,7 +239,7 @@ function loadHlsOffStatus() {
   }).then(function (data) {
     if (!data || !data.hlsDisabled) return;
     applyServerHlsOff();
-    console.log('⛔ Сервер отключил воспроизведение через себя (HLS) — видео напрямую с TorrServer');
+    tsLog('⛔ Сервер отключил воспроизведение через себя (HLS) — видео напрямую с TorrServer');
   })['catch'](function () {});
 }
 window.getPrimaryImageHost = getPrimaryImageHost;
@@ -515,7 +526,7 @@ if (AppState.platform === 'tizen') {
     AppState.tizenModel = tz.model;
     AppState.tizenLegacy = parseFloat(tz.version) < 7;
     if (AppState.tizenLegacy) document.documentElement.classList.add('tizen-legacy');
-    console.log('📺 Tizen ' + (tz.version || '?') + (tz.model ? ', ' + tz.model : '') + (AppState.tizenApp ? ' — приложение, прямой режим плеера' : ''));
+    tsLog('📺 Tizen ' + (tz.version || '?') + (tz.model ? ', ' + tz.model : '') + (AppState.tizenApp ? ' — приложение, прямой режим плеера' : ''));
   })();
 }
 (function () {
@@ -525,14 +536,14 @@ if (AppState.platform === 'tizen') {
   AppState.vidaaFirmware = vidaa.firmware;
   AppState.vidaaDirectPlay = vidaa.version >= VIDAA_DIRECT_PLAY_MIN;
   if (vidaa.os || vidaa.firmware || AppState.vidaaApp) {
-    console.log('📺 VIDAA ' + (vidaa.os || '?') + ', прошивка ' + (vidaa.firmware || '?') + (AppState.vidaaApp ? ' — приложение' : '') + (AppState.vidaaDirectPlay ? ' — прямой режим плеера' : ''));
+    tsLog('📺 VIDAA ' + (vidaa.os || '?') + ', прошивка ' + (vidaa.firmware || '?') + (AppState.vidaaApp ? ' — приложение' : '') + (AppState.vidaaDirectPlay ? ' — прямой режим плеера' : ''));
   }
 })();
 if (window.AndroidJS) document.documentElement.classList.add('android-app');
 if (AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple') {
   document.documentElement.classList.add('apple-device');
 }
-console.log('📱 Платформа: ' + AppState.platform + (AppState.applePlatform ? ' (' + AppState.applePlatform + ')' : ''));
+tsLog('📱 Платформа: ' + AppState.platform + (AppState.applePlatform ? ' (' + AppState.applePlatform + ')' : ''));
 if (typeof window.isSeasonActive !== 'function') {
   window.SEASONS = {
     halloween: {

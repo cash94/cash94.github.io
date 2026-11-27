@@ -180,5 +180,5 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
   } else {
     initCatalog();
   }
-  console.log('✅ Catalog Worker patches applied (v4 — same-origin, full offload)');
+  tsLog('✅ Catalog Worker patches applied (v4 — same-origin, full offload)');
 })();

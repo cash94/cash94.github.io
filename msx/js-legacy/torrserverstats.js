@@ -55,7 +55,7 @@ function _fetchTorrentStatsForBuffer() {
       }
       return null;
     } catch (error) {
-      console.log('⚠️ Ошибка получения статистики TorrServer:', error);
+      tsLog('⚠️ Ошибка получения статистики TorrServer:', error);
       return null;
     }
   });
@@ -157,7 +157,7 @@ function watchTorrentStatsVisibility() {
 }
 function startTorrentStatsUpdates() {
   stopTorrentStatsUpdates();
-  console.log('📊 Запуск опроса статистики TorrServer');
+  tsLog('📊 Запуск опроса статистики TorrServer');
   torrentStatsRunning = true;
   torrentStatsWasVisible = isTorrentStatsVisible();
   watchTorrentStatsVisibility();
@@ -174,7 +174,7 @@ function stopTorrentStatsUpdates() {
     torrentStatsObserver.disconnect();
     torrentStatsObserver = null;
   }
-  if (wasRunning) console.log('📊 Остановлен опрос статистики TorrServer');
+  if (wasRunning) tsLog('📊 Остановлен опрос статистики TorrServer');
 }
 var PRELOAD_TARGET_BYTES = 32 * 1024 * 1024;
 var PRELOAD_DONE_FRACTION = 0.95;
@@ -196,7 +196,7 @@ function startPreloadProbe(state) {
     clientId = localStorage.getItem('clientId');
   } catch (e) {}
   var url = SERVER_URL + '/api/file/info?hash=' + state.hash + '&fileId=' + state.fileId + (clientId ? '&clientId=' + encodeURIComponent(clientId) : '');
-  console.log('🔎 Проба файла во время предзагрузки');
+  tsLog('🔎 Проба файла во время предзагрузки');
   if (typeof fetchWithTimeout === 'function') {
     fetchWithTimeout(url, null, typeof FILE_INFO_FETCH_TIMEOUT_MS === 'number' ? FILE_INFO_FETCH_TIMEOUT_MS : 60000)['catch'](function () {});
   } else {
@@ -446,9 +446,9 @@ function finishPlaybackPreload(state, play) {
     if (typeof dropTorrentToServer === 'function') {
       dropTorrentToServer(state.hash)['catch'](function () {});
     }
-    console.log('⏹️ Предзагрузка отменена');
+    tsLog('⏹️ Предзагрузка отменена');
   } else {
-    console.log('▶️ Предзагрузка завершена: ' + formatPreloadMb(state.loaded) + ' МБ');
+    tsLog('▶️ Предзагрузка завершена: ' + formatPreloadMb(state.loaded) + ' МБ');
   }
   state.resolve(play);
 }
@@ -562,7 +562,7 @@ function onPreloadHoldKeyDown(e) {
   preloadSwallowKeyup = true;
   var isBack = e.key === 'Escape' || (typeof isBackKey === 'function' ? isBackKey(kc) : kc === 27 || kc === 8);
   if (!isBack) return;
-  console.log('⏹️ Запуск отменён');
+  tsLog('⏹️ Запуск отменён');
   releasePreloadScreen(true);
   if (typeof cancelPlaybackLaunch === 'function') cancelPlaybackLaunch();else if (typeof cancelCurrentPlayback === 'function') cancelCurrentPlayback();
 }

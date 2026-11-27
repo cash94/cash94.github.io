@@ -350,5 +350,5 @@
         // ignore
     }
 
-    console.log('✅ Poster fetching patched through CatalogWorker');
+    tsLog('✅ Poster fetching patched through CatalogWorker');
 })();

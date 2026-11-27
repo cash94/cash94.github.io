@@ -89,16 +89,16 @@ function initialServerCheck() {
   setTimeout(function () {
     var torrserverUrlInput = getEl('torrserver-url');
     if (torrserverUrlInput && torrserverUrlInput.value && torrserverUrlInput.value.trim() !== '') {
-      console.log('🔍 Автоматическая проверка сервера...');
+      tsLog('🔍 Автоматическая проверка сервера...');
       if (typeof checkServer === 'function') checkServer(true);
     } else {
-      console.log('ℹ️ URL сервера не задан, пробуем использовать SERVER_URL с портом 8090');
+      tsLog('ℹ️ URL сервера не задан, пробуем использовать SERVER_URL с портом 8090');
       safeExecute(function () {
         var serverUrl = SERVER_URL;
         var urlObj = new URL(serverUrl);
         urlObj.port = '8090';
         var torrserverUrl = urlObj.toString().replace(/\/$/, '');
-        console.log('🔄 Автоматически установлен URL TorrServer:', torrserverUrl);
+        tsLog('🔄 Автоматически установлен URL TorrServer:', torrserverUrl);
         if (torrserverUrlInput) torrserverUrlInput.value = torrserverUrl;
         if (typeof checkServer === 'function') checkServer(true);
       }, '❌ Ошибка при парсинге SERVER_URL');
@@ -111,7 +111,7 @@ function init() {
 function _init() {
   _init = _asyncToGenerator(function* () {
     try {
-      console.log('🚀 Начало инициализации приложения');
+      tsLog('🚀 Начало инициализации приложения');
       safeExecute(loadClientConfig, '❌ Ошибка загрузки конфигурации');
       checkAppVersion();
       if (!window.AndroidJS) {
@@ -136,11 +136,11 @@ function _init() {
       if (typeof AppState !== 'undefined') {
         AppState.addToDbEnabled = addToDbEnabled;
         AppState.multiChannelEnabled = multiChannelEnabled;
-        console.log('📦 AppState.addToDbEnabled =', AppState.addToDbEnabled);
-        console.log('🎵 AppState.multiChannelEnabled =', AppState.multiChannelEnabled);
+        tsLog('📦 AppState.addToDbEnabled =', AppState.addToDbEnabled);
+        tsLog('🎵 AppState.multiChannelEnabled =', AppState.multiChannelEnabled);
       }
       initDolbyVisionCheck();
-      console.log('✅ Инициализация приложения завершена');
+      tsLog('✅ Инициализация приложения завершена');
     } catch (error) {
       console.error('❌ Критическая ошибка при инициализации:', error);
       showInitError();
@@ -391,7 +391,7 @@ function setupSeekSliderEvents(seekSlider, videoPlayer) {
         }
         return;
       }
-      console.log('🎚️ Seek to: ' + formatTime(targetAbsoluteTime));
+      tsLog('🎚️ Seek to: ' + formatTime(targetAbsoluteTime));
       if (!AppState || !AppState.hls) {
         if (videoPlayer) {
           videoPlayer.currentTime = targetAbsoluteTime - (AppState && AppState.seekOffset || 0);
@@ -524,7 +524,7 @@ function setupVideoEvents(videoPlayer, volumeSlider, seekSlider) {
       }
     },
     loadedmetadata: function () {
-      console.log('📊 loadedmeta', videoPlayer.duration);
+      tsLog('📊 loadedmeta', videoPlayer.duration);
       if (AppState && AppState.expectedDuration && typeof forceUpdateDuration === 'function') {
         forceUpdateDuration(AppState.expectedDuration, AppState.originalDuration, AppState.seekOffset);
       }
@@ -534,7 +534,7 @@ function setupVideoEvents(videoPlayer, volumeSlider, seekSlider) {
       if (typeof updateBufferDisplay === 'function') updateBufferDisplay();
     },
     ended: function () {
-      console.log('🏁 Видео закончилось');
+      tsLog('🏁 Видео закончилось');
       if (typeof resetMouseIdleTimer === 'function') resetMouseIdleTimer();
     },
     play: function () {
@@ -684,13 +684,13 @@ function setupNavigation() {
   var backFromDetail = getEl('back-from-detail');
   if (backFromDetail) {
     backFromDetail.addEventListener('click', function () {
-      console.log('🔙 Возврат из детального просмотра');
+      tsLog('🔙 Возврат из детального просмотра');
       var navLeft = window.Nav ? Nav.top() : null;
       var navTo = navLeft && (navLeft.screen === 'detail' || navLeft.screen === 'torrent-detail') ? Nav.pop(navLeft.screen) : null;
       var mainContainer = getEl('main-container');
       var savedScroll = typeof AppState.backupScroll === 'number' ? AppState.backupScroll : 0;
       var currentTorrentHash = AppState && AppState.currentDetailItem ? AppState.currentDetailItem.hash : null;
-      console.log('🔍 Hash для восстановления:', currentTorrentHash);
+      tsLog('🔍 Hash для восстановления:', currentTorrentHash);
       if (typeof window.dropOpenTorrentDetail === 'function') window.dropOpenTorrentDetail();
       if (navLeft && navLeft.screen === 'torrent-detail' && navTo && navTo.screen === 'search') {
         AppState.playFromHash = false;
@@ -698,7 +698,7 @@ function setupNavigation() {
       }
       var target = navTo ? navTo.screen : null;
       if (!target) target = AppState.inSearch === 'catalog' || AppState.inSearch === 'home' ? AppState.inSearch : 'torrents';
-      console.log('📍 «назад» из карточки →', target);
+      tsLog('📍 «назад» из карточки →', target);
       if (target === 'detail' || target === 'torrent-detail') {
         setTimeout(function () {
           if (target === 'detail') window.showCatalogDetail(navTo.data.item, navTo.data.index || 0, null);else if (typeof window.showDetail === 'function') window.showDetail(navTo.data.torrent);
@@ -840,13 +840,13 @@ function restoreFocusAfterNavigation(returnTo, context) {
     }
     if (context.currentTorrentHash) {
       window.lastSelectedTorrentHash = context.currentTorrentHash;
-      console.log('💾 Сохранен hash для восстановления:', context.currentTorrentHash);
+      tsLog('💾 Сохранен hash для восстановления:', context.currentTorrentHash);
     }
     updateFocusableElements();
     if (typeof window.ensureTorrentFocus === 'function') {
       hideDetailView();
       window.ensureTorrentFocus(true);
-      console.log('🎯 Фокус восстановлен через ensureTorrentFocus');
+      tsLog('🎯 Фокус восстановлен через ensureTorrentFocus');
       return;
     }
     var targetIndex = findTorrentCardIndex(context.currentTorrentHash);
@@ -862,14 +862,14 @@ function restoreFocusAfterNavigation(returnTo, context) {
 }
 function findTorrentCardIndex(hash) {
   if (!hash) return -1;
-  console.log('🔍 Поиск карточки с hash:', hash);
+  tsLog('🔍 Поиск карточки с hash:', hash);
   var fLen = focusableElements.length;
   for (var i = 0; i < fLen; i++) {
     var el = focusableElements[i];
     if (el.classList && el.classList.contains('torrent-card')) {
       var cardHash = el.dataset.hash;
       if (cardHash && cardHash.toLowerCase() === hash.toLowerCase()) {
-        console.log('✅ Найдена карточка по hash, индекс:', i);
+        tsLog('✅ Найдена карточка по hash, индекс:', i);
         return i;
       }
     }
@@ -877,7 +877,7 @@ function findTorrentCardIndex(hash) {
   return -1;
 }
 function findTorrentCardByIndex(savedIndex) {
-  console.log('🔍 Поиск по сохраненному индексу:', savedIndex);
+  tsLog('🔍 Поиск по сохраненному индексу:', savedIndex);
   var cardIndices = [];
   var fLen = focusableElements.length;
   for (var j = 0; j < fLen; j++) {
@@ -887,7 +887,7 @@ function findTorrentCardByIndex(savedIndex) {
   }
   if (savedIndex < cardIndices.length) {
     var targetIndex = cardIndices[savedIndex];
-    console.log('✅ Найдена карточка по индексу, глобальный индекс:', targetIndex);
+    tsLog('✅ Найдена карточка по индексу, глобальный индекс:', targetIndex);
     return targetIndex;
   }
   return -1;
@@ -896,7 +896,7 @@ function findFirstTorrentCardIndex() {
   var fLen = focusableElements.length;
   for (var k = 0; k < fLen; k++) {
     if (focusableElements[k].classList && focusableElements[k].classList.contains('torrent-card')) {
-      console.log('⚠️ Используем первую карточку, индекс:', k);
+      tsLog('⚠️ Используем первую карточку, индекс:', k);
       return k;
     }
   }
@@ -938,7 +938,7 @@ function setupSearch() {
         window.syncTorrentsList();
       }
       if (!tabTorrents.classList.contains('active')) {
-        console.log('📁 Переключение на вкладку "Мои торренты"');
+        tsLog('📁 Переключение на вкладку "Мои торренты"');
         AppState.currentScreen = 'torrents';
         window.pendingCatalogPoster = null;
         window.pendingCatalogItem = null;
@@ -1185,11 +1185,11 @@ function setupSearchFilters() {
   var filtervideotype = getEl('filter-videotype');
   if (filterToggleBtn) {
     filterToggleBtn.addEventListener('click', function () {
-      console.log('🔘 filter-toggle нажат');
+      tsLog('🔘 filter-toggle нажат');
       var opened = false;
       if (typeof toggleSearchFiltersPanel === 'function') {
         opened = toggleSearchFiltersPanel();
-        console.log('Панель открыта:', opened);
+        tsLog('Панель открыта:', opened);
       } else {
         console.warn('toggleSearchFiltersPanel не определена');
         var panel = getEl('search-filters-panel');
@@ -1812,7 +1812,7 @@ function setupWasmSetting() {
     try {
       localStorage.setItem('wasmPlaybackOff', e.target.checked ? 'false' : 'true');
     } catch (x) {}
-    console.log('🧩 WASM: ' + (e.target.checked ? 'включён' : 'выключен — прямой файл в <video>'));
+    tsLog('🧩 WASM: ' + (e.target.checked ? 'включён' : 'выключен — прямой файл в <video>'));
   });
 }
 function setupDtsAc3Setting() {
@@ -1829,7 +1829,7 @@ function setupDtsAc3Setting() {
     try {
       localStorage.setItem('dtsToAc3Off', e.target.checked ? 'false' : 'true');
     } catch (x) {}
-    console.log('🧩 WASM: DTS/TrueHD → ' + (e.target.checked ? 'Dolby Digital (AC3), каналы как есть' : 'AAC 2.0'));
+    tsLog('🧩 WASM: DTS/TrueHD → ' + (e.target.checked ? 'Dolby Digital (AC3), каналы как есть' : 'AAC 2.0'));
   });
 }
 function setupWasmParallelSetting() {
@@ -1846,7 +1846,7 @@ function setupWasmParallelSetting() {
     try {
       localStorage.setItem('wasmParallel', e.target.checked ? 'true' : 'false');
     } catch (x) {}
-    console.log('🧩 WASM: чтение файла ' + (e.target.checked ? 'двумя запросами внахлёст' : 'одним запросом'));
+    tsLog('🧩 WASM: чтение файла ' + (e.target.checked ? 'двумя запросами внахлёст' : 'одним запросом'));
   });
 }
 function setupCheckboxes() {
@@ -1909,7 +1909,7 @@ function setupCheckboxes() {
       AppState.builtinKeyboard = e.target.checked;
       localStorage.setItem('builtinKeyboard', AppState.builtinKeyboard);
       if (window.OSK && typeof window.OSK.applySetting === 'function') window.OSK.applySetting();
-      console.log('⌨️ Встроенная клавиатура:', AppState.builtinKeyboard ? 'включена' : 'выключена');
+      tsLog('⌨️ Встроенная клавиатура:', AppState.builtinKeyboard ? 'включена' : 'выключена');
     });
   }
   var noFavoriteHoldCheckbox = getEl('no-favorite-hold');
@@ -1936,7 +1936,7 @@ function setupCheckboxes() {
       hideClockEnabled = e.target.checked;
       localStorage.setItem('hideClockEnabled', hideClockEnabled);
       setupClockVisibility();
-      console.log('🕐 Скрытие часов:', hideClockEnabled ? 'включено' : 'выключено');
+      tsLog('🕐 Скрытие часов:', hideClockEnabled ? 'включено' : 'выключено');
     });
   }
   var addToDbCheckbox = getEl('add-to-db');
@@ -1953,7 +1953,7 @@ function setupCheckboxes() {
       if (typeof AppState !== 'undefined') {
         AppState.addToDbEnabled = addToDbEnabled;
       }
-      console.log('💾 Добавление в базу:', addToDbEnabled ? 'включено' : 'выключено');
+      tsLog('💾 Добавление в базу:', addToDbEnabled ? 'включено' : 'выключено');
     });
   }
   var preloadCheckbox = getEl('preload-before-play');
@@ -1963,7 +1963,7 @@ function setupCheckboxes() {
     preloadCheckbox.addEventListener('change', function (e) {
       AppState.preloadBeforePlay = e.target.checked;
       localStorage.setItem('preloadBeforePlay', AppState.preloadBeforePlay);
-      console.log('⏳ Предзагрузка:', AppState.preloadBeforePlay ? 'включена' : 'выключена');
+      tsLog('⏳ Предзагрузка:', AppState.preloadBeforePlay ? 'включена' : 'выключена');
     });
   }
   var appleDevice = AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple';
@@ -1991,7 +1991,7 @@ function setupCheckboxes() {
       if (typeof AppState !== 'undefined') {
         AppState.transcodingOnOff = transcodingOnOff;
       }
-      console.log('🎬 Транскодирование:', transcodingOnOff ? 'включено' : 'выключено');
+      tsLog('🎬 Транскодирование:', transcodingOnOff ? 'включено' : 'выключено');
     });
   }
   var multiChannelCheckbox = getEl('multi-channel-audio');
@@ -2012,7 +2012,7 @@ function setupCheckboxes() {
       if (typeof AppState !== 'undefined') {
         AppState.multiChannelEnabled = multiChannelEnabled;
       }
-      console.log('🎵 Многоканальный звук:', multiChannelEnabled ? 'включен' : 'выключен');
+      tsLog('🎵 Многоканальный звук:', multiChannelEnabled ? 'включен' : 'выключен');
       if (multiChannelEnabled) {
         var hint = getEl('player-hint');
         if (hint) {
@@ -2055,7 +2055,7 @@ function setupCheckboxes() {
       if (typeof AppState !== 'undefined') {
         AppState.transcodingFullOnOff = transcodingFullOnOff;
       }
-      console.log('🎬 Транскодирование:', transcodingFullOnOff ? 'включено' : 'выключено');
+      tsLog('🎬 Транскодирование:', transcodingFullOnOff ? 'включено' : 'выключено');
     });
   }
   if (!window.AndroidJS && localStorage.getItem('autoSwitchEpisodes') === null) {
@@ -2082,7 +2082,7 @@ function setupCheckboxes() {
         console.warn('⚠️ Ошибка инициализации Dolby Vision check:', e);
       }
     } else {
-      console.log('ℹ️ initDolbyVisionCheck не найдена, пропускаем');
+      tsLog('ℹ️ initDolbyVisionCheck не найдена, пропускаем');
     }
   }
 }
@@ -2199,12 +2199,12 @@ function setupExternalPlayerCheckbox() {
   window.externalPlayerEnabled = savedExternalPlayer;
   externalPlayerCheckbox.checked = savedExternalPlayer;
   if (typeof AppState !== 'undefined') AppState.externalPlayerEnabled = window.externalPlayerEnabled;
-  console.log('📱 Внешний плеер:', window.externalPlayerEnabled ? 'включен' : 'выключен');
+  tsLog('📱 Внешний плеер:', window.externalPlayerEnabled ? 'включен' : 'выключен');
   externalPlayerCheckbox.addEventListener('change', function (e) {
     window.externalPlayerEnabled = e.target.checked;
     localStorage.setItem('externalPlayerEnabled', window.externalPlayerEnabled);
     if (typeof AppState !== 'undefined') AppState.externalPlayerEnabled = window.externalPlayerEnabled;
-    console.log('📱 Внешний плеер:', window.externalPlayerEnabled ? 'включен' : 'выключен');
+    tsLog('📱 Внешний плеер:', window.externalPlayerEnabled ? 'включен' : 'выключен');
     if (window.externalPlayerEnabled && typeof showPlayerHint === 'function') {
       showPlayerHint('Внешний плеер включен. При воспроизведении будет открыт выбор приложений.');
     } else if (!window.externalPlayerEnabled && typeof showPlayerHint === 'function') {
@@ -2230,7 +2230,7 @@ function setAutoSkip(on) {
   var cb = getEl('auto-skip-intro');
   if (cb) cb.checked = AppState.autoSkipIntro;
   if (typeof window.syncAutoSkipCountdown === 'function') window.syncAutoSkipCountdown();
-  console.log('⏩ Автопропуск заставки и титров:', AppState.autoSkipIntro ? 'включён' : 'выключен');
+  tsLog('⏩ Автопропуск заставки и титров:', AppState.autoSkipIntro ? 'включён' : 'выключен');
 }
 window.setAutoSkip = setAutoSkip;
 function setPlayerManualHide(on) {
@@ -2586,7 +2586,7 @@ function setupConfigMenu() {
       if (event.stopPropagation) event.stopPropagation();
       var tabId = this.getAttribute('data-tab') || this.id;
       var isActive = this.classList.contains('active');
-      console.log('🔘 Нажато меню:', tabId, 'Активно:', isActive);
+      tsLog('🔘 Нажато меню:', tabId, 'Активно:', isActive);
       if (isActive) {
         var content = getEl(tabId + '-content');
         if (content) content.style.display = 'none';
@@ -2602,7 +2602,7 @@ function setupConfigMenu() {
     menuItem._configClickHandler = clickHandler;
     menuItem.addEventListener('click', clickHandler);
   }
-  console.log('✅ Настройки меню инициализированы, элементов:', menuItems.length);
+  tsLog('✅ Настройки меню инициализированы, элементов:', menuItems.length);
 }
 function showInitError() {
   var errorDiv = document.createElement('div');
@@ -2614,7 +2614,7 @@ function setupSpeedTest() {
   var speedtestBtn = getEl('speedtest-btn');
   if (!speedtestBtn) return;
   speedtestBtn.addEventListener('click', _asyncToGenerator(function* () {
-    console.log('📡 Запуск замера скорости...');
+    tsLog('📡 Запуск замера скорости...');
     var torrserverUrlInput = getEl('torrserver-url');
     var torrServerUrl = typeof window.torrServerUrlFromField === 'function' ? window.torrServerUrlFromField() : torrserverUrlInput ? torrserverUrlInput.value.trim() : '';
     if (!torrServerUrl) {
@@ -2653,12 +2653,12 @@ function bindJacredField(id, logName) {
   var saved = localStorage.getItem(id);
   if (saved) {
     input.value = saved;
-    if (logName) console.log('📦 Загружен ' + logName + ':', saved);
+    if (logName) tsLog('📦 Загружен ' + logName + ':', saved);
   }
   var debouncedSave = debounce(function () {
     var value = input.value.trim();
     localStorage.setItem(id, value);
-    if (logName) console.log('💾 Сохранён ' + logName + ':', value);
+    if (logName) tsLog('💾 Сохранён ' + logName + ':', value);
   }, APP_CONSTANTS.JACRED_SAVE_DELAY_MS);
   input.addEventListener('input', debouncedSave);
   input.addEventListener('blur', function () {
@@ -2715,7 +2715,7 @@ function checkDolbyVisionSupport() {
     p5: false,
     av1: false
   };
-  console.log('🔍 Проверка поддержки кодеков:');
+  tsLog('🔍 Проверка поддержки кодеков:');
   for (var i = 0; i < tests.length; i++) {
     var test = tests[i];
     var supported = isCodecSupportedAnywhere(test.codec);
@@ -2724,7 +2724,7 @@ function checkDolbyVisionSupport() {
       codec: test.codec,
       supported: supported
     });
-    console.log('   ' + (supported ? '✅' : '❌') + ' ' + test.name);
+    tsLog('   ' + (supported ? '✅' : '❌') + ' ' + test.name);
     if (supported && test.dv) variants[test.dv] = true;
   }
   return {
@@ -2800,10 +2800,10 @@ function initDolbyVisionCheck() {
   if (dvCheckboxContainer) {
     if (dvSupported) {
       dvCheckboxContainer.classList.remove('hidden');
-      console.log('✅ Dolby Vision поддерживается - чекбокс предпочтения виден');
+      tsLog('✅ Dolby Vision поддерживается - чекбокс предпочтения виден');
     } else {
       dvCheckboxContainer.classList.add('hidden');
-      console.log('❌ Dolby Vision не поддерживается - чекбокс предпочтения скрыт');
+      tsLog('❌ Dolby Vision не поддерживается - чекбокс предпочтения скрыт');
     }
   }
   if (dvCheckbox) {
@@ -2814,7 +2814,7 @@ function initDolbyVisionCheck() {
     if (typeof AppState !== 'undefined') {
       AppState.dvPreferred = dvPreferred;
     }
-    console.log('🎬 Предпочтение Dolby Vision:', dvPreferred ? 'включено' : 'выключено');
+    tsLog('🎬 Предпочтение Dolby Vision:', dvPreferred ? 'включено' : 'выключено');
     dvCheckbox.addEventListener('change', function (e) {
       dvPreferred = e.target.checked;
       try {
@@ -2825,7 +2825,7 @@ function initDolbyVisionCheck() {
       if (typeof AppState !== 'undefined') {
         AppState.dvPreferred = dvPreferred;
       }
-      console.log('🎬 Предпочтение Dolby Vision:', dvPreferred ? 'включено' : 'выключено');
+      tsLog('🎬 Предпочтение Dolby Vision:', dvPreferred ? 'включено' : 'выключено');
       if (typeof showPlayerHint === 'function') {
         var msg = dvPreferred ? '🎬 Dolby Vision будет предпочитаться при наличии' : '🎬 Стандартное HDR будет использоваться по умолчанию';
         showPlayerHint(msg);

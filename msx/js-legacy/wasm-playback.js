@@ -70,7 +70,7 @@ var WasmPlayback = function () {
     }
     if (!nativeLogged) {
       nativeLogged = true;
-      console.log('🧩 WASM: звук как есть (MSE, связка с H.264): ' + seen.join(', '));
+      tsLog('🧩 WASM: звук как есть (MSE, связка с H.264): ' + seen.join(', '));
     }
     return out;
   }
@@ -361,6 +361,7 @@ var WasmPlayback = function () {
       split: st.split,
       parallel: parallelWanted(),
       pace: location.search.indexOf('wasm=nopace') === -1,
+      debug: typeof TS_DEBUG !== 'undefined' && TS_DEBUG,
       auth: torrServerAuth(),
       dv: !!AppState.dvPreferred,
       size: st.opts.size > 0 ? st.opts.size : 0,
@@ -461,7 +462,7 @@ var WasmPlayback = function () {
     } else if (m.type === 'stats') s.workMs = m.workMs;else if (m.type === 'cues') addCues(m.cues);else if (m.type === 'audio') {
       s.audio = m;
       var al = audioLine(s);
-      console.log('🧩 WASM: звук ' + al);
+      tsLog('🧩 WASM: звук ' + al);
       note({
         audio: al
       });
@@ -475,7 +476,7 @@ var WasmPlayback = function () {
         net: m.error + ' (попытка ' + m.attempt + ')'
       });
       if (!m.ok) console.warn('🧩 WASM: TorrServer — ' + m.error + ', повтор ' + m.attempt + ' через ' + m.delay / 1000 + ' с');
-    } else if (m.type === 'log') console.log('🧩 WASM: ' + m.msg);
+    } else if (m.type === 'log') tsLog('🧩 WASM: ' + m.msg);
   }
   function typeOk(t) {
     try {
@@ -528,7 +529,7 @@ var WasmPlayback = function () {
     if (m.dv && m.dv.kept && /^hvc1\./.test(m.vCodec || '')) {
       var dvCodec = 'dvh1.' + pad2(m.dv.profile) + '.' + pad2(m.dv.level || 6);
       if (typeOk('video/mp4; codecs="' + dvCodec + (m.aCodec ? ',' + m.aCodec : '') + '"')) {
-        console.log('🧩 WASM: Dolby Vision P' + m.dv.profile + '.' + m.dv.compat + ' — браузер его знает, MSE как ' + dvCodec + ' (а не ' + m.vCodec + ')');
+        tsLog('🧩 WASM: Dolby Vision P' + m.dv.profile + '.' + m.dv.compat + ' — браузер его знает, MSE как ' + dvCodec + ' (а не ' + m.vCodec + ')');
         m.vCodec = dvCodec;
       }
     }
@@ -540,7 +541,7 @@ var WasmPlayback = function () {
       rev: m.rev || 'старый (без версии)',
       stream: describe() + ' → ' + m.vCodec + (m.aCodec ? ',' + m.aCodec : '') + (m.split ? ' раздельно' : '') + ' (MSE ' + (mimesOk ? 'берёт' : 'не берёт') + ')'
     });
-    console.log('🧩 WASM: ' + m.streams.map(function (x) {
+    tsLog('🧩 WASM: ' + m.streams.map(function (x) {
       return x.codec + (x.channels ? ' ' + x.channels + 'ch' : '');
     }).join(', ') + ' → ' + mime + (m.dv || m.hdr && m.hdr !== 'SDR' ? ' · ' + describe() : '') + ' · запрос до ' + Math.round((m.chunkMax || 0) / 1048576) + ' МБ');
     if (!mimesOk && location.search.indexOf('wasm=dump') === -1) {
@@ -569,7 +570,7 @@ var WasmPlayback = function () {
     if (s.opts.onInfo) s.opts.onInfo(m);
     if (location.search.indexOf('wasm=dump') !== -1) {
       s.dump = [];
-      console.log('🧩 WASM: дамп вместо MSE, ' + mime);
+      tsLog('🧩 WASM: дамп вместо MSE, ' + mime);
       return;
     }
     var MS = mediaSourceCtor(),
@@ -899,7 +900,7 @@ var WasmPlayback = function () {
     var now = Date.now();
     if (now - s.perfLogAt >= PERF_LOG_MS) {
       s.perfLogAt = now;
-      console.log('🧩 WASM: ' + s.perfLine + ' → ' + v);
+      tsLog('🧩 WASM: ' + s.perfLine + ' → ' + v);
     }
   }
   function createSubTracks(list) {
@@ -909,6 +910,7 @@ var WasmPlayback = function () {
       var el = document.createElement('track');
       el.kind = 'subtitles';
       el.label = 'Субтитры ' + (Object.keys(s.subs).length + 1) + (x.text ? '' : ' (' + x.codec + ')');
+      if (x.lang && x.lang !== 'und') el.srclang = x.lang;
       el.src = 'data:text/vtt,WEBVTT%0A';
       var sub = {
         el: el,

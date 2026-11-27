@@ -149,7 +149,7 @@ function _createSyncCode() {
       });
       var data = yield response.json();
       if (response.ok && data.success) {
-        console.log('Код синхронизации создан:', AppState.syncCode);
+        tsLog('Код синхронизации создан:', AppState.syncCode);
         updateSyncCodeDisplay();
         return true;
       } else {
@@ -298,10 +298,10 @@ function setupSyncButton() {
   syncBtn.addEventListener('click', function (e) {
     e.preventDefault();
     e.stopPropagation();
-    console.log('🔄 Открытие окна синхронизации');
+    tsLog('🔄 Открытие окна синхронизации');
     showSyncOverlay();
   });
-  console.log('✅ Кнопка синхронизации настроена');
+  tsLog('✅ Кнопка синхронизации настроена');
 }
 function addSyncStyles() {
   var styleId = 'sync-styles';
@@ -312,7 +312,7 @@ function addSyncStyles() {
   document.head.appendChild(style);
 }
 function initSync() {
-  console.log('🔄 Модуль синхронизации инициализирован');
+  tsLog('🔄 Модуль синхронизации инициализирован');
   addSyncStyles();
   setupSyncButton();
   document.addEventListener('keydown', function (e) {

@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  console.log('🎨 Загрузка UI Customizer...');
+  tsLog('🎨 Загрузка UI Customizer...');
   var STORAGE_KEY = 'uiCustomizer';
   var defaultSettings = {
     cardSize: 210,
@@ -627,7 +627,7 @@
       if (typeof window.realignCatalogChunks === 'function') window.realignCatalogChunks();
     } catch (e) {}
     syncHeroTrailers();
-    console.log('🎨 Настройки внешнего вида применены:', JSON.stringify(currentSettings));
+    tsLog('🎨 Настройки внешнего вида применены:', JSON.stringify(currentSettings));
   }
   var lastHeroTrailers = null;
   function syncHeroTrailers() {
@@ -1357,7 +1357,7 @@
     injectPanelStyles();
     createCustomizerPanel();
     embedPanel();
-    console.log('✅ UI Customizer инициализирован');
+    tsLog('✅ UI Customizer инициализирован');
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

@@ -29,7 +29,7 @@ var SmoothScroll = function () {
         if (lowPerformanceMode) {
           config.duration = 0.25;
           config.easing = "linear";
-          console.log('📱 Низкая производительность, уменьшена длительность анимаций');
+          tsLog('📱 Низкая производительность, уменьшена длительность анимаций');
         }
         return;
       }
@@ -285,7 +285,7 @@ var SmoothScroll = function () {
     enable();
     initMutationObserver();
     setTimeout(refresh, 500);
-    console.log('✨ Плавный скролл инициализирован' + (lowPerformanceMode ? ' (режим производительности)' : ''));
+    tsLog('✨ Плавный скролл инициализирован' + (lowPerformanceMode ? ' (режим производительности)' : ''));
   }
   return {
     init: init,

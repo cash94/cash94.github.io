@@ -173,7 +173,7 @@ function startAutoSkipCountdown() {
     autoSkipLeft--;
     if (autoSkipLeft <= 0) {
       stopAutoSkipCountdown();
-      console.log('⏩ Автопропуск:', currentSkipInfo.type === 'intro' ? 'заставка' : 'титры');
+      tsLog('⏩ Автопропуск:', currentSkipInfo.type === 'intro' ? 'заставка' : 'титры');
       performSkip();
       return;
     }
@@ -207,7 +207,7 @@ window.syncAutoSkipCountdown = syncAutoSkipCountdown;
 window.executeSkip = function () {
   if (!skipButtonActive || !currentSkipInfo) return false;
   if (autoSkipTimer) {
-    console.log('⏩ Автопропуск отменён:', currentSkipInfo.type === 'intro' ? 'заставка' : 'титры');
+    tsLog('⏩ Автопропуск отменён:', currentSkipInfo.type === 'intro' ? 'заставка' : 'титры');
     hideSkipButton();
     return true;
   }
@@ -220,9 +220,9 @@ function performSkip() {
   if (currentSkipInfo && currentSkipInfo.type === 'intro') {
     var seekTime = currentSkipInfo.endMs / 1000;
     seekStream(seekTime, 'slider');
-    console.log('⏩ Пропуск интро, перемотка на ' + formatTime(seekTime));
+    tsLog('⏩ Пропуск интро, перемотка на ' + formatTime(seekTime));
   } else if (currentSkipInfo && currentSkipInfo.type === 'credits') {
-    console.log('⏩ Пропуск титров, переключение на следующую серию');
+    tsLog('⏩ Пропуск титров, переключение на следующую серию');
     nextEpisode();
   }
   hideSkipButton();
@@ -261,7 +261,7 @@ function showSkipButton(type, startMs, endMs) {
   setTimeout(function () {
     if (skipButton && skipButtonActive) skipButton.classList.add('filled');
   }, 50);
-  console.log('🎬 Показана кнопка пропуска:', type, 'старт:', (startMs / 1000).toFixed(1), 'сек, конец:', (endMs / 1000).toFixed(1), 'сек');
+  tsLog('🎬 Показана кнопка пропуска:', type, 'старт:', (startMs / 1000).toFixed(1), 'сек, конец:', (endMs / 1000).toFixed(1), 'сек');
 }
 function hideSkipButton() {
   stopAutoSkipCountdown();
@@ -346,7 +346,7 @@ function startHeartbeat() {
       bgFetch(SERVER_URL + '/hls/activity/' + AppState.currentStreamId, {
         method: 'POST'
       })['catch'](function (e) {
-        console.log('⚠️ Heartbeat error:', e);
+        tsLog('⚠️ Heartbeat error:', e);
       });
     }
   }, 20000);
@@ -884,7 +884,7 @@ function maybeWarmNextEpisode(absoluteTime) {
   var key = currentTorrentHash + ':' + next.id;
   if (warmedNextEpisodeKey === key) return;
   warmedNextEpisodeKey = key;
-  console.log('🔥 Прогрев следующей серии: ' + (currentEpisodeIndex + 2));
+  tsLog('🔥 Прогрев следующей серии: ' + (currentEpisodeIndex + 2));
   preloadTorrents(currentTorrentHash, next.id);
   var savedClientId = localStorage.getItem('clientId');
   fetchWithTimeout(SERVER_URL + '/api/file/info?hash=' + currentTorrentHash + '&fileId=' + next.id + '&clientId=' + encodeURIComponent(savedClientId), null, FILE_INFO_FETCH_TIMEOUT_MS)['catch'](function () {});
@@ -1264,7 +1264,7 @@ function _saveTimecodeToServer() {
           mediaKey: currentTimecodeMediaKey()
         })
       });
-      if (response.ok) console.log('💾 Таймкод сохранен: ' + formatTime(currentTimecodeData.timecode));
+      if (response.ok) tsLog('💾 Таймкод сохранен: ' + formatTime(currentTimecodeData.timecode));
     } catch (error) {
       console.error('Ошибка сохранения таймкода:', error);
     }
@@ -2124,7 +2124,7 @@ function _buildCollectionMap() {
         n++;
       }
     }
-    console.log('🎞️ Сборник ' + h.slice(0, 8) + ': коллекция «' + (coll.name || bc.id) + '», сопоставлено файлов ' + n + ' из ' + video.length);
+    tsLog('🎞️ Сборник ' + h.slice(0, 8) + ': коллекция «' + (coll.name || bc.id) + '», сопоставлено файлов ' + n + ' из ' + video.length);
     return map;
   });
   return _buildCollectionMap.apply(this, arguments);
@@ -3073,7 +3073,7 @@ function _prepareSeriesRewatch() {
         }
         if (!toClear.length) return 0;
         yield clearEpisodeTimecodes(hash, files, toClear);
-        console.log('🔁 Серия ' + (index + 1) + ' выбрана вручную: прогресс ' + toClear.length + ' серий после неё стёрт');
+        tsLog('🔁 Серия ' + (index + 1) + ' выбрана вручную: прогресс ' + toClear.length + ' серий после неё стёрт');
         return toClear.length;
       })();
       return yield Promise.race([work, pauseMs(REWATCH_WAIT_MS).then(function () {
@@ -3716,7 +3716,7 @@ function openAppleExternalPlayer(originalUrl, title, seekTime) {
   currentTimecodeData.hash = built.ref.hash;
   currentTimecodeData.fileId = built.ref.fileId;
   currentTimecodeData.timecode = seekTime || 0;
-  console.log('🍎 Внешний плеер ' + built.player.name + ': ' + (title || ''));
+  tsLog('🍎 Внешний плеер ' + built.player.name + ': ' + (title || ''));
   if (AppState.applePlatform !== 'apple_tv' && navigator.userActivation && !navigator.userActivation.isActive) {
     showAppleLaunchDialog(built.player.name, built.url);
     return true;
@@ -4071,7 +4071,26 @@ function updateDirectTrackDiag(videoPlayer) {
   directPlaybackDiag.kinds = kinds.join(', ');
 }
 function wasmAudioList(info) {
+  var tagged = (info.streams || []).filter(function (x) {
+    return x.type === 'audio';
+  });
   currentAudioTracks = (info.audioTracks || []).map(function (a, i) {
+    var x = tagged[i];
+    if (x && (x.title || x.lang && x.lang !== 'und')) {
+      var st = {
+        tags: {
+          language: x.lang || '',
+          title: x.title || ''
+        }
+      };
+      return {
+        title: probeTitle(st, 'audio', i),
+        language: probeLang(st) || 'und',
+        channels: a.channels || null,
+        codec: (a.codec || '').toUpperCase(),
+        probed: true
+      };
+    }
     return {
       title: 'Аудиодорожка ' + (i + 1),
       language: 'und',
@@ -4081,7 +4100,27 @@ function wasmAudioList(info) {
   });
   currentAudioTrack = info.audio >= 0 ? info.audio : 0;
   renderAudioTracks();
+  wasmOfferProbe(info);
   applyDirectProbe();
+}
+function wasmOfferProbe(info) {
+  var streams = [],
+    named = false;
+  (info.streams || []).forEach(function (x) {
+    if (x.type !== 'audio' && x.type !== 'subtitle') return;
+    if (x.lang && x.lang !== 'und' || x.title) named = true;
+    streams.push({
+      codec_type: x.type,
+      codec_name: x.codec || '',
+      channels: x.channels || null,
+      tags: {
+        language: x.lang || '',
+        title: x.title || ''
+      },
+      disposition: {}
+    });
+  });
+  if (named && directProbe.offer) directProbe.offer(streams, 'WASM');else if (directProbe.fallback) directProbe.fallback();
 }
 var WASM_ONLY_AUDIO = {
   dts: 1,
@@ -4125,7 +4164,7 @@ function _restartDirectInWasm() {
     var videoPlayer = getEl('video-player');
     var at = videoPlayer.currentTime || 0;
     var target = window.WasmPlayback && WasmPlayback.ac3Wanted && WasmPlayback.ac3Wanted() ? 'Dolby Digital' : 'AAC 2.0';
-    console.log('🧩 WASM: ' + reason + ' — перезапуск с ' + at.toFixed(1) + ' c через WASM, звук в ' + target);
+    tsLog('🧩 WASM: ' + reason + ' — перезапуск с ' + at.toFixed(1) + ' c через WASM, звук в ' + target);
     if (currentTimecodeData.hash && currentTimecodeData.fileId) saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, index);
     setPlayerPanel('audio', false);
     getEl('playback-overlay').classList.add('active');
@@ -4601,7 +4640,7 @@ function resolvePlayableStream(url) {
     error: window.describeUnplayableTorrent(files)
   };
   var id = String(videos[0].id);
-  console.log('▶️ Файл ' + ref.fileId + ' не видео (' + (file.path || '') + ') — играем ' + id + ' (' + (videos[0].path || '') + ')');
+  tsLog('▶️ Файл ' + ref.fileId + ' не видео (' + (file.path || '') + ') — играем ' + id + ' (' + (videos[0].path || '') + ')');
   return {
     url: url.replace(/(\/play\/[a-fA-F0-9]{40}\/)\d+/, '$1' + id).replace(/([?&]index=)\d+/, '$1' + id),
     fileId: id
@@ -4659,7 +4698,7 @@ function _startHLSPlaybackNow() {
           if (!isPlaybackPreloadActive()) return false;
         }
         if (resumeAt > 0) {
-          console.log('⏭️ Предзагрузка пропущена: старт с ' + formatTime(resumeAt));
+          tsLog('⏭️ Предзагрузка пропущена: старт с ' + formatTime(resumeAt));
           if (!isPlaybackPreloadActive()) runPlaybackPreload(preloadRef.hash, null, preloadTitle);
           skipPlaybackPreload(preloadRef.hash);
         } else if (!(yield runPlaybackPreload(preloadRef.hash, preloadRef.fileId, preloadTitle))) return false;
@@ -4788,7 +4827,7 @@ function _startHLSPlaybackNow() {
           yield initServerProxyPlayback(metadata, initialSeek, signal);
         } catch (serverError) {
           if (!serverError || !serverError.hlsDisabled || signal.aborted) throw serverError;
-          console.log('⛔ Сервер отключил HLS — этот запуск продолжаем напрямую с TorrServer');
+          tsLog('⛔ Сервер отключил HLS — этот запуск продолжаем напрямую с TorrServer');
           yield startDirect();
         }
       }
@@ -5767,6 +5806,7 @@ var DIRECT_PROBE_LUNA_WAIT_MS = 8000;
 var TIZEN_TRACKS_PORT = 8096;
 var TIZEN_FFPROBE_PORT = 8095;
 var TIZEN_FFPROBE_WAIT_MS = 20000;
+var WASM_PROBE_WAIT_MS = 10000;
 var tizenServiceBase = {};
 var tizenOwnIp = '';
 function detectTizenIp() {
@@ -5890,6 +5930,8 @@ function directProbeStart() {
     directPlaybackDiag.probe = directProbe.count;
     if (AppState.transcodingFullOnOff && nativeSubState.mode !== 'webos' && AppState.platform !== 'webos' && AppState.currentScreen === 'player') refreshNativeSubtitles(getEl('video-player'));else applyDirectProbe();
   };
+  directProbe.offer = done;
+  directProbe.fallback = null;
   if (!hash || fileId === undefined || fileId === null) return;
   var fromServer = serverInfoStreams(directProbe.serverInfo, hash, fileId);
   var cubFirst = AppState.platform === 'tizen';
@@ -5945,6 +5987,7 @@ function directProbeStart() {
       serverFallback();
     }
   };
+  directProbe.fallback = startCub;
   if (AppState.tizenApp) {
     setTimeout(startCub, TIZEN_FFPROBE_WAIT_MS);
     directPlaybackDiag.probe = 'на ТВ: запрос…';
@@ -5980,6 +6023,11 @@ function directProbeStart() {
         startCub();
       });
     });
+    return;
+  }
+  if (AppState.wasmPlayback) {
+    directPlaybackDiag.probe = 'WASM: ждём разбор файла…';
+    setTimeout(startCub, WASM_PROBE_WAIT_MS);
     return;
   }
   if (AppState.platform !== 'webos' || !lunaAvailable()) {
@@ -7212,7 +7260,7 @@ function startNearEndCheck() {
     }
     var left = total - abs;
     if (left <= END_EPS_SEC || left <= END_STALL_ZONE_SEC && now - lastMoveAt >= END_STALL_MS) {
-      console.log('🏁 Конец файла: позиция ' + abs.toFixed(1) + ' из ' + total.toFixed(1) + ' с');
+      tsLog('🏁 Конец файла: позиция ' + abs.toFixed(1) + ' из ' + total.toFixed(1) + ' с');
       handleVideoEnded();
     }
   }, 1000);

@@ -220,7 +220,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
     _prefetchPromise = CatalogWorker.catalogPrefetchAll(entries, CATALOG_FULL_LIMIT, true).then(function (summary) {
       _prefetchDone = true;
       _prefetchPromise = null;
-      console.log('📦 Каталоги прогреты в IndexedDB:', summary);
+      tsLog('📦 Каталоги прогреты в IndexedDB:', summary);
       return summary;
     }).catch(function (error) {
       console.warn('⚠️ Prefetch catalogs error:', error);
@@ -487,7 +487,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       }
       _catalogIdbUpdating = true;
       try {
-        console.log('⏳ Каталог "' + id + '" старше ' + thresholdHours + ' часов, отправляем запрос на обновление');
+        tsLog('⏳ Каталог "' + id + '" старше ' + thresholdHours + ' часов, отправляем запрос на обновление');
         var updateResponse = yield safeFetch(SERVER_URL + '/api/catalog/' + encodeURIComponent(id) + '/update', {
           method: 'POST',
           headers: {
@@ -500,7 +500,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
           console.warn('⚠️ Каталог "' + id + '" не был обновлён сервером');
           return false;
         }
-        console.log('✅ Каталог "' + id + '" обновлён на сервере');
+        tsLog('✅ Каталог "' + id + '" обновлён на сервере');
         attempt.done = true;
         if (typeof invalidateCatalogsListCache === 'function') {
           invalidateCatalogsListCache();
@@ -608,5 +608,5 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       return _startupCheck ? _startupCheck.startedAt : 0;
     }
   };
-  console.log('✅ Catalog IndexedDB patch applied: limit=' + CATALOG_FULL_LIMIT + ', ttl=6h');
+  tsLog('✅ Catalog IndexedDB patch applied: limit=' + CATALOG_FULL_LIMIT + ', ttl=6h');
 })();

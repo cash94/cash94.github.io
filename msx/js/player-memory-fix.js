@@ -6,7 +6,7 @@
 (function () {
     'use strict';
 
-    console.log('🧹 player-memory (safe): загрузка...');
+    tsLog('🧹 player-memory (safe): загрузка...');
 
     // Освобождает буфер #video-player, НЕ трогая сам элемент и его слушатели.
     function freeVideoBuffer() {
@@ -50,6 +50,6 @@
         }
     });
 
-    console.log('✅ player-memory (safe): готово (без клонирования <video>)');
+    tsLog('✅ player-memory (safe): готово (без клонирования <video>)');
 
 })();

@@ -61,7 +61,7 @@
     // Адрес, который зашит в config.xml пакета (endpoint_URL)
     var PREVIEW_HOST = 'torrstream.online';
 
-    function log(msg) { try { console.log('📺 Smart Hub: ' + msg); } catch (e) { } }
+    function log(msg) { try { tsLog('📺 Smart Hub: ' + msg); } catch (e) { } }
 
     function serverUrl() { return window.SERVER_URL || window.location.origin; }
 

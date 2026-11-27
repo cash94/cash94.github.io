@@ -200,7 +200,7 @@
             return torrServerHas(h).then(function (has) {
                 if (has === true) { verifiedAt[h] = Date.now(); return false; }
                 if (has === null) return false;   // не выяснили — не трогаем
-                console.log('🧲 Раздачи нет в TorrServer — добавляем снова полным magnet:', h);
+                tsLog('🧲 Раздачи нет в TorrServer — добавляем снова полным magnet:', h);
                 return reAdd(rec).then(function (ok) {
                     if (ok) verifiedAt[h] = Date.now();
                     else console.warn('🧲 Не удалось добавить раздачу magnet-ссылкой:', h);

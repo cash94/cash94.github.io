@@ -3164,7 +3164,7 @@
     ensureHeroDom();
     invalidateFocus();
     if (homeState.built && !homeState.loading && homeRowsStale()) {
-      console.log('🏠 Подборки старше суток — пересобираем главную');
+      tsLog('🏠 Подборки старше суток — пересобираем главную');
       leaveCategoryHero();
       suspendHero();
       homeState.built = false;
@@ -3854,7 +3854,7 @@
     showHome({
       initial: true
     });
-    console.log('🏠 Главная страница инициализирована');
+    tsLog('🏠 Главная страница инициализирована');
   }
   window.HomeScreen = {
     show: showHome,

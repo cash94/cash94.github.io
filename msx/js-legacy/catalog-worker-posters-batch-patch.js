@@ -261,5 +261,5 @@
   CATALOG_CONSTANTS.POSTER_BATCH_SIZE = 40;
   catalogState.postersPerBatch = 40;
   CATALOG_CONSTANTS.POSTER_OBSERVER_MARGIN_PX = 800;
-  console.log('✅ Batch poster loading enabled');
+  tsLog('✅ Batch poster loading enabled');
 })();

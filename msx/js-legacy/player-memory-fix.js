@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  console.log('🧹 player-memory (safe): загрузка...');
+  tsLog('🧹 player-memory (safe): загрузка...');
   function freeVideoBuffer() {
     var v = document.getElementById('video-player');
     if (!v) return;
@@ -37,5 +37,5 @@
       freeVideoBuffer();
     }
   });
-  console.log('✅ player-memory (safe): готово (без клонирования <video>)');
+  tsLog('✅ player-memory (safe): готово (без клонирования <video>)');
 })();

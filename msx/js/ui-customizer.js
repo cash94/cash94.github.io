@@ -13,7 +13,7 @@
 (function () {
     'use strict';
 
-    console.log('🎨 Загрузка UI Customizer...');
+    tsLog('🎨 Загрузка UI Customizer...');
 
     // ==================== НАСТРОЙКИ ПО УМОЛЧАНИЮ ====================
 
@@ -865,7 +865,7 @@
         // посреди ряда и раскладка разъехалась бы (catalog.js: chunkAlignedToRows).
         try { if (typeof window.realignCatalogChunks === 'function') window.realignCatalogChunks(); } catch (e) { }
         syncHeroTrailers();
-        console.log('🎨 Настройки внешнего вида применены:', JSON.stringify(currentSettings));
+        tsLog('🎨 Настройки внешнего вида применены:', JSON.stringify(currentSettings));
     }
 
     /**
@@ -2013,7 +2013,7 @@
         injectPanelStyles();
         createCustomizerPanel();
         embedPanel();          // сама панель — прямо в разделе «Внешний вид»
-        console.log('✅ UI Customizer инициализирован');
+        tsLog('✅ UI Customizer инициализирован');
     }
 
     if (document.readyState === 'loading') {

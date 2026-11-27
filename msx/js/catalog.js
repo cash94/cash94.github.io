@@ -2347,7 +2347,7 @@ async function removeHistoryCard(card) {
         if (typeof showToast === 'function') showToast('Не удалось удалить из истории');
         return false;
     }
-    console.log('🗑️ Из истории: ' + entry.title + ' (' + entry.mediaType + ' ' + entry.tmdbId + ')');
+    tsLog('🗑️ Из истории: ' + entry.title + ' (' + entry.mediaType + ' ' + entry.tmdbId + ')');
 
     // Главная и ряды каталога собраны заранее и сами не обновятся — правим
     // оба места, фокус переносим только там, где стояла карточка
@@ -2465,7 +2465,7 @@ async function clearAllHistory() {
         removeHistoryRowItem(rItems[j].id, rItems[j].media_type === 'tv' ? 'tv' : 'movie', false);
     }
     if (catalogState.currentCatalog === 'history') showEmptyHistory();
-    console.log('🧹 История просмотра очищена');
+    tsLog('🧹 История просмотра очищена');
     return true;
 }
 
@@ -9699,7 +9699,7 @@ function preloadPosterCacheFromDB() {
                 catalogState.posterCache.set(keys[i], all[keys[i]]);
             }
         }
-        console.log('✅ PosterDB: загружено ' + keys.length + ' постеров в память');
+        tsLog('✅ PosterDB: загружено ' + keys.length + ' постеров в память');
     }).catch(function (e) {
         console.warn('PosterDB preload error:', e);
     });

@@ -27,7 +27,7 @@ var SpeedTest = function () {
   function _measureTorrServerToServer() {
     _measureTorrServerToServer = _asyncToGenerator(function* (torrServerUrl) {
       var url = '/api/speedtest/measure-torrserver?url=' + encodeURIComponent(torrServerUrl);
-      console.log('📡 Запрос серверного замера:', url);
+      tsLog('📡 Запрос серверного замера:', url);
       var authHeaders = getAuthHeaders();
       updateSpeedtestStatus('torrserver', '0%');
       var progressInterval = setInterval(function () {
@@ -121,10 +121,10 @@ var SpeedTest = function () {
         if (abortController) {
           abortController.abort();
         }
-        console.log('⏱️ Таймаут 20 секунд, получено ' + (receivedLength / (1024 * 1024)).toFixed(0) + ' MB');
+        tsLog('⏱️ Таймаут 20 секунд, получено ' + (receivedLength / (1024 * 1024)).toFixed(0) + ' MB');
       }, TIMEOUT_MS);
       try {
-        console.log('📡 Замер скорости:', url);
+        tsLog('📡 Замер скорости:', url);
         var response = yield fetch(url, {
           signal: abortController.signal,
           method: 'GET',
@@ -148,7 +148,7 @@ var SpeedTest = function () {
             updateSpeedtestStatus(statusType, Math.floor(progress) + '%');
           }
           if (receivedLength >= TEST_FILE_SIZE) {
-            console.log('✅ Получено 200 MB, останавливаемся');
+            tsLog('✅ Получено 200 MB, останавливаемся');
             break;
           }
         }
@@ -294,7 +294,7 @@ var SpeedTest = function () {
   function _runSpeedTest() {
     _runSpeedTest = _asyncToGenerator(function* (torrServerUrl) {
       if (isRunning) {
-        console.log('Тест уже выполняется');
+        tsLog('Тест уже выполняется');
         return false;
       }
       if (!torrServerUrl || torrServerUrl.trim() === '') {
@@ -340,7 +340,7 @@ var SpeedTest = function () {
           var directTime = performance.now() - startTotalTime;
           if (!(directResult.bytesReceived > 0)) throw new Error('Не удалось загрузить тестовый файл');
           showDirectResult(directResult, directTime);
-          console.log('SpeedTest (напрямую) завершен:', {
+          tsLog('SpeedTest (напрямую) завершен:', {
             torrServerToClient: directResult.speedMbps,
             bytes: directResult.bytesReceived,
             totalTime: directTime.toFixed(0) + 'ms'
@@ -356,7 +356,7 @@ var SpeedTest = function () {
         var clientResult = yield measureServerToClient();
         var totalTime = performance.now() - startTotalTime;
         showResults(torrResult, clientResult, totalTime);
-        console.log('SpeedTest завершен:', {
+        tsLog('SpeedTest завершен:', {
           torrServerToServer: torrResult.speedMbps,
           serverToClient: clientResult.speedMbps,
           totalTime: totalTime.toFixed(0) + 'ms'

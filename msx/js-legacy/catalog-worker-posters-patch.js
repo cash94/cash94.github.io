@@ -269,5 +269,5 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
       loadRowPoster = patchedLoadRowPoster;
     }
   } catch (e) {}
-  console.log('✅ Poster fetching patched through CatalogWorker');
+  tsLog('✅ Poster fetching patched through CatalogWorker');
 })();

@@ -112,7 +112,7 @@ var outCodec = 'flac',
 // Версия воркера — в «Диагностику» и «Об устройстве»: сервер TorrStream отдаёт
 // воркер из своего кэша зеркала (5 мин), а без зеркала — свою копию из
 // установки, и тогда страница новее воркера. Повышать при заметных правках
-var WORKER_REV = '1.0.68-pace';
+var WORKER_REV = '1.0.68-tags';
 var dec = null,
   enc = null,
   mux = null;
@@ -946,6 +946,11 @@ function _open() {
       wasmurl: base + '/' + (fast ? LIBAV_WASM_FAST : LIBAV_WASM_MVP)
     });
     log('libav.js ' + LibAV.VER + (fast ? '' : ' (совместимая сборка)') + ', загрузка ' + Math.round(performance.now() - tl) + ' мс');
+    // Журнал самого ffmpeg («[eac3 @ …] Could not update timestamps…» на
+    // каждом старте) — в консоль только при отладке (?debug=1 у страницы)
+    try {
+      yield libav.av_log_set_level(m.debug ? 32 /* AV_LOG_INFO */ : 8 /* AV_LOG_FATAL */);
+    } catch (e) {}
     libav.onblockread = onBlockRead;
     libav.onwrite = onWrite;
     size = yield fileSize();
@@ -973,13 +978,28 @@ function _open() {
         audioList.push(i);
         s.channels = libav.AVCodecParameters_channels ? yield libav.AVCodecParameters_channels(s.codecpar) : 0;
       }
-      list.push({
+      var type = s.codec_type === libav.AVMEDIA_TYPE_VIDEO ? 'video' : s.codec_type === libav.AVMEDIA_TYPE_AUDIO ? 'audio' : s.codec_type === libav.AVMEDIA_TYPE_SUBTITLE ? 'subtitle' : 'other';
+      var item = {
         index: i,
-        type: s.codec_type === libav.AVMEDIA_TYPE_VIDEO ? 'video' : s.codec_type === libav.AVMEDIA_TYPE_AUDIO ? 'audio' : s.codec_type === libav.AVMEDIA_TYPE_SUBTITLE ? 'subtitle' : 'other',
+        type: type,
         codec: s.name,
         channels: s.channels || 0,
         text: !!TEXT_SUBS[s.name]
-      });
+      };
+      // Язык и название дорожки из заголовка файла (теги MKV/MP4) — подписи в
+      // меню звука и субтитров без ffprobe CUB (он теперь запасной, см. player.js)
+      if (type === 'audio' || type === 'subtitle') {
+        var tags = null;
+        try {
+          tags = yield libav.ff_copyout_dict(yield libav.AVStream_metadata(s.ptr));
+        } catch (e) {}
+        if (tags) {
+          item.lang = tags.language || tags.LANGUAGE || '';
+          // handler_name у MP4 — обычно «SoundHandler», это не название
+          item.title = tags.title || tags.TITLE || (/handler$/i.test(tags.handler_name || '') ? '' : tags.handler_name || '');
+        }
+      }
+      list.push(item);
     }
     if (vIdx < 0) throw new Error('В файле нет видео');
     // ненужные потоки демуксер может не разбирать

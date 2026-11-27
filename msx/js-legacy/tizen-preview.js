@@ -30,7 +30,7 @@
   var PREVIEW_HOST = 'torrstream.online';
   function log(msg) {
     try {
-      console.log('📺 Smart Hub: ' + msg);
+      tsLog('📺 Smart Hub: ' + msg);
     } catch (e) {}
   }
   function serverUrl() {

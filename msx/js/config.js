@@ -1,4 +1,14 @@
 // Глобальные константы и утилиты
+
+// Отладочный вывод в консоль — только по ?debug=1 или localStorage tsDebug=true.
+// Что уже отлажено (запуск модулей, каталоги, кодеки, Dolby Vision, замеры
+// WASM…), по умолчанию консоль не засоряет; предупреждения и ошибки
+// (console.warn / console.error) — всегда
+var TS_DEBUG = (function () {
+  if (/[?&]debug=1/.test(String(window.location && window.location.search))) return true;
+  try { return localStorage.getItem('tsDebug') === 'true'; } catch (e) { return false; }
+})();
+function tsLog() { if (TS_DEBUG) console.log.apply(console, arguments); }
 // Адрес сервера TorrStream. Обычно страница открыта с него самого. В
 // приложении для Tizen страница лежит в пакете (file://): запускалка пишет в
 // неё HTML с сервера и задаёт window.TS_SERVER и <base href> на сервер — так
@@ -324,7 +334,7 @@ function loadClientConfig() {
       }
       if (data.skipApi) AppState.skipApiHost = String(data.skipApi);
       if (data.subsApi !== undefined) AppState.subsApiHost = String(data.subsApi || '');
-      console.log('🌐 Зеркала картинок: ' + AppState.imageMirrors.join(', ') + '; заставки: ' + AppState.skipApiHost +
+      tsLog('🌐 Зеркала картинок: ' + AppState.imageMirrors.join(', ') + '; заставки: ' + AppState.skipApiHost +
         '; субтитры: ' + (AppState.subsApiHost || 'напрямую'));
     })
     ['catch'](function () { });
@@ -348,7 +358,7 @@ function loadSkipApiBase() {
     .then(function (data) {
       if (!data || !data.ok) return;
       AppState.skipApiBase = SERVER_URL + '/api/skip';
-      console.log('🎬 Заставки через модуль сервера: ' + data.primary + ' → ' + data.fallback);
+      tsLog('🎬 Заставки через модуль сервера: ' + data.primary + ' → ' + data.fallback);
     })
     ['catch'](function () { });
 }
@@ -387,7 +397,7 @@ function loadHlsOffStatus() {
     .then(function (data) {
       if (!data || !data.hlsDisabled) return;
       applyServerHlsOff();
-      console.log('⛔ Сервер отключил воспроизведение через себя (HLS) — видео напрямую с TorrServer');
+      tsLog('⛔ Сервер отключил воспроизведение через себя (HLS) — видео напрямую с TorrServer');
     })
     ['catch'](function () { });
 }
@@ -802,7 +812,7 @@ if (AppState.platform === 'tizen') {
     // (styles.css), а поток идёт без hls.js (catalog.js: trailerUsesHlsJs)
     AppState.tizenLegacy = parseFloat(tz.version) < 7;
     if (AppState.tizenLegacy) document.documentElement.classList.add('tizen-legacy');
-    console.log('📺 Tizen ' + (tz.version || '?') + (tz.model ? ', ' + tz.model : '') + (AppState.tizenApp ? ' — приложение, прямой режим плеера' : ''));
+    tsLog('📺 Tizen ' + (tz.version || '?') + (tz.model ? ', ' + tz.model : '') + (AppState.tizenApp ? ' — приложение, прямой режим плеера' : ''));
   })();
 }
 (function () {
@@ -814,7 +824,7 @@ if (AppState.platform === 'tizen') {
   // включает app.js (setupCheckboxes: directPlay)
   AppState.vidaaDirectPlay = vidaa.version >= VIDAA_DIRECT_PLAY_MIN;
   if (vidaa.os || vidaa.firmware || AppState.vidaaApp) {
-    console.log('📺 VIDAA ' + (vidaa.os || '?') + ', прошивка ' + (vidaa.firmware || '?') +
+    tsLog('📺 VIDAA ' + (vidaa.os || '?') + ', прошивка ' + (vidaa.firmware || '?') +
       (AppState.vidaaApp ? ' — приложение' : '') +
       (AppState.vidaaDirectPlay ? ' — прямой режим плеера' : ''));
   }
@@ -830,7 +840,7 @@ if (window.AndroidJS) document.documentElement.classList.add('android-app');
 if (AppState.applePlatform === 'apple_tv' || AppState.applePlatform === 'apple') {
   document.documentElement.classList.add('apple-device');
 }
-console.log('📱 Платформа: ' + AppState.platform + (AppState.applePlatform ? ' (' + AppState.applePlatform + ')' : ''));
+tsLog('📱 Платформа: ' + AppState.platform + (AppState.applePlatform ? ' (' + AppState.applePlatform + ')' : ''));
 
 // Сезонные подборки: window.SEASONS и isSeasonActive задаёт index.html в
 // <head> — его класс season-<имя> нужен заглушке загрузчика на первом кадре.

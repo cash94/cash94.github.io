@@ -284,11 +284,11 @@ function setupDonateButton() {
     donateTab.addEventListener('click', function (e) {
         e.preventDefault();
         e.stopPropagation();
-        console.log('❤️ Открытие окна доната');
+        tsLog('❤️ Открытие окна доната');
         showDonateOverlay();
     });
 
-    console.log('✅ Кнопка доната настроена');
+    tsLog('✅ Кнопка доната настроена');
 }
 
 // Стили окна. Размеры макета — пиксели кадра 1920×1080; u() переводит их в vh,
@@ -403,7 +403,7 @@ function addDonateStyles() {
 
 // Инициализация модуля
 function initDonate() {
-    console.log('❤️ Модуль доната инициализирован');
+    tsLog('❤️ Модуль доната инициализирован');
     addDonateStyles();
     setupDonateButton();
     registerDonateStrategy();

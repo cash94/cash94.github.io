@@ -4169,7 +4169,7 @@
         // подборки перечитываем. Ряд и карточку фокуса (lastRowKey) не
         // сбрасываем: restoreHomeFocus вернёт туда же, где стояли
         if (homeState.built && !homeState.loading && homeRowsStale()) {
-            console.log('🏠 Подборки старше суток — пересобираем главную');
+            tsLog('🏠 Подборки старше суток — пересобираем главную');
             leaveCategoryHero();
             suspendHero();
             homeState.built = false;
@@ -5125,7 +5125,7 @@
         // Главная открывается сразу, не дожидаясь проверки TorrServer
         if (window.Nav) Nav.reset('home');
         showHome({ initial: true });
-        console.log('🏠 Главная страница инициализирована');
+        tsLog('🏠 Главная страница инициализирована');
     }
 
     window.HomeScreen = {

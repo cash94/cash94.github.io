@@ -133,14 +133,14 @@ async function searchPoster(title, year, mediaType, retry) {
 
   // Проверяем кэш
   if (posterCache.has(cacheKey)) {
-    console.log('📦 Используем кэшированный постер для:', cleanTitleStr);
+    tsLog('📦 Используем кэшированный постер для:', cleanTitleStr);
     return posterCache.get(cacheKey);
   }
 
   // Определяем тип, если не передан
   var type = mediaType || detectMediaType(title);
 
-  console.log('🔍 Поиск постера для: "' + cleanTitleStr + '" (' + (year ? 'год: ' + year : 'год не указан') + ', тип: ' + type + ')');
+  tsLog('🔍 Поиск постера для: "' + cleanTitleStr + '" (' + (year ? 'год: ' + year : 'год не указан') + ', тип: ' + type + ')');
 
   try {
     // Формируем поисковый запрос к своему прокси
@@ -149,7 +149,7 @@ async function searchPoster(title, year, mediaType, retry) {
       url += '&year=' + year;
     }
 
-    console.log('📡 Запрос к своему прокси:', url);
+    tsLog('📡 Запрос к своему прокси:', url);
 
     var response = await fetch(url);
     if (!response.ok) {
@@ -159,19 +159,19 @@ async function searchPoster(title, year, mediaType, retry) {
     var data = await response.json();
 
     if (!data.results || data.results.length === 0) {
-      console.log('❌ Ничего не найдено в TMDB');
+      tsLog('❌ Ничего не найдено в TMDB');
 
       // Пробуем поиск с другим типом, но только если retry = true
       if (retry) {
         if (type === 'tv') {
-          console.log('🔄 Пробуем поиск как фильм...');
+          tsLog('🔄 Пробуем поиск как фильм...');
           return await searchPoster(title, year, 'movie', false); // false - запрещаем дальнейшие попытки
         } else if (type === 'movie') {
-          console.log('🔄 Пробуем поиск как сериал...');
+          tsLog('🔄 Пробуем поиск как сериал...');
           return await searchPoster(title, year, 'tv', false); // false - запрещаем дальнейшие попытки
         }
       } else {
-        console.log('⏹️ Достигнут лимит попыток, прекращаем поиск');
+        tsLog('⏹️ Достигнут лимит попыток, прекращаем поиск');
       }
 
       // Сохраняем в кэш null, чтобы не пытаться снова
@@ -191,7 +191,7 @@ async function searchPoster(title, year, mediaType, retry) {
       }
 
       if (resultYear && Math.abs(resultYear - year) > 1) {
-        console.log('⚠️ Год не совпадает: ожидался ' + year + ', получен ' + resultYear);
+        tsLog('⚠️ Год не совпадает: ожидался ' + year + ', получен ' + resultYear);
 
         // Пробуем найти другой результат с подходящим годом
         var betterMatch = null;
@@ -210,7 +210,7 @@ async function searchPoster(title, year, mediaType, retry) {
         }
 
         if (betterMatch) {
-          console.log('✅ Найдено лучшее совпадение по году');
+          tsLog('✅ Найдено лучшее совпадение по году');
           firstResult = betterMatch;
         }
       }
@@ -219,15 +219,15 @@ async function searchPoster(title, year, mediaType, retry) {
     // Получаем путь к постеру
     var posterPath = firstResult.poster_path;
     if (!posterPath) {
-      console.log('❌ Нет постера в результате');
+      tsLog('❌ Нет постера в результате');
 
       // Пробуем поиск с другим типом, но только если retry = true
       if (retry) {
         if (type === 'tv') {
-          console.log('🔄 Пробуем поиск как фильм (нет постера)...');
+          tsLog('🔄 Пробуем поиск как фильм (нет постера)...');
           return await searchPoster(title, year, 'movie', false);
         } else if (type === 'movie') {
-          console.log('🔄 Пробуем поиск как сериал (нет постера)...');
+          tsLog('🔄 Пробуем поиск как сериал (нет постера)...');
           return await searchPoster(title, year, 'tv', false);
         }
       }
@@ -240,7 +240,7 @@ async function searchPoster(title, year, mediaType, retry) {
     var posterUrl = window.getTmdbImageUrl
       ? window.getTmdbImageUrl(posterPath, 'w342')
       : tmdbImageUrl(posterPath);
-    console.log('✅ Найден прямой URL постера:', posterUrl);
+    tsLog('✅ Найден прямой URL постера:', posterUrl);
 
     // Сохраняем в кэш
     posterCache.set(cacheKey, posterUrl);
@@ -271,11 +271,11 @@ async function findPosterFromSearchResult(result) {
   // Определяем тип из выбранного элемента
   var mediaType = (result.types && result.types.indexOf('tv') !== -1) ? 'tv' : 'movie';
 
-  console.log('Поиск постера для выбранного:');
-  console.log('   Название:', displayTitle);
-  console.log('   Год из результата:', year);
-  console.log('   Тип:', mediaType);
-  console.log('   Полный результат:', result);
+  tsLog('Поиск постера для выбранного:');
+  tsLog('   Название:', displayTitle);
+  tsLog('   Год из результата:', year);
+  tsLog('   Тип:', mediaType);
+  tsLog('   Полный результат:', result);
 
   // Начинаем с переданного типа, разрешаем одну повторную попытку
   return await searchPoster(displayTitle, year, mediaType, true);
