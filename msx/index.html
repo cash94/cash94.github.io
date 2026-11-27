@@ -134,7 +134,7 @@
       "js-legacy/legacy-polyfills.js": "e0e9de38",
       "js/account.js": "65c22e09",
       "js/animations.js": "f5352ec9",
-      "js/app.js": "16147acf",
+      "js/app.js": "6e57834c",
       "js/best-torrents-pick.js": "cd63487a",
       "js/best-torrents.js": "b0a98d04",
       "js/catalog-idb-patch.js": "72557f9c",
@@ -175,8 +175,8 @@
       "js/torrents.js": "0497f869",
       "js/torrserverstats.js": "2f006d35",
       "js/ui-customizer.js": "614e6e55",
-      "js/wasm-audio-worker.js": "9edcd06d",
-      "js/wasm-playback.js": "580d70fc"
+      "js/wasm-audio-worker.js": "5c1b788f",
+      "js/wasm-playback.js": "29db4265"
       // ASSET_V:end
     };
     function assetV(p) {
@@ -872,6 +872,11 @@
                 <div class="checkbox-container" hidden>
                   <input type="checkbox" id="dts-to-ac3">
                   <span>Преобразовать DTS в Dolby Digital, сохраняя количество каналов<small class="setting-desc">DTS и TrueHD, которые телевизор не играет: 5.1 останется 5.1 и пойдёт на саундбар. Выключите — звук будет сведён в AAC 2.0</small></span>
+                </div>
+                <!-- Там же, где WASM — app.js: setupWasmParallelSetting -->
+                <div class="checkbox-container" hidden>
+                  <input type="checkbox" id="wasm-parallel">
+                  <span>Читать файл двумя запросами (проба)<small class="setting-desc">Для обработки в браузере (WASM): следующий кусок файла качается одновременно с текущим. Включите, если видео дёргается, а в диагностике «узкое место — сеть / TorrServer»</small></span>
                 </div>
                 <div class="checkbox-container">
                   <input type="checkbox" id="multi-channel-audio">

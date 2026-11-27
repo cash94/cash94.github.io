@@ -358,12 +358,21 @@ var WasmPlayback = function () {
       native: st.nativeOff ? {} : nativeAudio(),
       encode: st.encode,
       split: st.split,
+      parallel: parallelWanted(),
       auth: torrServerAuth(),
       dv: !!AppState.dvPreferred,
       size: st.opts.size > 0 ? st.opts.size : 0,
       maxAhead: managed() ? 40e6 : 0,
       libavMux: location.search.indexOf('wasm=libavmux') !== -1
     });
+  }
+  function parallelWanted() {
+    if (location.search.indexOf('wasm=par2') !== -1) return true;
+    try {
+      return localStorage.getItem('wasmParallel') === 'true';
+    } catch (e) {
+      return false;
+    }
   }
   function splitWanted(st) {
     if (location.search.indexOf('wasm=split') !== -1) return true;
@@ -826,7 +835,8 @@ var WasmPlayback = function () {
       n: s.mse.n
     };
     var parts = [];
-    parts.push((w.netBytes < 65536 ? 'сеть простаивает' : 'сеть ' + (net !== null ? net.toFixed(1) + ' Мбит/с' : '—')) + (need ? ' (файлу нужно ' + need.toFixed(1) + ')' : '') + ', разбор ждал данных ' + pct(active > 0 ? w.waitMs / active : 0));
+    var netName = 'сеть' + (s.info && s.info.parallel ? ' в 2 запроса' : '');
+    parts.push((w.netBytes < 65536 ? netName + ' простаивает' : netName + ' ' + (net !== null ? net.toFixed(1) + ' Мбит/с' : '—')) + (need ? ' (файлу нужно ' + need.toFixed(1) + ')' : '') + ', разбор ждал данных ' + pct(active > 0 ? w.waitMs / active : 0));
     if (cpu > 50 && w.mediaSec > 0) {
       parts.push('обработка ×' + (w.mediaSec / (cpu / 1000)).toFixed(1) + ' (разбор ' + pct(w.readMs / cpu) + ', декодер звука ' + pct(w.decMs / cpu) + ', кодер ' + (s.info && s.info.aCodec === 'ac-3' ? 'AC3' : 'AAC') + ' ' + pct(w.encMs / cpu) + ', MP4 ' + pct(w.muxMs / cpu) + ')');
     }

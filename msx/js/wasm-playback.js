@@ -374,6 +374,8 @@ var WasmPlayback = (function () {
       encode: st.encode,
       // видео и звук отдельными потоками — в два SourceBuffer (см. splitWanted)
       split: st.split,
+      // настройка «Читать файл двумя запросами» (проба): следующий кусок внахлёст
+      parallel: parallelWanted(),
       auth: torrServerAuth(), dv: !!AppState.dvPreferred,
       // размер файла из списка раздачи: старый Chrome не читает Content-Range
       size: st.opts.size > 0 ? st.opts.size : 0,
@@ -391,6 +393,12 @@ var WasmPlayback = (function () {
    * Только Tizen: на других ТВ два буфера с AC3 не проверены.
    * ?wasm=split — отладка на ПК
    */
+  /** «Читать файл двумя запросами» (app.js: setupWasmParallelSetting); ?wasm=par2 — отладка */
+  function parallelWanted() {
+    if (location.search.indexOf('wasm=par2') !== -1) return true;
+    try { return localStorage.getItem('wasmParallel') === 'true'; } catch (e) { return false; }
+  }
+
   function splitWanted(st) {
     if (location.search.indexOf('wasm=split') !== -1) return true;
     if (st.forceSplit) return true;
@@ -788,7 +796,9 @@ var WasmPlayback = (function () {
     var mseN = s.mse.n - s.msePrev.n, mseMs = s.mse.ms - s.msePrev.ms;
     s.msePrev = { ms: s.mse.ms, n: s.mse.n };
     var parts = [];
-    parts.push((w.netBytes < 65536 ? 'сеть простаивает' : 'сеть ' + (net !== null ? net.toFixed(1) + ' Мбит/с' : '—')) + (need ? ' (файлу нужно ' + need.toFixed(1) + ')' : '') +
+    // «2 запроса» — настройка «Читать файл двумя запросами» (сравнить «сеть» с ней и без)
+    var netName = 'сеть' + (s.info && s.info.parallel ? ' в 2 запроса' : '');
+    parts.push((w.netBytes < 65536 ? netName + ' простаивает' : netName + ' ' + (net !== null ? net.toFixed(1) + ' Мбит/с' : '—')) + (need ? ' (файлу нужно ' + need.toFixed(1) + ')' : '') +
       ', разбор ждал данных ' + pct(active > 0 ? w.waitMs / active : 0));
     if (cpu > 50 && w.mediaSec > 0) {
       parts.push('обработка ×' + (w.mediaSec / (cpu / 1000)).toFixed(1) + ' (разбор ' + pct(w.readMs / cpu) +

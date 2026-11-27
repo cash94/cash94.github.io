@@ -2358,6 +2358,26 @@ function setupDtsAc3Setting() {
   });
 }
 
+/**
+ * «Читать файл двумя запросами» (проба) — WASM: следующий кусок файла качается
+ * внахлёст с текущим, двумя соединениями к TorrServer. Видна там же, где WASM
+ * (браузер, VIDAA ниже 9.5, Tizen ради DTS/TrueHD). Выключена по умолчанию;
+ * читает WasmPlayback (parallelWanted) при запуске файла
+ */
+function setupWasmParallelSetting() {
+  var box = getEl('wasm-parallel');
+  if (!box || !window.WasmPlayback) return;
+  var can = (WasmPlayback.available && WasmPlayback.available()) || (WasmPlayback.ac3Available && WasmPlayback.ac3Available());
+  if (!can) return;
+  var row = box.closest('.checkbox-container');
+  if (row) row.hidden = false;
+  try { box.checked = localStorage.getItem('wasmParallel') === 'true'; } catch (e) { }
+  box.addEventListener('change', function (e) {
+    try { localStorage.setItem('wasmParallel', e.target.checked ? 'true' : 'false'); } catch (x) { }
+    console.log('🧩 WASM: чтение файла ' + (e.target.checked ? 'двумя запросами внахлёст' : 'одним запросом'));
+  });
+}
+
 function setupCheckboxes() {
   // 1. Внешний плеер
   setupExternalPlayerCheckbox();
@@ -2591,6 +2611,7 @@ function setupCheckboxes() {
   // он вообще возможен
   setupWasmSetting();
   setupDtsAc3Setting();
+  setupWasmParallelSetting();
 
   // 6. Включить или отключить полностью транскодинг
   var transcodingCheckboxOnOff = getEl('transcoding-on-off');

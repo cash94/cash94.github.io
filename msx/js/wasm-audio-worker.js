@@ -79,7 +79,7 @@ var outCodec = 'flac',
 // Версия воркера — в «Диагностику» и «Об устройстве»: сервер TorrStream отдаёт
 // воркер из своего кэша зеркала (5 мин), а без зеркала — свою копию из
 // установки, и тогда страница новее воркера. Повышать при заметных правках
-var WORKER_REV = '1.0.68-ac3-split';
+var WORKER_REV = '1.0.68-par';
 var dec = null,
   enc = null,
   mux = null;
@@ -328,6 +328,38 @@ var chunks = [];
 var lastEnd = -1,
   lastLen = 0; // последний запрошенный кусок — для разгона
 function noop() {}
+
+// Чтение в два запроса (настройка «Читать файл двумя запросами», проба).
+// Обычно следующий кусок просим, когда текущий догружен целиком, — одно
+// соединение, и на Tizen 5.0 оно давало ~34 Мбит/с при нужных 24: разбор
+// 40 % времени ждал данных. Здесь следующий кусок начинается, когда у
+// предыдущего пришла половина, — два соединения внахлёст, впереди разбора
+// не больше PAR_AHEAD кусков. Только после разгона (кусок уже chunkMax): на
+// холодном старте с середины раздачи запросы делили скорость, и нужный
+// приходил вдвое позже
+var parallel = false;
+var PAR_AHEAD = 2;
+var readChunk = null; // кусок, который сейчас читает разбор
+
+function ensureAhead() {
+  var c = readChunk;
+  if (!parallel || !c || c.aborted) return;
+  var busy = chunks.filter(function (x) {
+    return !x.done && !x.failed && !x.aborted;
+  }).length;
+  if (busy >= 2) return; // не больше двух соединений
+  for (var k = 0; k < PAR_AHEAD; k++) {
+    if (c.end + 1 >= size) return;
+    var n = findChunk(c.end + 1, false);
+    if (!n) {
+      if (c.buf.length < chunkMax) return; // ещё разгон
+      if (!c.done && c.got < c.buf.length / 2) return; // у предыдущего нет половины
+      newChunk(c.end + 1, true);
+      return;
+    }
+    c = n;
+  }
+}
 function findChunk(pos, touch) {
   for (var i = chunks.length - 1; i >= 0; i--) {
     var c = chunks[i];
@@ -374,10 +406,10 @@ function trimCache() {
   for (i = 0; i < chunks.length; i++) total += chunks[i].buf.length;
   for (i = 0; total > cacheBytes && i < chunks.length - 2;) {
     var c = chunks[i];
-    if (!c.done) {
+    if (!c.done || readChunk && c.start > readChunk.end) {
       i++;
       continue;
-    }
+    } // идёт или ещё впереди разбора
     total -= c.buf.length;
     chunks.splice(i, 1);
   }
@@ -423,6 +455,10 @@ function put(c, v) {
   stats.bytes += v.length;
   perf.netBytes += v.length;
   notify(c);
+  if (parallel && !c.half && c.got >= c.buf.length / 2) {
+    c.half = true;
+    ensureAhead();
+  }
   return c.got >= c.buf.length;
 }
 function readInto(r, c, onProgress) {
@@ -497,6 +533,7 @@ function loadChunk(c) {
         attempt: attempt
       });
       notify(c);
+      ensureAhead();
     }, function (e) {
       clearTimeout(timer);
       endNet();
@@ -542,6 +579,7 @@ function abortLoads() {
     return true;
   });
   lastEnd = -1;
+  readChunk = null;
 }
 
 // Чтение — запросами с концом (Range a-b), а не одним длинным соединением на
@@ -549,9 +587,13 @@ function abortLoads() {
 // (проверено пользователем, 2026-11-26)
 function onBlockRead(name, pos, len) {
   var c = findChunk(pos, true) || newChunk(pos, false);
+  if (parallel) {
+    readChunk = c;
+    ensureAhead();
+  }
   // Следующий кусок — заранее, но когда этот догружен: на холодном старте с
   // середины раздачи они делили скорость, и нужный приходил вдвое позже
-  if (!c.next && c.end + 1 < size) {
+  else if (!c.next && c.end + 1 < size) {
     c.next = true;
     waitChunk(c, c.buf.length).then(function () {
       if (!c.aborted && !findChunk(c.end + 1, false)) newChunk(c.end + 1, true);
@@ -848,6 +890,7 @@ function _open() {
     dvPreferred = !!m.dv;
     jsMuxOff = !!m.libavMux;
     splitOut = !!m.split;
+    parallel = !!m.parallel;
     nativeAudio = m.native || {};
     // Сборка libav.js лежит не рядом с воркером (он идёт через маршрут сервера
     // или Blob): адрес папки wasm-audio/ присылает страница — зеркало или
@@ -950,6 +993,7 @@ function _open() {
       type: 'info',
       rev: WORKER_REV,
       split: splitOut,
+      parallel: parallel,
       duration: duration,
       size: size,
       streams: list,
