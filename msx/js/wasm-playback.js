@@ -182,7 +182,9 @@ var WasmPlayback = (function () {
       mvp: location.search.indexOf('wasm=mvp') !== -1, native: st.nativeOff ? {} : nativeAudio(),
       auth: torrServerAuth(), dv: !!AppState.dvPreferred,
       // iPhone: памяти под MediaSource меньше — запас впереди скромнее
-      maxAhead: managed() ? 40e6 : 0 });
+      maxAhead: managed() ? 40e6 : 0,
+      // ?wasm=libavmux — отладка: фрагменты fMP4 собирает libav, как до 1.0.68
+      libavMux: location.search.indexOf('wasm=libavmux') !== -1 });
   }
 
   /** Вход TorrServer (Basic) из настроек — воркер шлёт его сам */

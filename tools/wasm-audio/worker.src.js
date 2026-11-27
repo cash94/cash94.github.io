@@ -507,6 +507,7 @@ async function open(m) {
   url = m.url; outCodec = 'aac';
   net = { auth: m.auth || '' };
   dvPreferred = !!m.dv;
+  jsMuxOff = !!m.libavMux;
   nativeAudio = m.native || {};
   // Сборка libav.js лежит не рядом с воркером (он идёт через маршрут сервера
   // или Blob): адрес папки wasm-audio/ присылает страница — зеркало или
@@ -887,6 +888,18 @@ function completeBoxes() {
   return off;
 }
 
+/** Типы целых боксов верхнего уровня, что уже лежат в выходе libav */
+function topBoxes() {
+  var b = out.buf, off = 0, types = [];
+  while (off + 8 <= out.len) {
+    var size = ((b[off] << 24) >>> 0) + (b[off + 1] << 16) + (b[off + 2] << 8) + b[off + 3];
+    if (size < 8 || off + size > out.len) break;
+    types.push(String.fromCharCode(b[off + 4], b[off + 5], b[off + 6], b[off + 7]));
+    off += size;
+  }
+  return types;
+}
+
 function resetOut() { out = { base: 0, buf: new Uint8Array(1 << 20), len: 0 }; }
 
 async function openMuxer(g, strictFallback) {
@@ -945,26 +958,139 @@ async function openMuxer(g, strictFallback) {
   // метки дальше переводим сами — в time_base, который выбрал мультиплексор
   mux.vTbOut = [await libav.AVStream_time_base_num(await libav.AVFormatContext_streams_a(oc, 0)), await libav.AVStream_time_base_den(await libav.AVFormatContext_streams_a(oc, 0))];
   if (cfg.length > 1) mux.aTbOut = [await libav.AVStream_time_base_num(await libav.AVFormatContext_streams_a(oc, 1)), await libav.AVStream_time_base_den(await libav.AVFormatContext_streams_a(oc, 1))];
-  flushOut(g, 0);   // init-сегмент (ftyp+moov)
+  // moov после avformat_write_header ещё в буфере AVIO — вытолкнуть
+  if (!delay && !jsMuxOff) { try { await libav.avio_flush(pb); } catch (e) { } }
+  var hasMoov = topBoxes().indexOf('moov') >= 0;
+  var initBytes = flushOut(g, 0);   // init-сегмент (ftyp+moov)
+  // Дальше фрагменты собираем сами (jsWrite), если заголовок вышел целиком.
+  // AC3/E-AC3 как есть (delay_moov): moov ещё не записан — остаётся libav
+  if (!delay && !jsMuxOff && hasMoov && initBytes > 0 && out.len === 0) {
+    var tb = { v: mux.vTbOut, a: mux.aTbOut };
+    await closeMuxer();
+    mux = { js: true, gen: g, vTbOut: tb.v, aTbOut: tb.a, seq: 0,
+      tracks: [{ held: null, lastDur: 0 }, tb.a ? { held: null, lastDur: 0 } : null] };
+  }
 }
 
 async function closeMuxer() {
   if (!mux) return;
   var m = mux; mux = null;
+  if (m.js) return;
   try { await libav.ff_free_muxer(m.oc, m.pb); } catch (e) { }
   try { await libav.av_packet_free_js(m.pkt); } catch (e) { }
   try { await libav.unlink(m.name); } catch (e) { }
   resetOut();
 }
 
+/** Отдать странице готовые боксы из выхода libav; сколько байт ушло */
 function flushOut(g, t) {
   var n = completeBoxes();
-  if (!n) return;
+  if (!n) return 0;
   var all = out.buf.slice(0, n);
   out.buf.copyWithin(0, n, out.len);
   out.len -= n;
   out.base += n;
   postMessage({ type: 'data', gen: g, bytes: all, t: t }, [all.buffer]);
+  return n;
+}
+
+// ---------- свой сборщик фрагментов fMP4 ----------
+// Мультиплексор libav на каждом пакете: копия данных из JS обратно в WASM,
+// копия в буфер фрагмента, копия фрагмента из WASM наружу и ещё срез — на
+// Tizen 5.0 (Chromium 63, совместимая сборка) это было 55 % работы воркера
+// («MP4» в диагностике), и 4K не успевал. Заголовок (ftyp+moov) по-прежнему
+// пишет libav, а фрагменты moof+mdat собираем здесь: данные пакета копируются
+// один раз — сразу в выходной фрагмент. Метки — как у libav (frag_discont,
+// default_base_moof, без editlist): tfdt = DTS первого сэмпла (+OFFSET).
+// ?wasm=libavmux — отладка: фрагменты снова собирает libav
+var jsMuxOff = false;
+var FLAG_SYNC = 0x02000000;          // sample_depends_on = 2 (ни от кого)
+var FLAG_NON_SYNC = 0x01010000;      // depends_on = 1, is_non_sync_sample
+
+/** Пакет → сэмпл в шкале дорожки init-сегмента (с OFFSET) */
+function sampleOf(p, from, to) {
+  var k = (from[0] * to[1]) / (from[1] * to[0]);
+  var off = Math.round(OFFSET * to[1] / to[0]);
+  var pts = ts(p, 'pts'), dts = ts(p, 'dts');
+  if (pts === null) pts = dts;
+  if (dts === null) dts = pts;
+  if (dts === null) dts = pts = 0;
+  var d = Math.round(dts * k);
+  return { dts: d + off, cto: Math.round(pts * k) - d, data: p.data, key: !!(p.flags & 1), dur: 0 };
+}
+
+/**
+ * Сэмплы дорожки, готовые к записи: длительность — до DTS следующего, поэтому
+ * последний придерживаем до следующего захода (final — отдать и его)
+ */
+function jsTake(tr, list, final) {
+  var all = tr.held ? [tr.held].concat(list) : list;
+  tr.held = null;
+  if (!all.length) return [];
+  if (!final) tr.held = all[all.length - 1];
+  var ready = final ? all : all.slice(0, -1);
+  for (var i = 0; i < ready.length; i++) {
+    var d = i + 1 < all.length ? all[i + 1].dts - ready[i].dts : tr.lastDur;
+    if (!(d > 0)) d = tr.lastDur > 0 ? tr.lastDur : 1;
+    ready[i].dur = d;
+    tr.lastDur = d;
+  }
+  return ready;
+}
+
+/** moof (mfhd + traf на дорожку: tfhd, tfdt v1, trun v1) + mdat */
+function jsFragment(trafs) {
+  var moofSize = 8 + 16, payload = 0;
+  trafs.forEach(function (t) {
+    t.size = 8 + 16 + 20 + 20 + 16 * t.samples.length;
+    t.bytes = 0;
+    t.samples.forEach(function (s) { t.bytes += s.data.length; });
+    moofSize += t.size;
+    payload += t.bytes;
+  });
+  var buf = new Uint8Array(moofSize + 8 + payload), dv = new DataView(buf.buffer), o = 0;
+  var box = function (size, type) {
+    dv.setUint32(o, size);
+    for (var c = 0; c < 4; c++) buf[o + 4 + c] = type.charCodeAt(c);
+    o += 8;
+  };
+  box(moofSize, 'moof');
+  box(16, 'mfhd'); dv.setUint32(o, 0); dv.setUint32(o + 4, ++mux.seq); o += 8;
+  var dataOff = moofSize + 8;
+  trafs.forEach(function (t) {
+    box(t.size, 'traf');
+    box(16, 'tfhd'); dv.setUint32(o, 0x020000); dv.setUint32(o + 4, t.id); o += 8;   // default-base-is-moof
+    var base = t.samples[0].dts;
+    box(20, 'tfdt'); dv.setUint32(o, 0x01000000); dv.setUint32(o + 4, Math.floor(base / 4294967296)); dv.setUint32(o + 8, base % 4294967296); o += 12;
+    // trun v1: data-offset, duration, size, flags, composition offset (со знаком)
+    box(20 + 16 * t.samples.length, 'trun'); dv.setUint32(o, 0x01000F01); dv.setUint32(o + 4, t.samples.length); dv.setInt32(o + 8, dataOff); o += 12;
+    t.samples.forEach(function (s) {
+      dv.setUint32(o, s.dur); dv.setUint32(o + 4, s.data.length);
+      dv.setUint32(o + 8, !t.video || s.key ? FLAG_SYNC : FLAG_NON_SYNC); dv.setInt32(o + 12, s.cto);
+      o += 16;
+    });
+    dataOff += t.bytes;
+  });
+  box(8 + payload, 'mdat');
+  trafs.forEach(function (t) {
+    t.samples.forEach(function (s) { buf.set(s.data, o); o += s.data.length; });
+  });
+  return buf;
+}
+
+/** Пакеты захода → фрагмент странице (final — в конце файла, без придержанных) */
+function jsWrite(vOut, aOut, final) {
+  var trafs = [];
+  var vs = jsTake(mux.tracks[0], vOut.map(function (p) { return sampleOf(p, vTb, mux.vTbOut); }), final);
+  if (vs.length) trafs.push({ id: 1, video: true, samples: vs });
+  if (mux.tracks[1]) {
+    var from = copyAudio ? aTb : [1, enc ? enc.sr : 48000];
+    var as = jsTake(mux.tracks[1], aOut.map(function (p) { return sampleOf(p, from, mux.aTbOut); }), final);
+    if (as.length) trafs.push({ id: 2, samples: as });
+  }
+  if (!trafs.length) return;
+  var bytes = jsFragment(trafs);
+  postMessage({ type: 'data', gen: gen, bytes: bytes, t: outTime }, [bytes.buffer]);
 }
 
 // ---------- главный цикл ----------
@@ -1059,11 +1185,11 @@ async function run() {
     vOut.forEach(function (p) {
       var pts = ts(p, 'pts');
       if (pts !== null) lastV = Math.max(lastV, pts * vTb[0] / vTb[1]);
-      packets.push(rescale(p, vTb, mux.vTbOut, 0));
+      if (!mux.js) packets.push(rescale(p, vTb, mux.vTbOut, 0));
     });
     // «Разгон» AAC (1024 сэмпла) кодер сам отражает в метках (первый пакет
     // с pts −1024) — сдвигать не нужно, замер совпадает с родным AAC
-    if (mux.aTbOut) aOut.forEach(function (p) {
+    if (mux.aTbOut && !mux.js) aOut.forEach(function (p) {
       packets.push(rescale(p, copyAudio ? aTb : [1, enc.sr], mux.aTbOut, 1));
     });
     if (debugBatches > 0) {
@@ -1078,7 +1204,8 @@ async function run() {
     // секунды фильма, собранные этим заходом (без скачков перемотки)
     if (lastV > outTime && lastV - outTime < 30) perf.mediaSec += lastV - outTime;
     outTime = lastV;
-    flushOut(gen, outTime);
+    if (mux.js) jsWrite(vOut, aOut, res === libav.AVERROR_EOF);
+    else flushOut(gen, outTime);
     perf.muxMs += performance.now() - tm;
     reportPerf();
 
@@ -1089,8 +1216,11 @@ async function run() {
 
     if (res === libav.AVERROR_EOF) {
       // дописать хвост: последний фрагмент мультиплексор отдаёт на трейлере
-      await libav.av_write_trailer(mux.oc).catch(function () { });
-      flushOut(gen, outTime);
+      // (свой сборщик отдал всё в jsWrite с final)
+      if (!mux.js) {
+        await libav.av_write_trailer(mux.oc).catch(function () { });
+        flushOut(gen, outTime);
+      }
       eof = true;
       postMessage({ type: 'eof', gen: gen });
     } else if (res < 0 && res !== -libav.EAGAIN && res !== -11) {

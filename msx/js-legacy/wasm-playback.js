@@ -164,7 +164,8 @@ var WasmPlayback = function () {
       native: st.nativeOff ? {} : nativeAudio(),
       auth: torrServerAuth(),
       dv: !!AppState.dvPreferred,
-      maxAhead: managed() ? 40e6 : 0
+      maxAhead: managed() ? 40e6 : 0,
+      libavMux: location.search.indexOf('wasm=libavmux') !== -1
     });
   }
   function torrServerAuth() {
