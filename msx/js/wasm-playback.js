@@ -63,15 +63,30 @@ var WasmPlayback = (function () {
    *    внешний плеер.
    */
   function available(opts) {
-    if (window.AndroidJS) return false;
-    if (!(typeof WebAssembly === 'object' && typeof Worker === 'function' && mediaSourceCtor())) return false;
+    return !unavailableWhy(opts);
+  }
+
+  /** Почему WASM-путь на этом устройстве невозможен ('' — возможен) */
+  function unavailableWhy(opts) {
+    if (window.AndroidJS) return 'приложение Android — файл играет свой плеер';
+    if (typeof WebAssembly !== 'object') return 'браузер без WebAssembly';
+    if (typeof Worker !== 'function') return 'браузер без Web Worker';
+    if (!mediaSourceCtor()) return 'браузер без MediaSource (MSE)';
     var p = AppState.platform, apple = AppState.applePlatform;
-    if (apple === 'apple_tv') return false;
-    if (apple === 'apple') return appleBuiltIn();
-    if (p === 'tizen' || AppState.tizenApp) return !!(opts && opts.audioUnsupported);
-    if (p === 'webos' || p === 'ios' || p === 'android' || p === 'androidtv') return false;
-    if (p === 'vidaa' && AppState.vidaaDirectPlay) return false;
-    return true;
+    if (apple === 'apple_tv') return 'Apple TV — внешний плеер';
+    if (apple === 'apple') return appleBuiltIn() ? '' : 'выбран внешний плеер';
+    if (p === 'tizen' || AppState.tizenApp) return opts && opts.audioUnsupported ? '' : 'Tizen — только для звука DTS/TrueHD, остальное играет AVPlay';
+    if (p === 'webos') return 'webOS играет файл сам';
+    if (p === 'ios' || p === 'android' || p === 'androidtv') return 'внешний плеер';
+    if (p === 'vidaa' && AppState.vidaaDirectPlay) return 'VIDAA 9.5+ играет файл сам';
+    return '';
+  }
+
+  /** Почему WASM сейчас не включится ('' — включится) */
+  function whyNot(opts) {
+    if (!AppState.transcodingFullOnOff) return 'включено перекодирование — WASM работает только в прямом режиме';
+    try { if (localStorage.getItem('wasmPlaybackOff') === 'true') return 'выключен в настройках плеера'; } catch (e) { }
+    return unavailableWhy(opts);
   }
 
   function managed() { return mediaSourceCtor() !== window.MediaSource; }
@@ -124,6 +139,117 @@ var WasmPlayback = (function () {
     return new Worker(URL.createObjectURL(blob));
   }
 
+  // ---------- диагностика для «Об устройстве» ----------
+  //
+  // Что было при последнем запуске: взялся ли WASM (и если нет — почему), до
+  // какого этапа дошёл, что за поток, ошибки воркера, сети и <video>. Хранится
+  // в localStorage: после ошибки на телевизоре приложение часто закрывают, а
+  // «Об устройстве» открывают уже потом (app.js: renderDeviceInfo)
+  var LAST_KEY = 'wasmLastRun';
+  var last = null;
+  try { last = JSON.parse(localStorage.getItem(LAST_KEY) || 'null'); } catch (e) { last = null; }
+
+  function saveLast() {
+    try { localStorage.setItem(LAST_KEY, JSON.stringify(last)); } catch (e) { }
+  }
+
+  function note(fields, save) {
+    if (!last) last = {};
+    for (var k in fields) last[k] = fields[k];
+    if (save !== false) saveLast();
+  }
+
+  function nowText() {
+    var d = new Date();
+    function two(n) { return (n < 10 ? '0' : '') + n; }
+    return two(d.getDate()) + '.' + two(d.getMonth() + 1) + ' ' + two(d.getHours()) + ':' + two(d.getMinutes());
+  }
+
+  function fileFromUrl(url) {
+    var m = /\/stream\/([^?]+)/.exec(url || '');
+    if (!m) return 'без имени';
+    try { return decodeURIComponent(m[1]); } catch (e) { return m[1]; }
+  }
+
+  /** Плеер решил не брать WASM (или файл ему не подходит) — запоминаем почему */
+  function noteSkip(reason, fileName) {
+    last = { at: nowText(), file: fileName || 'без имени', used: false, why: reason || whyNot() || '?' };
+    saveLast();
+  }
+
+  /** Понимает ли WebAssembly браузера memory.copy (как wasmBulkMemory в воркере) */
+  function bulkMemory() {
+    var bytes = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0, 5, 3, 1, 0, 1,
+      10, 14, 1, 12, 0, 65, 0, 65, 0, 65, 0, 252, 10, 0, 0, 11]);
+    try { return WebAssembly.validate(bytes); } catch (e) { return false; }
+  }
+
+  function mediaQuery(q) {
+    if (!window.matchMedia) return null;
+    try {
+      var mq = window.matchMedia(q);
+      // Запрос, которого браузер не знает, превращается в «not all»
+      if (!mq || mq.media === 'not all') return null;
+      return mq.matches;
+    } catch (e) { return null; }
+  }
+
+  /** Что умеет этот браузер для WASM-пути: сборка, MSE по кодекам, экран */
+  function support() {
+    if (typeof WebAssembly !== 'object') return 'WebAssembly нет';
+    var parts = ['сборка ' + (bulkMemory() ? 'быстрая' : 'совместимая (без bulk memory)')];
+    var MS = mediaSourceCtor();
+    if (!MS) { parts.push('MediaSource нет'); return parts.join(' · '); }
+    if (MS !== window.MediaSource) parts.push('ManagedMediaSource');
+    var list = [
+      ['H.264', 'video/mp4; codecs="avc1.640028"'],
+      ['HEVC', 'video/mp4; codecs="hvc1.1.6.L150.B0"'],
+      ['HEVC 10 бит', 'video/mp4; codecs="hvc1.2.4.L153.B0"'],
+      ['DV P5', 'video/mp4; codecs="dvh1.05.06"'],
+      ['DV P8', 'video/mp4; codecs="dvh1.08.06"'],
+      ['AAC', 'audio/mp4; codecs="mp4a.40.2"'],
+      ['AC3', 'audio/mp4; codecs="ac-3"'],
+      ['E-AC3', 'audio/mp4; codecs="ec-3"']
+    ];
+    var mse = [];
+    for (var i = 0; i < list.length; i++) mse.push(list[i][0] + ' ' + (typeOk(list[i][1]) ? 'да' : 'нет'));
+    parts.push('MSE: ' + mse.join(', '));
+    var hdr = mediaQuery('(dynamic-range: high)'), p3 = mediaQuery('(color-gamut: p3)');
+    parts.push('экран: HDR ' + (hdr === null ? 'не сообщает' : hdr ? 'да' : 'нет') + ', P3 ' + (p3 === null ? 'не сообщает' : p3 ? 'да' : 'нет'));
+    return parts.join(' · ');
+  }
+
+  /** Строка «последний запуск» для «Об устройстве» */
+  function lastRunText() {
+    var r = last;
+    if (!r || !r.at) return 'ещё не запускали';
+    var parts = [r.at, r.file || 'без имени'];
+    if (!r.used) {
+      parts.push('без WASM: ' + (r.why || '?'));
+      return parts.join(' · ');
+    }
+    if (r.stream) parts.push(r.stream);
+    if (r.worker) parts.push('воркер ' + r.worker);
+    if (r.build) parts.push('сборка ' + r.build);
+    parts.push('дошёл до: ' + (r.stage || 'запуск воркера'));
+    if (r.error) parts.push('ошибка: ' + r.error);
+    if (r.videoError) parts.push('ошибка <video>: ' + r.videoError);
+    if (r.net) parts.push('сеть: ' + r.net);
+    if (r.end) parts.push(r.end);
+    if (r.perf) parts.push(r.perf);
+    return parts.join(' · ');
+  }
+
+  /** Снимок состояния <video> и MSE на конец воспроизведения или ошибку */
+  function snapshot(st) {
+    var v = st.video, ms = st.ms;
+    var b = v.buffered, buf = [];
+    for (var i = 0; i < b.length; i++) buf.push(b.start(i).toFixed(1) + '–' + b.end(i).toFixed(1));
+    return 'передано ' + (Math.round(st.appended / 104857.6) / 10) + ' МБ, буфер ' + (buf.join(', ') || 'пуст') +
+      ', позиция ' + (v.currentTime || 0).toFixed(1) + ' с, readyState ' + v.readyState + ', networkState ' + v.networkState +
+      (ms ? ', MediaSource ' + ms.readyState : '') + (v.videoWidth ? ', кадр ' + v.videoWidth + '×' + v.videoHeight : ', кадров нет');
+  }
+
   // ---------- запуск ----------
 
   /**
@@ -140,10 +266,16 @@ var WasmPlayback = (function () {
       subs: {}, listeners: [], appended: 0, firstAppendAt: 0, played: false,
       mse: { ms: 0, n: 0, t0: 0 }, msePrev: { ms: 0, n: 0 }, perfLine: '', perfVerdict: '', perfLogAt: 0
     };
+    last = { at: nowText(), file: fileFromUrl(url), used: true, stage: 'запуск воркера' };
+    saveLast();
     startWorker(false);
     on(video, 'seeking', onSeeking);
     on(video, 'loadedmetadata', onLoadedMetadata);
-    on(video, 'playing', function () { if (s) s.played = true; });
+    on(video, 'playing', function () {
+      if (!s) return;
+      if (!s.played) note({ stage: 'показ пошёл' });
+      s.played = true;
+    });
     on(video, 'error', onVideoError);
     s.startPending = s.startTime > 0;
     s.tickTimer = setInterval(function () {
@@ -164,8 +296,13 @@ var WasmPlayback = (function () {
     try { st.worker = createWorker(useBlob); }
     catch (e) { fail('', 'Не удалось запустить воркер: ' + e.message); return; }
     st.usedBlob = useBlob;
+    note({ worker: useBlob ? 'с зеркала (Blob)' : 'с сервера' });
     var gotMessage = false;
-    st.worker.onmessage = function (ev) { gotMessage = true; if (s === st) onWorker(ev.data); };
+    st.worker.onmessage = function (ev) {
+      if (!gotMessage && s === st && !st.info) note({ stage: 'воркер ответил' });
+      gotMessage = true;
+      if (s === st) onWorker(ev.data);
+    };
     st.worker.onerror = function (e) {
       if (s !== st) return;
       // Маршрута на сервере ещё нет (старый сервер) — пробуем через Blob
@@ -196,6 +333,11 @@ var WasmPlayback = (function () {
   function detach() {
     if (!s) return;
     var st = s; s = null;
+    if (last && last.used) {
+      try { last.end = snapshot(st); } catch (e) { }
+      if (st.perfLine) last.perf = st.perfLine + ' → ' + st.perfVerdict;
+      saveLast();
+    }
     clearInterval(st.tickTimer);
     try { if (st.worker) st.worker.terminate(); } catch (e) { }
     for (var i = 0; i < st.listeners.length; i++) {
@@ -219,6 +361,7 @@ var WasmPlayback = (function () {
   function fail(code, msg) {
     var st = s;
     if (!st) return;
+    note({ error: (code ? code + ': ' : '') + msg }, false);
     console.warn('🧩 WASM: ' + (code ? code + ': ' : '') + msg);
     detach();
     if (st.opts.onError) st.opts.onError(code, msg);
@@ -236,9 +379,10 @@ var WasmPlayback = (function () {
     }
     else if (m.type === 'eof') { if (m.gen === s.gen) { s.ended = true; pump(); } }
     else if (m.type === 'cues') addCues(m.cues);
-    else if (m.type === 'perf') onPerf(m.w, m.fast);
+    else if (m.type === 'perf') { if (last && !last.build) note({ build: m.fast ? 'быстрая' : 'совместимая' }, false); onPerf(m.w, m.fast); }
     else if (m.type === 'error') fail(m.code || '', m.msg);
     else if (m.type === 'net') {
+      if (!m.ok) note({ net: m.error + ' (попытка ' + m.attempt + ')' });
       if (!m.ok) console.warn('🧩 WASM: TorrServer — ' + m.error + ', повтор ' + m.attempt + ' через ' + (m.delay / 1000) + ' с');
     } else if (m.type === 'log') console.log('🧩 WASM: ' + m.msg);
   }
@@ -248,6 +392,8 @@ var WasmPlayback = (function () {
   function onInfo(m) {
     s.info = m;
     var mime = 'video/mp4; codecs="' + m.vCodec + (m.aCodec ? ',' + m.aCodec : '') + '"';
+    note({ stage: 'файл разобран', stream: describe() + ' → ' + m.vCodec + (m.aCodec ? ',' + m.aCodec : '') +
+      ' (MSE ' + (typeOk(mime) ? 'берёт' : 'не берёт') + ')' });
     console.log('🧩 WASM: ' + m.streams.map(function (x) { return x.codec + (x.channels ? ' ' + x.channels + 'ch' : ''); }).join(', ') + ' → ' + mime +
       (m.dv || (m.hdr && m.hdr !== 'SDR') ? ' · ' + describe() : '') +
       ' · запрос до ' + Math.round((m.chunkMax || 0) / 1048576) + ' МБ');
@@ -285,6 +431,7 @@ var WasmPlayback = (function () {
       if (m.duration > 0) ms.duration = m.duration;
       try { st.sb = ms.addSourceBuffer(mime); }
       catch (e) { fail('video', 'MediaSource: ' + e.message); return; }
+      note({ stage: 'MediaSource открыт' });
       st.sb.mode = 'segments';
       // воркер сдвигает все метки на +offset (fMP4 не любит отрицательные DTS)
       st.sb.timestampOffset = -(m.offset || 0);
@@ -319,7 +466,7 @@ var WasmPlayback = (function () {
       try {
         s.mse.t0 = performance.now(); sb.appendBuffer(chunk);
         s.appended += chunk.byteLength;
-        if (!s.firstAppendAt) s.firstAppendAt = Date.now();
+        if (!s.firstAppendAt) { s.firstAppendAt = Date.now(); note({ stage: 'фрагменты идут в <video>' }); }
       }
       catch (e) {
         if (e.name === 'QuotaExceededError') { s.queue.unshift(chunk); sb.remove(0, Math.max(0.1, t - 3)); }
@@ -389,6 +536,7 @@ var WasmPlayback = (function () {
   // консоль — подробности: код, текст браузера и что за поток
   function onVideoError() {
     var e = s.video.error;
+    note({ videoError: e ? 'код ' + e.code + (e.message ? ' — ' + e.message : '') : '?', end: snapshot(s) });
     console.warn('🧩 WASM: ошибка <video>: ' + (e ? 'код ' + e.code + (e.message ? ' — ' + e.message : '') : '?') +
       ', буфер ' + bufferedText() + ', ' + describe());
   }
@@ -554,6 +702,12 @@ var WasmPlayback = (function () {
   return {
     eligible: eligible,
     available: available,
+    // «Об устройстве» (app.js: renderDeviceInfo): почему не включится, что
+    // умеет браузер и чем кончился последний запуск
+    whyNot: whyNot,
+    support: support,
+    lastRunText: lastRunText,
+    noteSkip: noteSkip,
     attach: attach,
     detach: detach,
     switchAudio: switchAudio,

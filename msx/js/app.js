@@ -3195,6 +3195,14 @@ function renderDeviceInfo() {
     if (!tizenServiceStatus[tracksPort]) checkTizenService(tracksPort, 'не запущена (нужен TorrStream-Tizen 1.1.4+)');
     if (!tizenServiceStatus[ffprobePort]) checkTizenService(ffprobePort, 'не установлена (TorrStream-ffprobe.wgt, Tizen 6+)');
   }
+  // Прямой файл через WASM (wasm-playback.js): включится ли и почему нет, что
+  // умеет MSE этого браузера (HEVC, 10 бит, Dolby Vision) и до какого этапа
+  // дошёл последний запуск — он хранится и после перезапуска приложения
+  if (window.WasmPlayback && WasmPlayback.whyNot) {
+    var wasmWhy = WasmPlayback.whyNot();
+    rows.push(['WASM', (wasmWhy ? 'не включится: ' + wasmWhy : 'включится в прямом режиме') + ' · ' + WasmPlayback.support()]);
+    rows.push(['WASM, последний запуск', WasmPlayback.lastRunText()]);
+  }
   // Последний трейлер RuTube (catalog.js: rutubeTrailerDiagText): видео напрямую
   // с RuTube или через сервер, поиск — службой на ТВ или через сервер и почему
   rows.push(['Трейлеры RuTube', typeof window.rutubeTrailerDiagText === 'function' ? rutubeTrailerDiagText() : '—']);

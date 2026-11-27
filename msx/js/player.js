@@ -4697,6 +4697,8 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
   // Samsung Tizen (приложение): файл играет нативный AVPlay — у <video> там нет
   // ни аудиодорожек, ни встроенных субтитров. tizen-avplay.js подменяет
   // свойства <video>, и всё ниже работает как обычно
+  // «Об устройстве» → «WASM, последний запуск»: почему этот файл пошёл без WASM
+  if (!useWasm && window.WasmPlayback && WasmPlayback.noteSkip) WasmPlayback.noteSkip(WasmPlayback.whyNot(), fileName);
   if (!useWasm && window.TizenAVPlay && TizenAVPlay.enabled()) TizenAVPlay.attach(videoPlayer);
 
   // Прямой файл — без hls.js, отдаём ссылку нативному <video>
@@ -4838,6 +4840,7 @@ async function initTranscodingOffPlayback(initialSeek, signal, knownFileName) {
   // <video> там MKV не открывает или молчит на AC3/EAC3/DTS. Остальные — как было
   if (useWasm) {
     if (/\.(m2?ts|mts)$/i.test(fileName || '')) {
+      if (WasmPlayback.noteSkip) WasmPlayback.noteSkip('файл MPEG-TS — WASM его не разбирает', fileName);
       detachDirectListeners();
       showWasmUnsupported('ts');
       return;

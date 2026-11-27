@@ -4157,6 +4157,7 @@ function _initTranscodingOffPlayback() {
     var useWasm = !!window.WasmPlayback && (WasmPlayback.eligible() || (wasmForced || tizenAudioNeedsWasm(nativeAudioPref)) && WasmPlayback.eligible({
       audioUnsupported: true
     }));
+    if (!useWasm && window.WasmPlayback && WasmPlayback.noteSkip) WasmPlayback.noteSkip(WasmPlayback.whyNot(), fileName);
     if (!useWasm && window.TizenAVPlay && TizenAVPlay.enabled()) TizenAVPlay.attach(videoPlayer);
     resetNativeSubtitles();
     currentSubTracks = [];
@@ -4264,6 +4265,7 @@ function _initTranscodingOffPlayback() {
     var staleMediaId = videoPlayer.mediaId;
     if (useWasm) {
       if (/\.(m2?ts|mts)$/i.test(fileName || '')) {
+        if (WasmPlayback.noteSkip) WasmPlayback.noteSkip('файл MPEG-TS — WASM его не разбирает', fileName);
         detachDirectListeners();
         showWasmUnsupported('ts');
         return;
