@@ -76,6 +76,10 @@ var vIdx = -1,
 var vTb, aTb;
 var outCodec = 'flac',
   copyAudio = false;
+// Версия воркера — в «Диагностику» и «Об устройстве»: сервер TorrStream отдаёт
+// воркер из своего кэша зеркала (5 мин), а без зеркала — свою копию из
+// установки, и тогда страница новее воркера. Повышать при заметных правках
+var WORKER_REV = '1.0.68-ac3';
 var dec = null,
   enc = null,
   mux = null;
@@ -940,6 +944,7 @@ function _open() {
     yield setupAudio();
     postMessage({
       type: 'info',
+      rev: WORKER_REV,
       duration: duration,
       size: size,
       streams: list,
@@ -1116,6 +1121,15 @@ function _setupAudio() {
     aTb = [s.time_base_num, s.time_base_den];
     if (copyAudio) {
       log('звук ' + s.name + ' — как есть, без перекодирования');
+      var cch = libav.AVCodecParameters_ch_layout_nb_channels ? yield libav.AVCodecParameters_ch_layout_nb_channels(s.codecpar) : 0;
+      postMessage({
+        type: 'audio',
+        from: s.name,
+        inCh: cch,
+        to: 'copy',
+        outCh: cch,
+        want: outCodec
+      });
       return;
     }
     try {
@@ -1137,6 +1151,7 @@ function _setupAudio() {
       try {
         yield libav.av_opt_set(dec.c, 'core_only', '1', 1 /* AV_OPT_SEARCH_CHILDREN */);
         dec.coreOnly = true;
+        dec.coreCheck = true;
         dec.coreMiss = 0;
       } catch (e) {}
     }
@@ -1174,10 +1189,10 @@ function _decodePackets() {
     var decoded = yield libav.ff_decode_multi(dec.c, dec.pkt, dec.frame, aIn, {
       ignoreErrors: true
     });
-    if (dec.coreOnly) {
-      if (decoded.length) dec.coreOnly = false; // ядро есть — дальше не проверяем
+    if (dec.coreCheck) {
+      if (decoded.length) dec.coreCheck = false; // ядро есть — дальше не проверяем
       else if ((dec.coreMiss += aIn.length) > 60) {
-        dec.coreOnly = false;
+        dec.coreCheck = dec.coreOnly = false;
         log('у DTS нет ядра — декодирую целиком');
         try {
           yield libav.av_opt_set(dec.c, 'core_only', '0', 1);
@@ -1270,6 +1285,17 @@ function _setupEncoder() {
       mix: mix
     };
     log('кодер ' + outCodec + ': ' + inChannels + ' → ' + channels + ' кан., ' + sr + ' Гц, кадр ' + enc.frameSize);
+    // Странице — что на входе и что на выходе (строка «звук» в диагностике)
+    postMessage({
+      type: 'audio',
+      from: aIdx >= 0 ? streams[aIdx].name : '',
+      inCh: inChannels,
+      to: outCodec,
+      outCh: channels,
+      want: outCodec,
+      sr: sr,
+      coreOnly: !!(dec && dec.coreOnly)
+    });
   });
   return _setupEncoder.apply(this, arguments);
 }

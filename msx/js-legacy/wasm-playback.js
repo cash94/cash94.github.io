@@ -78,12 +78,55 @@ var WasmPlayback = function () {
     return AppState.platform === 'tizen' || !!AppState.tizenApp;
   }
   function ac3Wanted() {
-    if (location.search.indexOf('wasm=ac3') !== -1) return true;
-    if (!ac3Available()) return false;
+    return !ac3Why();
+  }
+  function ac3Why() {
+    if (location.search.indexOf('wasm=ac3') !== -1) return '';
+    if (!ac3Available()) return 'не Tizen';
     try {
-      if (localStorage.getItem('dtsToAc3Off') === 'true') return false;
+      if (localStorage.getItem('dtsToAc3Off') === 'true') return 'выключено в настройках плеера';
     } catch (e) {}
-    return typeOk('audio/mp4; codecs="ac-3"');
+    return typeOk('audio/mp4; codecs="ac-3"') ? '' : 'MSE не берёт ac-3';
+  }
+  var AUDIO_NAMES = {
+    dts: 'DTS',
+    dca: 'DTS',
+    truehd: 'TrueHD',
+    mlp: 'MLP',
+    eac3: 'E-AC3',
+    ac3: 'AC3',
+    aac: 'AAC',
+    flac: 'FLAC',
+    opus: 'Opus',
+    mp3: 'MP3',
+    mp2: 'MP2',
+    vorbis: 'Vorbis',
+    alac: 'ALAC'
+  };
+  var CH_NAMES = {
+    1: '1.0',
+    2: '2.0',
+    3: '2.1',
+    5: '5.0',
+    6: '5.1',
+    7: '6.1',
+    8: '7.1'
+  };
+  function audioName(c) {
+    return AUDIO_NAMES[c] || (/^pcm/.test(c || '') ? 'PCM' : String(c || '?').toUpperCase());
+  }
+  function chName(n) {
+    return n > 0 ? CH_NAMES[n] || n + ' кан.' : '';
+  }
+  function audioLine(st) {
+    var a = st.audio;
+    if (!a) return '';
+    var from = audioName(a.from) + (a.inCh ? ' ' + chName(a.inCh) : '');
+    var line;
+    if (a.to === 'copy') line = from + ' как есть';else line = from + ' → ' + (a.to === 'ac3' ? 'AC3 (Dolby Digital)' : audioName(a.to)) + (a.outCh ? ' ' + chName(a.outCh) : '');
+    if (a.coreOnly) line += ', только ядро DTS';
+    if (st.encode === 'ac3' && a.to !== 'ac3' && a.to !== 'copy') line += ' (AC3 просили — воркер старый, ' + (st.info && st.info.rev ? st.info.rev : 'без версии') + ')';else if (a.to === 'aac' && ac3Available()) line += ' (не AC3: ' + (st.nativeOff ? 'связку видео + ac-3 MSE не взял' : st.encodeWhy || '?') + ')';
+    return line;
   }
   function assetBase() {
     return (isLocal() ? location.origin + '/js/' : MIRROR_BASE) + 'wasm-audio';
@@ -183,7 +226,8 @@ var WasmPlayback = function () {
       return parts.join(' · ');
     }
     if (r.stream) parts.push(r.stream);
-    if (r.worker) parts.push('воркер ' + r.worker);
+    if (r.worker) parts.push('воркер ' + r.worker + (r.rev ? ' ' + r.rev : ''));
+    if (r.audio) parts.push('звук ' + r.audio);
     if (r.build) parts.push('сборка ' + r.build);
     parts.push('дошёл до: ' + (r.stage || 'запуск воркера'));
     if (r.error) parts.push('ошибка: ' + r.error);
@@ -300,6 +344,8 @@ var WasmPlayback = function () {
       }
       fail('', 'Ошибка воркера: ' + (e && e.message || ''));
     };
+    st.encodeWhy = st.nativeOff ? '' : ac3Why();
+    st.encode = !st.nativeOff && !st.encodeWhy ? 'ac3' : 'aac';
     st.worker.postMessage({
       type: 'open',
       url: st.url,
@@ -308,7 +354,7 @@ var WasmPlayback = function () {
       time: st.startTime,
       mvp: location.search.indexOf('wasm=mvp') !== -1,
       native: st.nativeOff ? {} : nativeAudio(),
-      encode: !st.nativeOff && ac3Wanted() ? 'ac3' : 'aac',
+      encode: st.encode,
       auth: torrServerAuth(),
       dv: !!AppState.dvPreferred,
       size: st.opts.size > 0 ? st.opts.size : 0,
@@ -392,7 +438,14 @@ var WasmPlayback = function () {
         s.ended = true;
         pump();
       }
-    } else if (m.type === 'cues') addCues(m.cues);else if (m.type === 'perf') {
+    } else if (m.type === 'cues') addCues(m.cues);else if (m.type === 'audio') {
+      s.audio = m;
+      var al = audioLine(s);
+      console.log('🧩 WASM: звук ' + al);
+      note({
+        audio: al
+      });
+    } else if (m.type === 'perf') {
       if (last && !last.build) note({
         build: m.fast ? 'быстрая' : 'совместимая'
       }, false);
@@ -416,6 +469,19 @@ var WasmPlayback = function () {
   }
   function onInfo(m) {
     s.info = m;
+    if (!m.rev && m.audioTracks && m.audio >= 0 && m.audioTracks[m.audio]) {
+      var t = m.audioTracks[m.audio],
+        aac = m.aCodec === 'mp4a.40.2';
+      s.audio = {
+        from: t.codec,
+        inCh: t.channels,
+        to: aac ? 'aac' : 'copy',
+        outCh: aac ? 2 : t.channels
+      };
+      note({
+        audio: audioLine(s)
+      }, false);
+    }
     if (m.dv && m.dv.kept && /^hvc1\./.test(m.vCodec || '')) {
       var dvCodec = 'dvh1.' + pad2(m.dv.profile) + '.' + pad2(m.dv.level || 6);
       if (typeOk('video/mp4; codecs="' + dvCodec + (m.aCodec ? ',' + m.aCodec : '') + '"')) {
@@ -426,6 +492,7 @@ var WasmPlayback = function () {
     var mime = 'video/mp4; codecs="' + m.vCodec + (m.aCodec ? ',' + m.aCodec : '') + '"';
     note({
       stage: 'файл разобран',
+      rev: m.rev || 'старый (без версии)',
       stream: describe() + ' → ' + m.vCodec + (m.aCodec ? ',' + m.aCodec : '') + ' (MSE ' + (typeOk(mime) ? 'берёт' : 'не берёт') + ')'
     });
     console.log('🧩 WASM: ' + m.streams.map(function (x) {
@@ -768,8 +835,9 @@ var WasmPlayback = function () {
     statsLine: function () {
       if (!s || !s.perfLine) return null;
       var extra = s.info && (s.info.dv || s.info.hdr !== 'SDR') ? ' · ' + describe() : '';
+      var al = audioLine(s);
       return {
-        line: s.perfLine + extra,
+        line: (al ? 'звук ' + al + ' · ' : '') + s.perfLine + extra,
         verdict: s.perfVerdict
       };
     },

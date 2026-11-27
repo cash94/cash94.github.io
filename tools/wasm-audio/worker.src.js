@@ -64,6 +64,10 @@ var fmt, pkt, streams = [];
 var vIdx = -1, aIdx = -1, audioList = [];
 var vTb, aTb;
 var outCodec = 'flac', copyAudio = false;
+// Версия воркера — в «Диагностику» и «Об устройстве»: сервер TorrStream отдаёт
+// воркер из своего кэша зеркала (5 мин), а без зеркала — свою копию из
+// установки, и тогда страница новее воркера. Повышать при заметных правках
+var WORKER_REV = '1.0.68-ac3';
 var dec = null, enc = null, mux = null;
 var gen = 0, playhead = 0, outTime = 0, eof = false;
 var pending = null;           // {kind:'seek'|'audio', time, gen, index}
@@ -639,7 +643,7 @@ async function open(m) {
   var vCodec = await videoCodecString(streams[vIdx].codecpar, streams[vIdx].name);
   await setupAudio();
   postMessage({
-    type: 'info', duration: duration, size: size, streams: list,
+    type: 'info', rev: WORKER_REV, duration: duration, size: size, streams: list,
     audioTracks: audioList.map(function (i) { return { index: i, codec: streams[i].name, channels: streams[i].channels }; }),
     audio: audioList.indexOf(aIdx), vCodec: vCodec, aCodec: aCodecString(), offset: OFFSET,
     hdr: video.hdr, dv: video.dv ? { profile: video.dv.profile, level: video.dv.level, compat: video.dv.compat, kept: video.dvKeep } : null,
@@ -759,7 +763,12 @@ async function setupAudio() {
     copyAudio = (ch > 0 && ch <= 2 || !!nativeAudio[s.name]) && (s.name === 'mp3' || ex >= 2);
   }
   aTb = [s.time_base_num, s.time_base_den];
-  if (copyAudio) { log('звук ' + s.name + ' — как есть, без перекодирования'); return; }
+  if (copyAudio) {
+    log('звук ' + s.name + ' — как есть, без перекодирования');
+    var cch = libav.AVCodecParameters_ch_layout_nb_channels ? await libav.AVCodecParameters_ch_layout_nb_channels(s.codecpar) : 0;
+    postMessage({ type: 'audio', from: s.name, inCh: cch, to: 'copy', outCh: cch, want: outCodec });
+    return;
+  }
   try {
     var r = await libav.ff_init_decoder(s.codec_id, s.codecpar);   // [codec, c, pkt, frame]
     dec = { kind: 'libav', c: r[1], pkt: r[2], frame: r[3] };
@@ -771,7 +780,7 @@ async function setupAudio() {
   // AAC/AC3 с потерями, а у Blu-ray ядро обязательно. Нет ядра (не дождались
   // кадров) — decodePackets выключит это обратно
   if (s.name === 'dts' || s.name === 'dca') {
-    try { await libav.av_opt_set(dec.c, 'core_only', '1', 1 /* AV_OPT_SEARCH_CHILDREN */); dec.coreOnly = true; dec.coreMiss = 0; } catch (e) { }
+    try { await libav.av_opt_set(dec.c, 'core_only', '1', 1 /* AV_OPT_SEARCH_CHILDREN */); dec.coreOnly = true; dec.coreCheck = true; dec.coreMiss = 0; } catch (e) { }
   }
   log('декодер ' + s.name + (dec.coreOnly ? ' (только ядро DTS)' : ''));
   enc = null;   // кодер — по первому кадру, когда известны частота и каналы
@@ -792,10 +801,10 @@ async function decodePackets(aIn) {
     return frames;
   }
   var decoded = await libav.ff_decode_multi(dec.c, dec.pkt, dec.frame, aIn, { ignoreErrors: true });
-  if (dec.coreOnly) {
-    if (decoded.length) dec.coreOnly = false;   // ядро есть — дальше не проверяем
+  if (dec.coreCheck) {
+    if (decoded.length) dec.coreCheck = false;   // ядро есть — дальше не проверяем
     else if ((dec.coreMiss += aIn.length) > 60) {
-      dec.coreOnly = false;
+      dec.coreCheck = dec.coreOnly = false;
       log('у DTS нет ядра — декодирую целиком');
       try { await libav.av_opt_set(dec.c, 'core_only', '0', 1); } catch (e) { }
     }
@@ -842,6 +851,9 @@ async function setupEncoder(fr) {
   enc = { c: r[1], frame: r[2], pkt: r[3], frameSize: r[4] || 4608, fmt: sfmt, channels: channels, layout: layout, sr: sr,
     inChannels: inChannels, mix: mix };
   log('кодер ' + outCodec + ': ' + inChannels + ' → ' + channels + ' кан., ' + sr + ' Гц, кадр ' + enc.frameSize);
+  // Странице — что на входе и что на выходе (строка «звук» в диагностике)
+  postMessage({ type: 'audio', from: aIdx >= 0 ? streams[aIdx].name : '', inCh: inChannels, to: outCodec, outCh: channels,
+    want: outCodec, sr: sr, coreOnly: !!(dec && dec.coreOnly) });
 }
 
 /**
