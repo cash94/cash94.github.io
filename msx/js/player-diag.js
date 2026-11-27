@@ -430,6 +430,8 @@ var PlayerDiag = (function () {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 
-  return { enabled: function () { return on; }, setEnabled: setEnabled, render: render };
+  // event(text) — запись в журнал от других модулей (wasm-playback: фризы картинки)
+  return { enabled: function () { return on; }, setEnabled: setEnabled, render: render,
+    event: function (text) { add(eventLine(text)); } };
 })();
 window.PlayerDiag = PlayerDiag;

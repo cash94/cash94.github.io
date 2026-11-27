@@ -307,6 +307,7 @@ var WasmPlayback = function () {
       checkStall();
       if (!s) return;
       recoverGap();
+      watchFreeze();
       var t = s.startPending ? s.startTime : s.video.currentTime;
       s.worker.postMessage({
         type: 'tick',
@@ -359,6 +360,7 @@ var WasmPlayback = function () {
       encode: st.encode,
       split: st.split,
       parallel: parallelWanted(),
+      pace: location.search.indexOf('wasm=nopace') === -1,
       auth: torrServerAuth(),
       dv: !!AppState.dvPreferred,
       size: st.opts.size > 0 ? st.opts.size : 0,
@@ -456,7 +458,7 @@ var WasmPlayback = function () {
         s.ended = true;
         pump();
       }
-    } else if (m.type === 'cues') addCues(m.cues);else if (m.type === 'audio') {
+    } else if (m.type === 'stats') s.workMs = m.workMs;else if (m.type === 'cues') addCues(m.cues);else if (m.type === 'audio') {
       s.audio = m;
       var al = audioLine(s);
       console.log('🧩 WASM: звук ' + al);
@@ -812,6 +814,49 @@ var WasmPlayback = function () {
     s.video.currentTime = t;
     return true;
   }
+  var FREEZE_MS = 700;
+  function frameCount(v) {
+    try {
+      if (v.getVideoPlaybackQuality) return v.getVideoPlaybackQuality().totalVideoFrames;
+    } catch (e) {}
+    return v.webkitDecodedFrameCount || 0;
+  }
+  function watchFreeze() {
+    var v = s.video,
+      now = Date.now(),
+      frames = frameCount(v),
+      fz = s.fz;
+    var playing = s.played && !v.paused && !v.seeking && !v.ended && v.readyState >= 3 && aheadSeconds() > 1;
+    var moved = !fz || v.currentTime - fz.t > 0.05 && (!frames || frames !== fz.frames);
+    if (fz && fz.since && (moved || !playing)) {
+      var ms = now - fz.since;
+      if (ms >= FREEZE_MS && playing) {
+        var busy = Math.max(0, Math.min(ms, (s.workMs || 0) - fz.work0));
+        s.freezes = s.freezes || {
+          n: 0,
+          ms: 0,
+          busy: 0
+        };
+        s.freezes.n++;
+        s.freezes.ms += ms;
+        s.freezes.busy += busy;
+        var text = 'фриз ' + (ms / 1000).toFixed(1) + ' с, воркер работал ' + pct(busy / ms);
+        console.warn('🧩 WASM: ' + text + ', впереди ' + Math.round(aheadSeconds()) + ' с');
+        if (window.PlayerDiag && PlayerDiag.event) PlayerDiag.event(text);
+      }
+    }
+    if (!playing || moved) s.fz = {
+      t: v.currentTime,
+      frames: frames,
+      at: now,
+      work: s.workMs || 0,
+      since: 0,
+      work0: 0
+    };else if (!fz.since) {
+      fz.since = fz.at;
+      fz.work0 = fz.work;
+    }
+  }
   var PERF_LOG_MS = 5000;
   function pct(x) {
     return Math.round(Math.max(0, Math.min(1, x || 0)) * 100) + ' %';
@@ -824,7 +869,7 @@ var WasmPlayback = function () {
     return 0;
   }
   function onPerf(w, fast) {
-    var active = w.wallMs - w.sleepMs;
+    var active = w.wallMs - w.sleepMs - (w.paceMs || 0);
     var cpu = w.readMs + w.decMs + w.encMs + w.muxMs;
     var net = w.netBusyMs > 50 ? w.netBytes * 8 / w.netBusyMs / 1000 : null;
     var need = s.info && s.info.duration ? s.info.size * 8 / s.info.duration / 1e6 : null;
@@ -844,10 +889,12 @@ var WasmPlayback = function () {
     if (mseN) parts.push('MSE ' + Math.round(mseMs / mseN) + ' мс/фрагмент');
     parts.push('впереди ' + Math.round(aheadSeconds()) + ' с');
     if (w.sleepMs > 0) parts.push('воркер спал ' + pct(w.sleepMs / w.wallMs));
+    if (w.paceMs > 0) parts.push('ровный темп: паузы ' + pct(w.paceMs / w.wallMs));
+    if (s.freezes) parts.push('фризов ' + s.freezes.n + ' (воркер в них работал ' + pct(s.freezes.busy / s.freezes.ms) + ')');
     if (!fast) parts.push('совместимая сборка');
     s.perfLine = parts.join(' · ');
     var v;
-    if (w.sleepMs / w.wallMs > 0.5) v = 'запас набран — воркер ждёт, пока плеер его проиграет';else if (active > 0 && w.waitMs / active > 0.4) v = 'узкое место — сеть / TorrServer: данные приходят медленнее, чем разбираются';else if (cpu > 50 && w.mediaSec > 0 && w.mediaSec / (cpu / 1000) < 1.5) v = 'узкое место — процессор: WASM едва успевает за видео';else if (mseN && mseMs / mseN > 300) v = 'узкое место — плеер: MSE долго принимает фрагменты';else v = 'поток собирается быстрее, чем играет';
+    if (w.sleepMs / w.wallMs > 0.5) v = 'запас набран — воркер ждёт, пока плеер его проиграет';else if ((w.sleepMs + (w.paceMs || 0)) / w.wallMs > 0.4) v = 'запас набран — воркер собирает ровно, с паузами';else if (active > 0 && w.waitMs / active > 0.4) v = 'узкое место — сеть / TorrServer: данные приходят медленнее, чем разбираются';else if (cpu > 50 && w.mediaSec > 0 && w.mediaSec / (cpu / 1000) < 1.5) v = 'узкое место — процессор: WASM едва успевает за видео';else if (mseN && mseMs / mseN > 300) v = 'узкое место — плеер: MSE долго принимает фрагменты';else v = 'поток собирается быстрее, чем играет';
     s.perfVerdict = v;
     var now = Date.now();
     if (now - s.perfLogAt >= PERF_LOG_MS) {

@@ -333,6 +333,7 @@ var WasmPlayback = (function () {
       checkStall();
       if (!s) return;
       recoverGap();
+      watchFreeze();
       // Старт с таймкода: пока <video> не встал на стартовую позицию (это
       // случится только после первого сегмента), он стоит на 0 — и воркер,
       // решив, что собрал далеко вперёд, засыпал, не отдав даже заголовок
@@ -376,6 +377,8 @@ var WasmPlayback = (function () {
       split: st.split,
       // настройка «Читать файл двумя запросами» (проба): следующий кусок внахлёст
       parallel: parallelWanted(),
+      // ровный темп сборки при запасе 10+ с (?wasm=nopace — отладка: заходами, как раньше)
+      pace: location.search.indexOf('wasm=nopace') === -1,
       auth: torrServerAuth(), dv: !!AppState.dvPreferred,
       // размер файла из списка раздачи: старый Chrome не читает Content-Range
       size: st.opts.size > 0 ? st.opts.size : 0,
@@ -460,6 +463,7 @@ var WasmPlayback = (function () {
       s.pendingData.push(m); pump();
     }
     else if (m.type === 'eof') { if (m.gen === s.gen) { s.ended = true; pump(); } }
+    else if (m.type === 'stats') s.workMs = m.workMs;   // время работы воркера — для фризов (watchFreeze)
     else if (m.type === 'cues') addCues(m.cues);
     else if (m.type === 'audio') {
       s.audio = m;
@@ -771,6 +775,40 @@ var WasmPlayback = (function () {
     return true;
   }
 
+  // ---------- фризы картинки ----------
+  //
+  // На Tizen 5.0 картинка замирала на секунду при буфере 20+ с — данных
+  // хватало, похоже на нехватку процессора. Ловим: идёт воспроизведение,
+  // впереди есть буфер, а за тик (TICK_MS) не прибавилось ни времени, ни
+  // кадров. Когда пошло снова — запись в журнал «Диагностики» с долей времени
+  // фриза, которую работал воркер (stats.workMs): совпадают фризы с его
+  // работой — дело в процессоре
+  var FREEZE_MS = 700;
+
+  function frameCount(v) {
+    try { if (v.getVideoPlaybackQuality) return v.getVideoPlaybackQuality().totalVideoFrames; } catch (e) { }
+    return v.webkitDecodedFrameCount || 0;
+  }
+
+  function watchFreeze() {
+    var v = s.video, now = Date.now(), frames = frameCount(v), fz = s.fz;
+    var playing = s.played && !v.paused && !v.seeking && !v.ended && v.readyState >= 3 && aheadSeconds() > 1;
+    var moved = !fz || (v.currentTime - fz.t > 0.05 && (!frames || frames !== fz.frames));   // стоит время или кадры
+    if (fz && fz.since && (moved || !playing)) {
+      var ms = now - fz.since;
+      if (ms >= FREEZE_MS && playing) {
+        var busy = Math.max(0, Math.min(ms, (s.workMs || 0) - fz.work0));
+        s.freezes = s.freezes || { n: 0, ms: 0, busy: 0 };
+        s.freezes.n++; s.freezes.ms += ms; s.freezes.busy += busy;
+        var text = 'фриз ' + (ms / 1000).toFixed(1) + ' с, воркер работал ' + pct(busy / ms);
+        console.warn('🧩 WASM: ' + text + ', впереди ' + Math.round(aheadSeconds()) + ' с');
+        if (window.PlayerDiag && PlayerDiag.event) PlayerDiag.event(text);
+      }
+    }
+    if (!playing || moved) s.fz = { t: v.currentTime, frames: frames, at: now, work: s.workMs || 0, since: 0, work0: 0 };
+    else if (!fz.since) { fz.since = fz.at; fz.work0 = fz.work; }
+  }
+
   // ---------- замеры: где теряется время ----------
   //
   // Окно замеров от воркера (за ~2 с) + время appendBuffer в MSE. Сводка —
@@ -789,7 +827,8 @@ var WasmPlayback = (function () {
   }
 
   function onPerf(w, fast) {
-    var active = w.wallMs - w.sleepMs;
+    // паузы ровного темпа (paceMs) — не работа: «итого» показывает, сколько воркер может
+    var active = w.wallMs - w.sleepMs - (w.paceMs || 0);
     var cpu = w.readMs + w.decMs + w.encMs + w.muxMs;
     var net = w.netBusyMs > 50 ? w.netBytes * 8 / w.netBusyMs / 1000 : null;   // Мбит/с
     var need = s.info && s.info.duration ? s.info.size * 8 / s.info.duration / 1e6 : null;
@@ -808,12 +847,15 @@ var WasmPlayback = (function () {
     if (mseN) parts.push('MSE ' + Math.round(mseMs / mseN) + ' мс/фрагмент');
     parts.push('впереди ' + Math.round(aheadSeconds()) + ' с');
     if (w.sleepMs > 0) parts.push('воркер спал ' + pct(w.sleepMs / w.wallMs));
+    if (w.paceMs > 0) parts.push('ровный темп: паузы ' + pct(w.paceMs / w.wallMs));
+    if (s.freezes) parts.push('фризов ' + s.freezes.n + ' (воркер в них работал ' + pct(s.freezes.busy / s.freezes.ms) + ')');
     if (!fast) parts.push('совместимая сборка');
     s.perfLine = parts.join(' · ');
 
     // Вывод: кто тормозит
     var v;
     if (w.sleepMs / w.wallMs > 0.5) v = 'запас набран — воркер ждёт, пока плеер его проиграет';
+    else if ((w.sleepMs + (w.paceMs || 0)) / w.wallMs > 0.4) v = 'запас набран — воркер собирает ровно, с паузами';
     else if (active > 0 && w.waitMs / active > 0.4) v = 'узкое место — сеть / TorrServer: данные приходят медленнее, чем разбираются';
     else if (cpu > 50 && w.mediaSec > 0 && w.mediaSec / (cpu / 1000) < 1.5) v = 'узкое место — процессор: WASM едва успевает за видео';
     else if (mseN && mseMs / mseN > 300) v = 'узкое место — плеер: MSE долго принимает фрагменты';

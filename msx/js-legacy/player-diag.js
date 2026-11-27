@@ -445,7 +445,10 @@ var PlayerDiag = function () {
       return on;
     },
     setEnabled: setEnabled,
-    render: render
+    render: render,
+    event: function (text) {
+      add(eventLine(text));
+    }
   };
 }();
 window.PlayerDiag = PlayerDiag;

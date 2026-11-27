@@ -63,6 +63,39 @@ var AHEAD = 25; // секунд держим собранными впереди
 // Проснувшись, воркер собирает до AHEAD и засыпает, пока запас не станет
 // меньше AHEAD − WAKE_GAP: чтение идёт заметными заходами, а не по полсекунды
 var WAKE_GAP = 6;
+// Ровный темп: пока впереди больше PACE_FROM секунд, собираем не быстрее
+// PACE_RATE × реального времени — после каждой порции пауза. Иначе воркер
+// догонял запас заходами на полной скорости (×2,6 на Tizen 5.0), и в эти
+// секунды картинка замирала при буфере 20+ с: процессор уходил декодеру DTS,
+// кодеру AC3 и копированию, а не выводу видео. Работы столько же, без пиков.
+// После старта и перемотки (запас меньше PACE_FROM) — полная скорость
+var PACE_FROM = 10;
+var PACE_RATE = 1.3;
+var paceOn = true;
+var paceWake = null;
+
+/** Пауза ровного темпа; перемотка и смена дорожки её прерывают (wakePace) */
+function pacePause(ms) {
+  var ts0 = performance.now();
+  return new Promise(function (r) {
+    paceWake = r;
+    setTimeout(function () {
+      if (paceWake === r) {
+        paceWake = null;
+        r();
+      }
+    }, ms);
+  }).then(function () {
+    perf.paceMs += performance.now() - ts0;
+  });
+}
+function wakePace() {
+  if (paceWake) {
+    var r = paceWake;
+    paceWake = null;
+    r();
+  }
+}
 // За один заход демуксера — около полсекунды фильма (по среднему битрейту):
 // между заходами воркер замечает перемотку, крупные заходы её тормозили
 var READ_LIMIT = 256 * 1024;
@@ -79,7 +112,7 @@ var outCodec = 'flac',
 // Версия воркера — в «Диагностику» и «Об устройстве»: сервер TorrStream отдаёт
 // воркер из своего кэша зеркала (5 мин), а без зеркала — свою копию из
 // установки, и тогда страница новее воркера. Повышать при заметных правках
-var WORKER_REV = '1.0.68-par';
+var WORKER_REV = '1.0.68-pace';
 var dec = null,
   enc = null,
   mux = null;
@@ -113,6 +146,7 @@ var perf = {
   encMs: 0,
   muxMs: 0,
   sleepMs: 0,
+  paceMs: 0,
   mediaSec: 0
 };
 var netActive = 0,
@@ -185,6 +219,7 @@ onmessage = function (ev) {
       gen: m.gen
     };
     poke();
+    wakePace();
   } else if (m.type === 'audio') {
     pending = {
       kind: 'audio',
@@ -193,6 +228,7 @@ onmessage = function (ev) {
       index: m.index
     };
     poke();
+    wakePace();
   } else if (m.type === 'mem') postMessage({
     type: 'mem',
     mem: memReport()
@@ -891,6 +927,7 @@ function _open() {
     jsMuxOff = !!m.libavMux;
     splitOut = !!m.split;
     parallel = !!m.parallel;
+    paceOn = m.pace !== false;
     nativeAudio = m.native || {};
     // Сборка libav.js лежит не рядом с воркером (он идёт через маршрут сервера
     // или Blob): адрес папки wasm-audio/ присылает страница — зеркало или
@@ -2195,7 +2232,8 @@ function _run() {
       if (packets.length) yield libav.ff_write_multi(mux.oc, mux.pkt, packets);
       if (pending) continue;
       // секунды фильма, собранные этим заходом (без скачков перемотки)
-      if (lastV > outTime && lastV - outTime < 30) perf.mediaSec += lastV - outTime;
+      var batchSec = lastV > outTime && lastV - outTime < 30 ? lastV - outTime : 0;
+      perf.mediaSec += batchSec;
       outTime = lastV;
       if (mux.js) jsWrite(vOut, aOut, res === libav.AVERROR_EOF);else flushOut(gen, outTime);
       perf.muxMs += performance.now() - tm;
@@ -2225,6 +2263,11 @@ function _run() {
         });
       } else if (res < 0 && res !== -libav.EAGAIN && res !== -11) {
         throw new Error('Чтение файла: ошибка ' + res);
+      }
+      // ровный темп (PACE_FROM): порция фильма batchSec — за batchSec / PACE_RATE
+      if (paceOn && !eof && !pending && batchSec > 0 && outTime - playhead > PACE_FROM) {
+        var rest = batchSec / PACE_RATE * 1000 - (performance.now() - t0);
+        if (rest > 5) yield pacePause(Math.min(rest, 2000));
       }
     }
   });
