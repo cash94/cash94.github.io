@@ -398,8 +398,18 @@ var WasmPlayback = function () {
       return false;
     }
   }
+  function pad2(n) {
+    return ('0' + n).slice(-2);
+  }
   function onInfo(m) {
     s.info = m;
+    if (m.dv && m.dv.kept && /^hvc1\./.test(m.vCodec || '')) {
+      var dvCodec = 'dvh1.' + pad2(m.dv.profile) + '.' + pad2(m.dv.level || 6);
+      if (typeOk('video/mp4; codecs="' + dvCodec + (m.aCodec ? ',' + m.aCodec : '') + '"')) {
+        console.log('🧩 WASM: Dolby Vision P' + m.dv.profile + '.' + m.dv.compat + ' — браузер его знает, MSE как ' + dvCodec + ' (а не ' + m.vCodec + ')');
+        m.vCodec = dvCodec;
+      }
+    }
     var mime = 'video/mp4; codecs="' + m.vCodec + (m.aCodec ? ',' + m.aCodec : '') + '"';
     note({
       stage: 'файл разобран',

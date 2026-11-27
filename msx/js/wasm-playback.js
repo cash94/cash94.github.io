@@ -389,9 +389,24 @@ var WasmPlayback = (function () {
 
   function typeOk(t) { try { return mediaSourceCtor().isTypeSupported(t); } catch (e) { return false; } }
 
+  function pad2(n) { return ('0' + n).slice(-2); }
+
   function onInfo(m) {
     s.info = m;
-    var mime = 'video/mp4; codecs="' + m.vCodec + (m.aCodec ? ',' + m.aCodec : '') + '"';
+    // Dolby Vision P8 (с базовым HDR10), если в настройках выбран DV: воркер
+    // оставляет тег hvc1, но кладёт рядом dvvC. Браузер с поддержкой DV (VIDAA
+    // U6: в MSE «dvh1.08 да») по dvvC считает дорожку Dolby Vision, а
+    // SourceBuffer заведён под HEVC — и отвергает уже заголовок: «Append:
+    // stream parsing failed. Data size=1372». Такому браузеру отдаём строку
+    // dvh1.PP.LL; браузер без DV (Chrome на ПК) dvvC пропускает — ему hvc1
+    if (m.dv && m.dv.kept && /^hvc1\./.test(m.vCodec || '')) {
+      var dvCodec = 'dvh1.' + pad2(m.dv.profile) + '.' + pad2(m.dv.level || 6);
+      if (typeOk('video/mp4; codecs="' + dvCodec + (m.aCodec ? ',' + m.aCodec : '') + '"')) {
+        console.log('🧩 WASM: Dolby Vision P' + m.dv.profile + '.' + m.dv.compat + ' — браузер его знает, MSE как ' + dvCodec + ' (а не ' + m.vCodec + ')');
+        m.vCodec = dvCodec;
+      }
+    }
+    var mime ='video/mp4; codecs="' + m.vCodec + (m.aCodec ? ',' + m.aCodec : '') + '"';
     note({ stage: 'файл разобран', stream: describe() + ' → ' + m.vCodec + (m.aCodec ? ',' + m.aCodec : '') +
       ' (MSE ' + (typeOk(mime) ? 'берёт' : 'не берёт') + ')' });
     console.log('🧩 WASM: ' + m.streams.map(function (x) { return x.codec + (x.channels ? ' ' + x.channels + 'ch' : ''); }).join(', ') + ' → ' + mime +
