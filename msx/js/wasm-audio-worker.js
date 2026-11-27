@@ -671,11 +671,65 @@ var video = {
   hdr: 'SDR',
   dv: null,
   dvKeep: false,
-  tag: 0
+  tag: 0,
+  strip: 0
 };
 
+/**
+ * Dolby Vision выключен (P8 и другие с совместимым слоем): одного отсутствия
+ * dvcC/dvvC мало — RPU (NAL 62) и слой улучшения (NAL 63) остаются в пакетах,
+ * и телевизор с DV включает Dolby Vision по ним сам (VIDAA U6.12). Как сервер
+ * (services/hls.js: dovi_rpu=strip=1) вырезаем их из каждого пакета.
+ * Длина префикса NAL — из hvcC (lengthSizeMinusOne); не hvcC — не трогаем
+ */
+function hevcNalLength(_x) {
+  return _hevcNalLength.apply(this, arguments);
+}
+/** Пакет HEVC без NAL 62/63; тот же массив, если вырезать нечего */
+function _hevcNalLength() {
+  _hevcNalLength = _asyncToGenerator(function* (par) {
+    var n = yield libav.AVCodecParameters_extradata_size(par);
+    if (!(n > 22)) return 0;
+    var b = yield libav.copyout_u8(yield libav.AVCodecParameters_extradata(par), 23);
+    if (b[0] !== 1) return 0;
+    return (b[21] & 3) + 1;
+  });
+  return _hevcNalLength.apply(this, arguments);
+}
+function stripDoviNals(data, len) {
+  var n = data.length,
+    o = 0,
+    drop = 0,
+    i,
+    size,
+    type;
+  while (o + len <= n) {
+    size = 0;
+    for (i = 0; i < len; i++) size = size * 256 + data[o + i];
+    if (o + len + size > n) return data; // битый пакет — как есть
+    type = data[o + len] >> 1 & 0x3f;
+    if (type === 62 || type === 63) drop += len + size;
+    o += len + size;
+  }
+  if (!drop) return data;
+  var out = new Uint8Array(n - drop),
+    w = 0;
+  o = 0;
+  while (o + len <= n) {
+    size = 0;
+    for (i = 0; i < len; i++) size = size * 256 + data[o + i];
+    type = data[o + len] >> 1 & 0x3f;
+    if (type !== 62 && type !== 63) {
+      out.set(data.subarray(o, o + len + size), w);
+      w += len + size;
+    }
+    o += len + size;
+  }
+  return out;
+}
+
 /** AVDOVIDecoderConfigurationRecord из параметров кодека или null */
-function doviConf(_x) {
+function doviConf(_x2) {
   return _doviConf.apply(this, arguments);
 }
 function _doviConf() {
@@ -711,7 +765,8 @@ function _inspectVideo() {
       hdr: trc === 16 ? 'PQ' : trc === 18 ? 'HLG' : 'SDR',
       dv: null,
       dvKeep: false,
-      tag: 0
+      tag: 0,
+      strip: 0
     };
     if (s.name !== 'hevc') return;
     video.tag = TAG_HVC1;
@@ -727,14 +782,21 @@ function _inspectVideo() {
       video.dvKeep = true;
       if (video.hdr === 'SDR') video.hdr = 'PQ';
     } else if (dvPreferred && [1, 2, 4].indexOf(video.dv.compat) >= 0) video.dvKeep = true;
-    log('Dolby Vision P' + video.dv.profile + '.' + video.dv.compat + ' L' + video.dv.level + (video.dvKeep ? ' — как Dolby Vision' : ' — как HDR10 (Dolby Vision выключен в настройках)'));
+    if (!video.dvKeep) {
+      try {
+        video.strip = yield hevcNalLength(par);
+      } catch (e) {
+        log('hvcC: ' + e.message);
+      }
+    }
+    log('Dolby Vision P' + video.dv.profile + '.' + video.dv.compat + ' L' + video.dv.level + (video.dvKeep ? ' — как Dolby Vision' : ' — как HDR10 (Dolby Vision выключен в настройках' + (video.strip ? ', RPU вырезаются' : '') + ')'));
   });
   return _inspectVideo.apply(this, arguments);
 }
 function pad2(n) {
   return ('0' + n).slice(-2);
 }
-function videoCodecString(_x2, _x3) {
+function videoCodecString(_x3, _x4) {
   return _videoCodecString.apply(this, arguments);
 }
 function _videoCodecString() {
@@ -750,7 +812,7 @@ function _videoCodecString() {
   });
   return _videoCodecString.apply(this, arguments);
 }
-function open(_x4) {
+function open(_x5) {
   return _open.apply(this, arguments);
 }
 /**
@@ -1056,7 +1118,7 @@ function _setupAudio() {
   });
   return _setupAudio.apply(this, arguments);
 }
-function decodePackets(_x5) {
+function decodePackets(_x6) {
   return _decodePackets.apply(this, arguments);
 }
 function _decodePackets() {
@@ -1097,7 +1159,7 @@ var LAYOUTS = {
   7: 0x70F,
   8: 0x63F
 };
-function setupEncoder(_x6) {
+function setupEncoder(_x7) {
   return _setupEncoder.apply(this, arguments);
 }
 /**
@@ -1368,7 +1430,7 @@ function resetOut() {
     len: 0
   };
 }
-function openMuxer(_x7, _x8) {
+function openMuxer(_x8, _x9) {
   return _openMuxer.apply(this, arguments);
 }
 function _openMuxer() {
@@ -1734,7 +1796,10 @@ function _run() {
       for (var i = 0; i < list.length; i++) {
         var p = list[i];
         if (self.DEBUG_TS && p.stream_index === vIdx && DEBUG_TS-- > 0) log('v pts=' + ts(p, 'pts') + ' dts=' + ts(p, 'dts') + ' key=' + (p.flags & 1));
-        if (p.stream_index === vIdx) vOut.push(p);else if (p.stream_index === aIdx) aIn.push(p);
+        if (p.stream_index === vIdx) {
+          if (video.strip && p.data) p.data = stripDoviNals(p.data, video.strip);
+          vOut.push(p);
+        } else if (p.stream_index === aIdx) aIn.push(p);
       }
       var aOut = [];
       if (aIn.length && copyAudio) aOut = aIn;else if (aIn.length) {

@@ -456,7 +456,46 @@ function hex2(n) { return ('0' + (n & 255).toString(16)).slice(-2).toUpperCase()
 var TAG_HVC1 = 0x31637668, TAG_DVH1 = 0x31687664;   // MKTAG('h','v','c','1'), ('d','v','h','1')
 var AV_PKT_DATA_DOVI_CONF = 29;
 var dvPreferred = false;
-var video = { hdr: 'SDR', dv: null, dvKeep: false, tag: 0 };
+var video = { hdr: 'SDR', dv: null, dvKeep: false, tag: 0, strip: 0 };
+
+/**
+ * Dolby Vision выключен (P8 и другие с совместимым слоем): одного отсутствия
+ * dvcC/dvvC мало — RPU (NAL 62) и слой улучшения (NAL 63) остаются в пакетах,
+ * и телевизор с DV включает Dolby Vision по ним сам (VIDAA U6.12). Как сервер
+ * (services/hls.js: dovi_rpu=strip=1) вырезаем их из каждого пакета.
+ * Длина префикса NAL — из hvcC (lengthSizeMinusOne); не hvcC — не трогаем
+ */
+async function hevcNalLength(par) {
+  var n = await libav.AVCodecParameters_extradata_size(par);
+  if (!(n > 22)) return 0;
+  var b = await libav.copyout_u8(await libav.AVCodecParameters_extradata(par), 23);
+  if (b[0] !== 1) return 0;
+  return (b[21] & 3) + 1;
+}
+
+/** Пакет HEVC без NAL 62/63; тот же массив, если вырезать нечего */
+function stripDoviNals(data, len) {
+  var n = data.length, o = 0, drop = 0, i, size, type;
+  while (o + len <= n) {
+    size = 0;
+    for (i = 0; i < len; i++) size = size * 256 + data[o + i];
+    if (o + len + size > n) return data;          // битый пакет — как есть
+    type = (data[o + len] >> 1) & 0x3f;
+    if (type === 62 || type === 63) drop += len + size;
+    o += len + size;
+  }
+  if (!drop) return data;
+  var out = new Uint8Array(n - drop), w = 0;
+  o = 0;
+  while (o + len <= n) {
+    size = 0;
+    for (i = 0; i < len; i++) size = size * 256 + data[o + i];
+    type = (data[o + len] >> 1) & 0x3f;
+    if (type !== 62 && type !== 63) { out.set(data.subarray(o, o + len + size), w); w += len + size; }
+    o += len + size;
+  }
+  return out;
+}
 
 /** AVDOVIDecoderConfigurationRecord из параметров кодека или null */
 async function doviConf(par) {
@@ -477,7 +516,7 @@ async function doviConf(par) {
 async function inspectVideo() {
   var s = streams[vIdx], par = s.codecpar;
   var trc = await libav.AVCodecParameters_color_trc(par);
-  video = { hdr: trc === 16 ? 'PQ' : trc === 18 ? 'HLG' : 'SDR', dv: null, dvKeep: false, tag: 0 };
+  video = { hdr: trc === 16 ? 'PQ' : trc === 18 ? 'HLG' : 'SDR', dv: null, dvKeep: false, tag: 0, strip: 0 };
   if (s.name !== 'hevc') return;
   video.tag = TAG_HVC1;
   try { video.dv = await doviConf(par); } catch (e) { log('Dolby Vision: ' + e.message); }
@@ -487,7 +526,10 @@ async function inspectVideo() {
     video.tag = TAG_DVH1; video.dvKeep = true;
     if (video.hdr === 'SDR') video.hdr = 'PQ';
   } else if (dvPreferred && [1, 2, 4].indexOf(video.dv.compat) >= 0) video.dvKeep = true;
-  log('Dolby Vision P' + video.dv.profile + '.' + video.dv.compat + ' L' + video.dv.level + (video.dvKeep ? ' — как Dolby Vision' : ' — как HDR10 (Dolby Vision выключен в настройках)'));
+  if (!video.dvKeep) {
+    try { video.strip = await hevcNalLength(par); } catch (e) { log('hvcC: ' + e.message); }
+  }
+  log('Dolby Vision P' + video.dv.profile + '.' + video.dv.compat + ' L' + video.dv.level + (video.dvKeep ? ' — как Dolby Vision' : ' — как HDR10 (Dolby Vision выключен в настройках' + (video.strip ? ', RPU вырезаются' : '') + ')'));
 }
 
 function pad2(n) { return ('0' + n).slice(-2); }
@@ -1139,8 +1181,10 @@ async function run() {
     for (var i = 0; i < list.length; i++) {
       var p = list[i];
       if (self.DEBUG_TS && p.stream_index === vIdx && DEBUG_TS-- > 0) log('v pts=' + ts(p, 'pts') + ' dts=' + ts(p, 'dts') + ' key=' + (p.flags & 1));
-      if (p.stream_index === vIdx) vOut.push(p);
-      else if (p.stream_index === aIdx) aIn.push(p);
+      if (p.stream_index === vIdx) {
+        if (video.strip && p.data) p.data = stripDoviNals(p.data, video.strip);
+        vOut.push(p);
+      } else if (p.stream_index === aIdx) aIn.push(p);
     }
     var aOut = [];
     if (aIn.length && copyAudio) aOut = aIn;
