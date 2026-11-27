@@ -5242,21 +5242,35 @@ async function startHLSPlaybackNow(originalUrl, initialSeek, fromSearch, episode
   transitionToPlayerScreen(); AppState.videoUrl = originalUrl;
   var videoPlayer = getEl('video-player');
   videoPlayer.removeEventListener('ended', handleVideoEnded); videoPlayer.addEventListener('ended', handleVideoEnded);
+  var startDirect = function () {
+    nativeSubState.savedPref = (metadata && metadata.savedSubTrack !== null && metadata.savedSubTrack !== undefined)
+      ? metadata.savedSubTrack : -1;
+    // Дорожку передали (следующая серия, смена дорожки) или она сохранена
+    // для файла — включим её, когда <video> отдаст список
+    var directAudio = metadata && metadata.savedAudioTrack !== null && metadata.savedAudioTrack !== undefined
+      ? metadata.savedAudioTrack : (metadata && metadata.audioChosen ? metadata.audioTrack : null);
+    directAudio = parseInt(directAudio, 10);
+    nativeAudioPref = directAudio >= 0 ? directAudio : -1;
+    return initTranscodingOffPlayback(initialSeek, signal, metadata && metadata.fileName);
+  };
   try {
     if (AppState.transcodingOnOff) {
       await initGstPlayback(metadata, initialSeek, signal);
     } else if (AppState.transcodingFullOnOff) {
-      nativeSubState.savedPref = (metadata && metadata.savedSubTrack !== null && metadata.savedSubTrack !== undefined)
-        ? metadata.savedSubTrack : -1;
-      // Дорожку передали (следующая серия, смена дорожки) или она сохранена
-      // для файла — включим её, когда <video> отдаст список
-      var directAudio = metadata && metadata.savedAudioTrack !== null && metadata.savedAudioTrack !== undefined
-        ? metadata.savedAudioTrack : (metadata && metadata.audioChosen ? metadata.audioTrack : null);
-      directAudio = parseInt(directAudio, 10);
-      nativeAudioPref = directAudio >= 0 ? directAudio : -1;
-      await initTranscodingOffPlayback(initialSeek, signal, metadata && metadata.fileName);
+      await startDirect();
     } else {
-      await initServerProxyPlayback(metadata, initialSeek, signal);
+      try {
+        await initServerProxyPlayback(metadata, initialSeek, signal);
+      } catch (serverError) {
+        // Сервер отказал в потоке (модуль hls-off), а о том, что HLS на нём
+        // отключён, приложение при запуске не узнало (config.js:
+        // loadHlsOffStatus). applyServerHlsOff уже включил прямой режим —
+        // продолжаем этот же запуск напрямую (WASM, если он включён), а не
+        // выходим из плеера с просьбой запустить ещё раз (VIDAA U6.12)
+        if (!serverError || !serverError.hlsDisabled || signal.aborted) throw serverError;
+        console.log('⛔ Сервер отключил HLS — этот запуск продолжаем напрямую с TorrServer');
+        await startDirect();
+      }
     }
     // Подсказку «на сервере транскодирование отключено» (модуль hls-off) здесь
     // больше не показываем: она выходила на каждом видео у всех зрителей

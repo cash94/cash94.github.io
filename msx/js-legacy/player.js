@@ -4657,17 +4657,26 @@ function _startHLSPlaybackNow() {
     var videoPlayer = getEl('video-player');
     videoPlayer.removeEventListener('ended', handleVideoEnded);
     videoPlayer.addEventListener('ended', handleVideoEnded);
+    var startDirect = function () {
+      nativeSubState.savedPref = metadata && metadata.savedSubTrack !== null && metadata.savedSubTrack !== undefined ? metadata.savedSubTrack : -1;
+      var directAudio = metadata && metadata.savedAudioTrack !== null && metadata.savedAudioTrack !== undefined ? metadata.savedAudioTrack : metadata && metadata.audioChosen ? metadata.audioTrack : null;
+      directAudio = parseInt(directAudio, 10);
+      nativeAudioPref = directAudio >= 0 ? directAudio : -1;
+      return initTranscodingOffPlayback(initialSeek, signal, metadata && metadata.fileName);
+    };
     try {
       if (AppState.transcodingOnOff) {
         yield initGstPlayback(metadata, initialSeek, signal);
       } else if (AppState.transcodingFullOnOff) {
-        nativeSubState.savedPref = metadata && metadata.savedSubTrack !== null && metadata.savedSubTrack !== undefined ? metadata.savedSubTrack : -1;
-        var directAudio = metadata && metadata.savedAudioTrack !== null && metadata.savedAudioTrack !== undefined ? metadata.savedAudioTrack : metadata && metadata.audioChosen ? metadata.audioTrack : null;
-        directAudio = parseInt(directAudio, 10);
-        nativeAudioPref = directAudio >= 0 ? directAudio : -1;
-        yield initTranscodingOffPlayback(initialSeek, signal, metadata && metadata.fileName);
+        yield startDirect();
       } else {
-        yield initServerProxyPlayback(metadata, initialSeek, signal);
+        try {
+          yield initServerProxyPlayback(metadata, initialSeek, signal);
+        } catch (serverError) {
+          if (!serverError || !serverError.hlsDisabled || signal.aborted) throw serverError;
+          console.log('⛔ Сервер отключил HLS — этот запуск продолжаем напрямую с TorrServer');
+          yield startDirect();
+        }
       }
       showPlayerHint();
       return true;
