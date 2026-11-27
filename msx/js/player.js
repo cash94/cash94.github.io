@@ -4581,7 +4581,9 @@ function wasmAudioList(info) {
 // ==================== TIZEN: DTS И TRUEHD ЧЕРЕЗ WASM ====================
 // Samsung с 2018 года DTS не декодирует, TrueHD — никогда: AVPlay с такой
 // дорожкой молчит. Тогда файл разбирает WASM (wasm-playback.js), а звук
-// уходит в AAC 2.0. Остальные дорожки играет AVPlay сам, со всеми каналами
+// уходит в AC3 (Dolby Digital) с теми же каналами до 5.1 или, если это
+// выключено в настройках плеера, в AAC 2.0. Остальные дорожки играет AVPlay
+// сам, со всеми каналами
 var WASM_ONLY_AUDIO = { dts: 1, dca: 1, truehd: 1, mlp: 1 };
 
 function isTizenDevice() { return AppState.platform === 'tizen' || !!AppState.tizenApp; }
@@ -4618,11 +4620,13 @@ async function restartDirectInWasm(index, reason) {
   if (!AppState.videoUrl || AppState.currentScreen !== 'player') return;
   var videoPlayer = getEl('video-player');
   var at = videoPlayer.currentTime || 0;
-  console.log('🧩 WASM: ' + reason + ' — перезапуск с ' + at.toFixed(1) + ' c через WASM, звук в AAC 2.0');
+  // Цель — как выберет WasmPlayback (настройка «DTS в Dolby Digital» на Tizen)
+  var target = window.WasmPlayback && WasmPlayback.ac3Wanted && WasmPlayback.ac3Wanted() ? 'Dolby Digital' : 'AAC 2.0';
+  console.log('🧩 WASM: ' + reason + ' — перезапуск с ' + at.toFixed(1) + ' c через WASM, звук в ' + target);
   if (currentTimecodeData.hash && currentTimecodeData.fileId) saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, index);
   setPlayerPanel('audio', false);
   getEl('playback-overlay').classList.add('active');
-  document.querySelector('.playback-text').textContent = 'Звук ' + reason + ' — перевожу в AAC 2.0...';
+  document.querySelector('.playback-text').textContent = 'Звук ' + reason + ' — перевожу в ' + target + '...';
   try {
     AppState.wasmForceOnce = true;
     destroyHls();

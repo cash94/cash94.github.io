@@ -1815,6 +1815,23 @@ function setupWasmSetting() {
     console.log('🧩 WASM: ' + (e.target.checked ? 'включён' : 'выключен — прямой файл в <video>'));
   });
 }
+function setupDtsAc3Setting() {
+  var box = getEl('dts-to-ac3');
+  if (!box || !window.WasmPlayback || !WasmPlayback.ac3Available || !WasmPlayback.ac3Available()) return;
+  var row = box.closest('.checkbox-container');
+  if (row) row.hidden = false;
+  var off = false;
+  try {
+    off = localStorage.getItem('dtsToAc3Off') === 'true';
+  } catch (e) {}
+  box.checked = !off;
+  box.addEventListener('change', function (e) {
+    try {
+      localStorage.setItem('dtsToAc3Off', e.target.checked ? 'false' : 'true');
+    } catch (x) {}
+    console.log('🧩 WASM: DTS/TrueHD → ' + (e.target.checked ? 'Dolby Digital (AC3), каналы как есть' : 'AAC 2.0'));
+  });
+}
 function setupCheckboxes() {
   setupExternalPlayerCheckbox();
   var container = '';
@@ -1994,6 +2011,7 @@ function setupCheckboxes() {
     });
   }
   setupWasmSetting();
+  setupDtsAc3Setting();
   var transcodingCheckboxOnOff = getEl('transcoding-on-off');
   if (tvApp) {
     container = transcodingCheckboxOnOff.closest('.checkbox-container');

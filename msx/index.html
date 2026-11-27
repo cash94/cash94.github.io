@@ -134,7 +134,7 @@
       "js-legacy/legacy-polyfills.js": "e0e9de38",
       "js/account.js": "65c22e09",
       "js/animations.js": "f5352ec9",
-      "js/app.js": "8ef6f9de",
+      "js/app.js": "16147acf",
       "js/best-torrents-pick.js": "cd63487a",
       "js/best-torrents.js": "b0a98d04",
       "js/catalog-idb-patch.js": "72557f9c",
@@ -158,7 +158,7 @@
       "js/perf-probe.js": "7143cc61",
       "js/player-diag.js": "406f7527",
       "js/player-memory-fix.js": "2fbf8c05",
-      "js/player.js": "f36de6b0",
+      "js/player.js": "51aa6497",
       "js/poster-db.js": "5133286b",
       "js/poster-prefetch.js": "2a856e18",
       "js/screensaver.js": "01f61cc9",
@@ -175,8 +175,8 @@
       "js/torrents.js": "0497f869",
       "js/torrserverstats.js": "2f006d35",
       "js/ui-customizer.js": "614e6e55",
-      "js/wasm-audio-worker.js": "9fc5c954",
-      "js/wasm-playback.js": "68519694"
+      "js/wasm-audio-worker.js": "bd8c1d79",
+      "js/wasm-playback.js": "c83fd2d9"
       // ASSET_V:end
     };
     function assetV(p) {
@@ -867,6 +867,11 @@
                 <div class="checkbox-container" hidden>
                   <input type="checkbox" id="wasm-playback">
                   <span>Обработка файла в браузере (WASM)<small class="setting-desc">При полностью отключённом транскодировании: звук Dolby и DTS, MKV, перемотка и субтитры. Выключите — файл пойдёт напрямую в плеер браузера, без обработки</small></span>
+                </div>
+                <!-- Только Tizen — app.js: setupDtsAc3Setting -->
+                <div class="checkbox-container" hidden>
+                  <input type="checkbox" id="dts-to-ac3">
+                  <span>Преобразовать DTS в Dolby Digital, сохраняя количество каналов<small class="setting-desc">DTS и TrueHD, которые телевизор не играет: 5.1 останется 5.1 и пойдёт на саундбар. Выключите — звук будет сведён в AAC 2.0</small></span>
                 </div>
                 <div class="checkbox-container">
                   <input type="checkbox" id="multi-channel-audio">

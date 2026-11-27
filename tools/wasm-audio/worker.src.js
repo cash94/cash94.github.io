@@ -546,7 +546,11 @@ async function videoCodecString(par, name) {
 }
 
 async function open(m) {
-  url = m.url; outCodec = 'aac';
+  url = m.url;
+  // Цель перекодирования: AAC 2.0 (по умолчанию) или AC3 (Dolby Digital) со
+  // всеми каналами до 5.1 — на Tizen, где телевизор AC3 декодирует сам или
+  // отдаёт саундбару (настройка «Преобразовать DTS в Dolby Digital»)
+  outCodec = m.encode === 'ac3' ? 'ac3' : 'aac';
   net = { auth: m.auth || '' };
   dvPreferred = !!m.dv;
   jsMuxOff = !!m.libavMux;
@@ -715,7 +719,7 @@ function subCues(list) {
 
 function aCodecString() {
   if (aIdx === undefined || aIdx < 0) return null;
-  if (copyAudio) return nativeAudio[streams[aIdx].name] || COPY_OK[streams[aIdx].name];
+  if (copyAudio) return nativeAudio[streams[aIdx].name] || COPY_OK[streams[aIdx].name] || (outCodec === 'ac3' && streams[aIdx].name === 'ac3' ? 'ac-3' : undefined);
   return { flac: 'flac', aac: 'mp4a.40.2', ac3: 'ac-3', opus: 'opus' }[outCodec];
 }
 
@@ -734,7 +738,11 @@ async function setupAudio() {
   // цель — AAC 2.0, а у AAC из TS (ADTS) настройки нет — mov пишет moov с
   // пустым esds, и Chrome не может разобрать поток. Остальное перекодируем.
   copyAudio = false;
-  if (nativeAudio[s.name] && s.name !== 'aac') copyAudio = true;
+  // Цель AC3: строка кодека в MSE (ac-3) не должна меняться при смене
+  // дорожки — SourceBuffer заведён под неё. Поэтому как есть только сам AC3,
+  // остальное (AAC, E-AC3, DTS…) — в AC3
+  if (outCodec === 'ac3') copyAudio = s.name === 'ac3';
+  else if (nativeAudio[s.name] && s.name !== 'aac') copyAudio = true;
   else if (COPY_OK[s.name] || nativeAudio[s.name]) {
     var ch = libav.AVCodecParameters_ch_layout_nb_channels ? await libav.AVCodecParameters_ch_layout_nb_channels(s.codecpar)
       : (libav.AVCodecParameters_channels ? await libav.AVCodecParameters_channels(s.codecpar) : 0);
@@ -750,7 +758,14 @@ async function setupAudio() {
   } catch (e) {
     throw codedError('codec', 'Звук ' + s.name + ' не поддерживается');
   }
-  log('декодер ' + s.name);
+  // DTS-HD MA/HRA: только ядро DTS (до 5.1, 1,5 Мбит/с) — без lossless-слоя
+  // XLL, который и есть основная работа декодера. Звук всё равно уходит в
+  // AAC/AC3 с потерями, а у Blu-ray ядро обязательно. Нет ядра (не дождались
+  // кадров) — decodePackets выключит это обратно
+  if (s.name === 'dts' || s.name === 'dca') {
+    try { await libav.av_opt_set(dec.c, 'core_only', '1', 1 /* AV_OPT_SEARCH_CHILDREN */); dec.coreOnly = true; dec.coreMiss = 0; } catch (e) { }
+  }
+  log('декодер ' + s.name + (dec.coreOnly ? ' (только ядро DTS)' : ''));
   enc = null;   // кодер — по первому кадру, когда известны частота и каналы
   rechunk = null;
 }
@@ -768,7 +783,16 @@ async function decodePackets(aIn) {
     }
     return frames;
   }
-  return libav.ff_decode_multi(dec.c, dec.pkt, dec.frame, aIn, { ignoreErrors: true });
+  var decoded = await libav.ff_decode_multi(dec.c, dec.pkt, dec.frame, aIn, { ignoreErrors: true });
+  if (dec.coreOnly) {
+    if (decoded.length) dec.coreOnly = false;   // ядро есть — дальше не проверяем
+    else if ((dec.coreMiss += aIn.length) > 60) {
+      dec.coreOnly = false;
+      log('у DTS нет ядра — декодирую целиком');
+      try { await libav.av_opt_set(dec.c, 'core_only', '0', 1); } catch (e) { }
+    }
+  }
+  return decoded;
 }
 
 var LAYOUTS = { 1: 0x4, 2: 0x3, 3: 0x7, 4: 0x33, 5: 0x37, 6: 0x60F, 7: 0x70F, 8: 0x63F };
@@ -776,9 +800,18 @@ var LAYOUTS = { 1: 0x4, 2: 0x3, 3: 0x7, 4: 0x33, 5: 0x37, 6: 0x60F, 7: 0x70F, 8:
 async function setupEncoder(fr) {
   var inChannels = fr.channels || (Array.isArray(fr.data) && fr.data.length) || 2;
   var inLayout = fr.channel_layout || LAYOUTS[inChannels] || 0x3;
-  // AAC — всегда стерео: многоканальное сводим сами (downmixMatrix)
+  // AAC — всегда стерео: многоканальное сводим сами (downmixMatrix).
+  // AC3 — каналы как есть, если такую раскладку он знает (до 5.1), иначе
+  // (7.1, 6.1, редкие маски) сводим в 5.1 (ac3Matrix)
   var channels = outCodec === 'aac' ? 2 : inChannels;
   var layout = outCodec === 'aac' ? 0x3 : inLayout;
+  var mix = null;
+  if (outCodec === 'aac') mix = channels === inChannels ? null : downmixMatrix(inLayout, inChannels);
+  else if (outCodec === 'ac3' && !AC3_LAYOUTS[inLayout]) {
+    layout = inLayout & 0x8 ? 0x60F : 0x607;
+    channels = layout === 0x60F ? 6 : 5;
+    mix = ac3Matrix(inLayout, inChannels, layout);
+  }
   var sr = fr.sample_rate;
   var opts = {
     ctx: { sample_rate: sr, channels: channels, channel_layout: layout },
@@ -799,7 +832,7 @@ async function setupEncoder(fr) {
   opts.ctx.sample_fmt = sfmt;
   var r = await libav.ff_init_encoder(name, opts);
   enc = { c: r[1], frame: r[2], pkt: r[3], frameSize: r[4] || 4608, fmt: sfmt, channels: channels, layout: layout, sr: sr,
-    inChannels: inChannels, mix: channels === inChannels ? null : downmixMatrix(inLayout, inChannels) };
+    inChannels: inChannels, mix: mix };
   log('кодер ' + outCodec + ': ' + inChannels + ' → ' + channels + ' кан., ' + sr + ' Гц, кадр ' + enc.frameSize);
 }
 
@@ -819,10 +852,42 @@ function downmixMatrix(layout, n) {
   return [bits.map(function (x) { return (L[x] || 0) * norm; }), bits.map(function (x) { return (R[x] || 0) * norm; })];
 }
 
+// Раскладки, которые кодер AC3 берёт как есть (ff_ac3_ch_layouts), с LFE и без
+var AC3_LAYOUTS = {};
+[0x4, 0x3, 0x103, 0x7, 0x603, 0x33, 0x107, 0x607, 0x37].forEach(function (m) { AC3_LAYOUTS[m] = 1; AC3_LAYOUTS[m | 0x8] = 1; });
+
+/**
+ * Сведение в 5.1/5.0 (боковые тылы) для AC3: тылы и боковые — в боковые,
+ * задний центр — поровну в обе боковые, центры слева/справа — во фронт.
+ * Где сходятся несколько каналов — делим на √k (мощность сохраняется)
+ */
+function ac3Matrix(inLayout, n, outLayout) {
+  var bits = [];
+  for (var b = 0; b < 32 && bits.length < n; b++) if (inLayout & (1 << b)) bits.push(1 << b);
+  while (bits.length < n) bits.push(0);
+  var outs = [];
+  for (var ob = 0; ob < 32; ob++) if (outLayout & (1 << ob)) outs.push(1 << ob);
+  var route = { 0x1: [0x1], 0x2: [0x2], 0x4: [0x4], 0x8: [0x8], 0x200: [0x200], 0x400: [0x400],
+    0x10: [0x200], 0x20: [0x400], 0x100: [0x200, 0x400], 0x40: [0x1], 0x80: [0x2] };
+  var rows = outs.map(function () { return bits.map(function () { return 0; }); });
+  bits.forEach(function (bit, c) {
+    var to = route[bit] || [];
+    to.forEach(function (o) {
+      var r = outs.indexOf(o);
+      if (r >= 0) rows[r][c] = to.length > 1 ? 0.7071 : 1;
+    });
+  });
+  rows.forEach(function (row) {
+    var k = row.filter(function (x) { return x > 0; }).length;
+    if (k > 1) for (var i = 0; i < row.length; i++) row[i] /= Math.sqrt(k);
+  });
+  return rows;
+}
+
 function downmix(planes) {
   if (!enc.mix) return planes;
-  var n = planes[0].length, out = [new Float32Array(n), new Float32Array(n)];
-  for (var o = 0; o < 2; o++) {
+  var n = planes[0].length, out = enc.mix.map(function () { return new Float32Array(n); });
+  for (var o = 0; o < enc.mix.length; o++) {
     var row = enc.mix[o], dst = out[o];
     for (var c = 0; c < planes.length; c++) {
       var k = row[c]; if (!k) continue;
@@ -944,7 +1009,7 @@ function topBoxes() {
 
 function resetOut() { out = { base: 0, buf: new Uint8Array(1 << 20), len: 0 }; }
 
-async function openMuxer(g, strictFallback) {
+async function openMuxer(g, strictFallback, firstA) {
   var cfg = [];
   var vpar = await libav.avcodec_parameters_alloc();
   await libav.avcodec_parameters_copy(vpar, streams[vIdx].codecpar);
@@ -982,7 +1047,10 @@ async function openMuxer(g, strictFallback) {
   // AC3/EAC3 как есть: настройку кодека (dac3/dec3) mov берёт из первого
   // пакета — moov пишем вместе с первым фрагментом (delay_moov), иначе
   // «Cannot write moov atom before AC3 packets»
-  var delay = copyAudio && aIdx >= 0 && /^e?ac3$/.test(streams[aIdx].name) ? '+delay_moov' : '';
+  // AC3 из своего кодера — так же (extradata mov для AC3 не читает), но moov
+  // выталкиваем сразу первым пакетом звука (firstA, см. ниже)
+  var ac3Enc = !copyAudio && !!enc && outCodec === 'ac3';
+  var delay = (copyAudio && aIdx >= 0 && /^e?ac3$/.test(streams[aIdx].name)) || ac3Enc ? '+delay_moov' : '';
   await libav.av_opt_set(oc, 'movflags', 'frag_keyframe+empty_moov+default_base_moof+frag_discont' + delay, 1 /* AV_OPT_SEARCH_CHILDREN */);
   await libav.av_opt_set(oc, 'use_editlist', '0', 1);
   // фрагмент не длиннее секунды (иначе ждём ключевой кадр, а GOP бывает 5–10 с)
@@ -994,19 +1062,31 @@ async function openMuxer(g, strictFallback) {
     log('avformat_write_header: ' + ret + ' — повтор со strict experimental');
     await closeMuxer();
     for (var k = 0; k < cfg.length; k++) try { await libav.avcodec_parameters_free_js(cfg[k][0]); } catch (e) { }
-    return openMuxer(g, true);
+    return openMuxer(g, true, firstA);
   }
   if (ret < 0) throw new Error('avformat_write_header: ' + ret);
   // метки дальше переводим сами — в time_base, который выбрал мультиплексор
   mux.vTbOut = [await libav.AVStream_time_base_num(await libav.AVFormatContext_streams_a(oc, 0)), await libav.AVStream_time_base_den(await libav.AVFormatContext_streams_a(oc, 0))];
   if (cfg.length > 1) mux.aTbOut = [await libav.AVStream_time_base_num(await libav.AVFormatContext_streams_a(oc, 1)), await libav.AVStream_time_base_den(await libav.AVFormatContext_streams_a(oc, 1))];
+  // AC3 из своего кодера: один пакет звука (копия — у самого пакета метки
+  // не трогаем, он пойдёт в первый фрагмент) и сброс av_write_frame(NULL) —
+  // mov с delay_moov пишет ftyp+moov с dac3 и выходит, не начиная фрагмент.
+  // Пакет остаётся в libav и пропадает вместе с ним, а фрагменты дальше
+  // собирает jsWrite — тот же быстрый путь, что у AAC
+  var primed = false;
+  if (ac3Enc && firstA && !jsMuxOff && mux.aTbOut) {
+    var p0 = rescale(Object.assign({}, firstA), [1, enc.sr], mux.aTbOut, 1);
+    await libav.ff_write_multi(oc, mux.pkt, [p0], false);
+    await libav.av_write_frame(oc, 0);
+    primed = true;
+  }
   // moov после avformat_write_header ещё в буфере AVIO — вытолкнуть
-  if (!delay && !jsMuxOff) { try { await libav.avio_flush(pb); } catch (e) { } }
+  if ((!delay || primed) && !jsMuxOff) { try { await libav.avio_flush(pb); } catch (e) { } }
   var hasMoov = topBoxes().indexOf('moov') >= 0;
   var initBytes = flushOut(g, 0);   // init-сегмент (ftyp+moov)
   // Дальше фрагменты собираем сами (jsWrite), если заголовок вышел целиком.
   // AC3/E-AC3 как есть (delay_moov): moov ещё не записан — остаётся libav
-  if (!delay && !jsMuxOff && hasMoov && initBytes > 0 && out.len === 0) {
+  if ((!delay || primed) && !jsMuxOff && hasMoov && initBytes > 0 && out.len === 0) {
     var tb = { v: mux.vTbOut, a: mux.aTbOut };
     await closeMuxer();
     mux = { js: true, gen: g, vTbOut: tb.v, aTbOut: tb.a, seq: 0,
@@ -1213,12 +1293,13 @@ async function run() {
       }
     }
     if (!mux && (vOut.length || aOut.length)) {
-      if (!copyAudio && !enc && aIdx >= 0) {
+      // AC3 из своего кодера — ещё и первый пакет: из него mov берёт dac3
+      if (!copyAudio && aIdx >= 0 && (!enc || (outCodec === 'ac3' && !aOut.length))) {
         // звук ещё не пошёл (видео впереди звука) — подождём кодер, видео придержим
         heldVideo = heldVideo.concat(vOut);
         if (heldVideo.length < 400) continue;
       }
-      await openMuxer(gen);
+      await openMuxer(gen, false, aOut[0]);
       vOut = heldVideo.concat(vOut); heldVideo = [];
     }
     if (!mux) continue;

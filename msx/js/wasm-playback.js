@@ -121,6 +121,24 @@ var WasmPlayback = (function () {
     return out;
   }
 
+  /**
+   * Перекодировать звук в AC3 (Dolby Digital), сохраняя каналы (до 5.1), а
+   * не в AAC 2.0. Только Tizen: WASM там включается ради DTS/TrueHD, а AC3
+   * телевизор декодирует сам или отдаёт саундбару битстримом. Настройка
+   * «Преобразовать DTS в Dolby Digital…» (app.js: setupDtsAc3Setting),
+   * включена по умолчанию — хранится как «выключена». Связку видео + ac-3
+   * проверит onInfo и при отказе перезапустит с AAC.
+   * Отладка на ПК: ?wasm=ac3 — без проверки поддержки (вместе с ?wasm=dump)
+   */
+  function ac3Available() { return AppState.platform === 'tizen' || !!AppState.tizenApp; }
+
+  function ac3Wanted() {
+    if (location.search.indexOf('wasm=ac3') !== -1) return true;
+    if (!ac3Available()) return false;
+    try { if (localStorage.getItem('dtsToAc3Off') === 'true') return false; } catch (e) { }
+    return typeOk('audio/mp4; codecs="ac-3"');
+  }
+
   /** Папка со сборкой libav.js: зеркало или локальный public/ при ?local=1 */
   function assetBase() {
     return (isLocal() ? location.origin + '/js/' : MIRROR_BASE) + 'wasm-audio';
@@ -317,6 +335,8 @@ var WasmPlayback = (function () {
     // Файл воркер читает только напрямую с TorrServer/MonoServer — не через сервер TorrStream
     st.worker.postMessage({ type: 'open', url: st.url, base: assetBase(), audio: st.opts.audio >= 0 ? st.opts.audio : 0, time: st.startTime,
       mvp: location.search.indexOf('wasm=mvp') !== -1, native: st.nativeOff ? {} : nativeAudio(),
+      // AC3 со всеми каналами вместо AAC 2.0 (Tizen); связку не взял — откат nativeOff
+      encode: !st.nativeOff && ac3Wanted() ? 'ac3' : 'aac',
       auth: torrServerAuth(), dv: !!AppState.dvPreferred,
       // iPhone: памяти под MediaSource меньше — запас впереди скромнее
       maxAhead: managed() ? 40e6 : 0,
@@ -416,8 +436,8 @@ var WasmPlayback = (function () {
       var vOnly = typeOk('video/mp4; codecs="' + m.vCodec + '"');
       var aOnly = m.aCodec ? typeOk('audio/mp4; codecs="' + m.aCodec + '"') : true;
       console.warn('🧩 WASM: MSE не берёт ' + mime + ' — видео отдельно: ' + (vOnly ? 'да' : 'нет') + (m.aCodec ? ', звук отдельно: ' + (aOnly ? 'да' : 'нет') : ''));
-      // Звук шёл как есть (VIDAA), а связку ТВ не берёт — тот же файл с
-      // переводом звука в AAC 2.0, без ошибки и с того же места
+      // Звук шёл как есть (VIDAA) или в AC3 (Tizen), а связку ТВ не берёт —
+      // тот же файл с переводом звука в AAC 2.0, без ошибки и с того же места
       if (vOnly && /^(ac-3|ec-3)$/.test(m.aCodec || '') && !s.nativeOff) {
         console.warn('🧩 WASM: звук ' + m.aCodec + ' не в связке с видео — перевожу в AAC');
         s.nativeOff = true;
@@ -642,7 +662,7 @@ var WasmPlayback = (function () {
       ', разбор ждал данных ' + pct(active > 0 ? w.waitMs / active : 0));
     if (cpu > 50 && w.mediaSec > 0) {
       parts.push('обработка ×' + (w.mediaSec / (cpu / 1000)).toFixed(1) + ' (разбор ' + pct(w.readMs / cpu) +
-        ', декодер звука ' + pct(w.decMs / cpu) + ', кодер AAC ' + pct(w.encMs / cpu) + ', MP4 ' + pct(w.muxMs / cpu) + ')');
+        ', декодер звука ' + pct(w.decMs / cpu) + ', кодер ' + (s.info && s.info.aCodec === 'ac-3' ? 'AC3' : 'AAC') + ' ' + pct(w.encMs / cpu) + ', MP4 ' + pct(w.muxMs / cpu) + ')');
     }
     if (active > 200 && w.mediaSec > 0) parts.push('итого ×' + (w.mediaSec / (active / 1000)).toFixed(1));
     if (mseN) parts.push('MSE ' + Math.round(mseMs / mseN) + ' мс/фрагмент');
@@ -716,6 +736,8 @@ var WasmPlayback = (function () {
 
   return {
     eligible: eligible,
+    ac3Available: ac3Available,
+    ac3Wanted: ac3Wanted,
     available: available,
     // «Об устройстве» (app.js: renderDeviceInfo): почему не включится, что
     // умеет браузер и чем кончился последний запуск

@@ -4089,11 +4089,12 @@ function _restartDirectInWasm() {
     if (!AppState.videoUrl || AppState.currentScreen !== 'player') return;
     var videoPlayer = getEl('video-player');
     var at = videoPlayer.currentTime || 0;
-    console.log('🧩 WASM: ' + reason + ' — перезапуск с ' + at.toFixed(1) + ' c через WASM, звук в AAC 2.0');
+    var target = window.WasmPlayback && WasmPlayback.ac3Wanted && WasmPlayback.ac3Wanted() ? 'Dolby Digital' : 'AAC 2.0';
+    console.log('🧩 WASM: ' + reason + ' — перезапуск с ' + at.toFixed(1) + ' c через WASM, звук в ' + target);
     if (currentTimecodeData.hash && currentTimecodeData.fileId) saveAudioPreference(currentTimecodeData.hash, currentTimecodeData.fileId, index);
     setPlayerPanel('audio', false);
     getEl('playback-overlay').classList.add('active');
-    document.querySelector('.playback-text').textContent = 'Звук ' + reason + ' — перевожу в AAC 2.0...';
+    document.querySelector('.playback-text').textContent = 'Звук ' + reason + ' — перевожу в ' + target + '...';
     try {
       AppState.wasmForceOnce = true;
       destroyHls();

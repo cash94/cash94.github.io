@@ -26,7 +26,7 @@
  *   "decoder-truehd","decoder-mlp","decoder-aac","decoder-aac_latm","decoder-mp3",
  *   "decoder-mp2","decoder-flac","decoder-opus","decoder-vorbis","decoder-alac",
  *   "decoder-pcm_s16le","decoder-pcm_s24le","decoder-pcm_s16be","decoder-pcm_s24be",
- *   "decoder-pcm_bluray","decoder-pcm_dvd","decoder-pcm_f32le","encoder-aac",
+ *   "decoder-pcm_bluray","decoder-pcm_dvd","decoder-pcm_f32le","encoder-aac","encoder-ac3",
  *   "bsf-aac_adtstoasc","bsf-extract_extradata"]'
  *   cd .. && make -j2 dist/libav-6.11.9.0.2-torrstream.js dist/libav-6.11.9.0.2-torrstream.wasm.js
  * (только эти цели: build-<вариант> собирает ещё thr/asm/dbg). h264/hevc —

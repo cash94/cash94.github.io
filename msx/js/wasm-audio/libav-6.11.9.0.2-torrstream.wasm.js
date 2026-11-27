@@ -3037,7 +3037,7 @@ var LibAVFactory = (_globalThis$document => {
       return (...args) => ccall(ident, returnType, argTypes, args, opts);
     };
     var ASM_CONSTS = {
-      657923: () => {
+      662627: () => {
         Fibers.trampolineRunning = false;
       }
     };
@@ -3486,25 +3486,26 @@ var LibAVFactory = (_globalThis$document => {
       dynCalls["viidi"] = wasmExports["Uh"];
       dynCalls["iiijiiii"] = wasmExports["Vh"];
       dynCalls["viiiiiiff"] = wasmExports["Wh"];
-      dynCalls["viiiiiifi"] = wasmExports["Xh"];
-      dynCalls["iiiiiiii"] = wasmExports["Yh"];
-      dynCalls["viiiiiiii"] = wasmExports["Zh"];
-      dynCalls["viiiiij"] = wasmExports["_h"];
-      dynCalls["viiiiiiiiii"] = wasmExports["$h"];
-      dynCalls["viiiiiiiiiiif"] = wasmExports["ai"];
-      dynCalls["viiiiiii"] = wasmExports["bi"];
-      dynCalls["viiiiiiiii"] = wasmExports["ci"];
-      dynCalls["viiiiiiiiiiii"] = wasmExports["di"];
-      dynCalls["viiiiiiiiiiiiii"] = wasmExports["ei"];
-      dynCalls["viiiiiiiiiii"] = wasmExports["fi"];
-      dynCalls["iiiiiiiii"] = wasmExports["gi"];
-      dynCalls["viiiifii"] = wasmExports["hi"];
-      dynCalls["fii"] = wasmExports["ii"];
-      dynCalls["iidiiiii"] = wasmExports["ji"];
-      _asyncify_start_unwind = wasmExports["ki"];
-      _asyncify_stop_unwind = wasmExports["li"];
-      _asyncify_start_rewind = wasmExports["mi"];
-      _asyncify_stop_rewind = wasmExports["ni"];
+      dynCalls["viiiiiiii"] = wasmExports["Xh"];
+      dynCalls["viiiiiifi"] = wasmExports["Yh"];
+      dynCalls["iiiiiiii"] = wasmExports["Zh"];
+      dynCalls["viiiff"] = wasmExports["_h"];
+      dynCalls["viiiiij"] = wasmExports["$h"];
+      dynCalls["viiiiiiiiii"] = wasmExports["ai"];
+      dynCalls["viiiiiiiiiiif"] = wasmExports["bi"];
+      dynCalls["viiiiiii"] = wasmExports["ci"];
+      dynCalls["viiiiiiiii"] = wasmExports["di"];
+      dynCalls["viiiiiiiiiiii"] = wasmExports["ei"];
+      dynCalls["viiiiiiiiiiiiii"] = wasmExports["fi"];
+      dynCalls["viiiiiiiiiii"] = wasmExports["gi"];
+      dynCalls["iiiiiiiii"] = wasmExports["hi"];
+      dynCalls["viiiifii"] = wasmExports["ii"];
+      dynCalls["fii"] = wasmExports["ji"];
+      dynCalls["iidiiiii"] = wasmExports["ki"];
+      _asyncify_start_unwind = wasmExports["li"];
+      _asyncify_stop_unwind = wasmExports["mi"];
+      _asyncify_start_rewind = wasmExports["ni"];
+      _asyncify_stop_rewind = wasmExports["oi"];
       wasmMemory = wasmExports["I"];
       wasmExports["__indirect_function_table"];
       Module["_ff_h264_cabac_tables"] = wasmExports["eh"].value;

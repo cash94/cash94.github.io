@@ -74,6 +74,17 @@ var WasmPlayback = function () {
     }
     return out;
   }
+  function ac3Available() {
+    return AppState.platform === 'tizen' || !!AppState.tizenApp;
+  }
+  function ac3Wanted() {
+    if (location.search.indexOf('wasm=ac3') !== -1) return true;
+    if (!ac3Available()) return false;
+    try {
+      if (localStorage.getItem('dtsToAc3Off') === 'true') return false;
+    } catch (e) {}
+    return typeOk('audio/mp4; codecs="ac-3"');
+  }
   function assetBase() {
     return (isLocal() ? location.origin + '/js/' : MIRROR_BASE) + 'wasm-audio';
   }
@@ -297,6 +308,7 @@ var WasmPlayback = function () {
       time: st.startTime,
       mvp: location.search.indexOf('wasm=mvp') !== -1,
       native: st.nativeOff ? {} : nativeAudio(),
+      encode: !st.nativeOff && ac3Wanted() ? 'ac3' : 'aac',
       auth: torrServerAuth(),
       dv: !!AppState.dvPreferred,
       maxAhead: managed() ? 40e6 : 0,
@@ -658,7 +670,7 @@ var WasmPlayback = function () {
     var parts = [];
     parts.push((w.netBytes < 65536 ? 'сеть простаивает' : 'сеть ' + (net !== null ? net.toFixed(1) + ' Мбит/с' : '—')) + (need ? ' (файлу нужно ' + need.toFixed(1) + ')' : '') + ', разбор ждал данных ' + pct(active > 0 ? w.waitMs / active : 0));
     if (cpu > 50 && w.mediaSec > 0) {
-      parts.push('обработка ×' + (w.mediaSec / (cpu / 1000)).toFixed(1) + ' (разбор ' + pct(w.readMs / cpu) + ', декодер звука ' + pct(w.decMs / cpu) + ', кодер AAC ' + pct(w.encMs / cpu) + ', MP4 ' + pct(w.muxMs / cpu) + ')');
+      parts.push('обработка ×' + (w.mediaSec / (cpu / 1000)).toFixed(1) + ' (разбор ' + pct(w.readMs / cpu) + ', декодер звука ' + pct(w.decMs / cpu) + ', кодер ' + (s.info && s.info.aCodec === 'ac-3' ? 'AC3' : 'AAC') + ' ' + pct(w.encMs / cpu) + ', MP4 ' + pct(w.muxMs / cpu) + ')');
     }
     if (active > 200 && w.mediaSec > 0) parts.push('итого ×' + (w.mediaSec / (active / 1000)).toFixed(1));
     if (mseN) parts.push('MSE ' + Math.round(mseMs / mseN) + ' мс/фрагмент');
@@ -726,6 +738,8 @@ var WasmPlayback = function () {
   }
   return {
     eligible: eligible,
+    ac3Available: ac3Available,
+    ac3Wanted: ac3Wanted,
     available: available,
     whyNot: whyNot,
     support: support,
