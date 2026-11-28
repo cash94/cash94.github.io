@@ -6071,9 +6071,91 @@ function formatBitrate(bps) {
 function mediaChip(text, extraClass, icon) {
   return '<div class="search-result-media' + (extraClass ? ' ' + extraClass : '') + '">' + (icon ? '<i class="fi ' + icon + '"></i>' : '') + escapeHtml(text) + '</div>';
 }
+function formatNumberRanges(nums) {
+  var list = [];
+  for (var i = 0; i < nums.length; i++) {
+    var n = nums[i];
+    if (typeof n === 'number' && n > 0 && n < 200 && list.indexOf(n) === -1) list.push(n);
+  }
+  list.sort(function (a, b) {
+    return a - b;
+  });
+  var parts = [];
+  for (var j = 0; j < list.length; j++) {
+    var start = list[j];
+    while (j + 1 < list.length && list[j + 1] === list[j] + 1) j++;
+    parts.push(start === list[j] ? String(start) : start + '–' + list[j]);
+  }
+  return {
+    count: list.length,
+    text: parts.join(', ')
+  };
+}
+function parseEpisodeRangeFromTitle(title) {
+  var t = String(title || '');
+  if (!t) return null;
+  var m, from, to, total;
+  var D = '[-–—]';
+  if (m = t.match(new RegExp('(?:сери[яийю]|эпизод(?:ы|ов)?|episodes?)\\s*[:.]?\\s*(\\d{1,4})(?:\\s*' + D + '\\s*(\\d{1,4}))?(?:\\s*(?:из|of)\\s*(\\d{1,4}))?', 'i'))) {
+    from = m[1];
+    to = m[2] || m[1];
+    total = m[3];
+  } else if (m = t.match(new RegExp('(\\d{1,4})\\s*' + D + '\\s*(\\d{1,4})\\s*(?:сери[яийю]|эпизод[а-я]*|эп\\.)(?:\\s*из\\s*(\\d{1,4}))?', 'i'))) {
+    from = m[1];
+    to = m[2];
+    total = m[3];
+  } else if (m = t.match(new RegExp('(\\d{1,4})\\s*(?:сери[яю]|эпизод)\\s*из\\s*(\\d{1,4})', 'i'))) {
+    from = m[1];
+    to = m[1];
+    total = m[2];
+  } else if (m = t.match(new RegExp('\\bS\\d{1,2}\\s*E(\\d{1,4})(?:\\s*' + D + '\\s*(?:S\\d{1,2}\\s*)?E?(\\d{1,4}))?', 'i'))) {
+    from = m[1];
+    to = m[2] || m[1];
+  } else if (m = t.match(new RegExp('\\bE(\\d{1,4})\\s*' + D + '\\s*E?(\\d{1,4})\\b', 'i'))) {
+    from = m[1];
+    to = m[2];
+  } else if (m = t.match(new RegExp('[\\[(]\\s*(\\d{1,4})\\s*' + D + '\\s*(\\d{1,4})\\s*(?:из|of)\\s*(\\d{1,4})\\s*[\\])]', 'i'))) {
+    from = m[1];
+    to = m[2];
+    total = m[3];
+  } else {
+    return null;
+  }
+  from = parseInt(from, 10);
+  to = parseInt(to, 10);
+  total = total ? parseInt(total, 10) : 0;
+  if (!(from >= 1) || !(to >= from) || to > 1500) return null;
+  if (!(total >= to) || total > 1500) total = 0;
+  return {
+    from: from,
+    to: to,
+    total: total
+  };
+}
+function buildSeriesChips(result) {
+  var title = result.title || '';
+  var isTv = !!(result.types && result.types.indexOf('tv') !== -1);
+  var seasons = Array.isArray(result.seasons) ? result.seasons : [];
+  if (!seasons.length && (isTv || /сезон|season|\bS\d{1,2}(?:E\d|\b)/i.test(title))) {
+    seasons = extractSeasonsFromTitle(title);
+  }
+  var chips = '';
+  var s = formatNumberRanges(seasons);
+  if (s.count) chips += mediaChip((s.count > 1 ? 'Сезоны ' : 'Сезон ') + s.text, 'search-result-media-series');
+  if (isTv || s.count) {
+    var ep = parseEpisodeRangeFromTitle(title);
+    if (ep) {
+      var label = ep.from === ep.to ? 'Серия ' + ep.from : 'Серии ' + ep.from + '–' + ep.to;
+      if (ep.total > ep.to) label += ' из ' + ep.total;
+      chips += mediaChip(label, 'search-result-media-series');
+    }
+  }
+  return chips;
+}
 function buildMediaRow(result) {
   var media = result.media;
   var chips = '';
+  chips += buildSeriesChips(result);
   var label = qualityLabel(result.quality || 0);
   if (label) chips += mediaChip(label, 'search-result-media-tag');
   if (result.videotype === 'hdr') chips += mediaChip('HDR', 'search-result-media-tag');

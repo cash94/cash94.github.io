@@ -764,6 +764,14 @@ textarea {
   letter-spacing: 0.03em;
 }
 
+/* Сезоны и серии раздачи сериала (buildSeriesChips в torrents.js) — первыми
+   в ряду и синим: по ним раздачи сериала и выбирают */
+.search-result-media-series {
+  color: #bcdcff;
+  background: rgba(74, 158, 255, 0.24);
+  font-weight: 700;
+}
+
 .search-result-voices {
   display: flex;
   flex-wrap: wrap;
@@ -13103,8 +13111,11 @@ html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail
 /* Окно с полным описанием «сцены» — openDetailOverviewPopup() в catalog.js.
    Лежит в <body>, поэтому --cu карточки здесь не действует: размеры в vh
    (1.852vh = --cu на альбомном экране), на портретном телефоне — в vw.
-   Flex-gap не используем (Chrome 66) — отступы margin'ами. */
+   Flex-gap не используем (Chrome 66) — отступы margin'ами.
+   --overview-font — множитель шрифта окна (заголовок и текст): 1.5 — в
+   полтора раза крупнее прежнего, чтобы читалось с дивана. */
 .detail-overview-popup {
+  --overview-font: 1.5;
   position: fixed;
   left: 0;
   top: 0;
@@ -13130,9 +13141,9 @@ html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail
   display: flex;
   -webkit-flex-direction: column;
   flex-direction: column;
-  width: 62%;
-  max-width: calc(var(--popup-u, 1.852vh) * 70);
-  max-height: 78vh;
+  width: 72%;
+  max-width: calc(var(--popup-u, 1.852vh) * 92);
+  max-height: 84vh;
   padding: calc(var(--popup-u, 1.852vh) * 2) calc(var(--popup-u, 1.852vh) * 2.4);
   box-sizing: border-box;
   border-radius: calc(var(--popup-u, 1.852vh) * 1.1);
@@ -13147,7 +13158,7 @@ html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail
   -webkit-flex: none;
   flex: none;
   margin-bottom: calc(var(--popup-u, 1.852vh) * 1);
-  font-size: calc(var(--popup-u, 1.852vh) * 1.45 * var(--detail-text-scale, 1));
+  font-size: calc(var(--popup-u, 1.852vh) * 1.45 * var(--overview-font, 1) * var(--detail-text-scale, 1));
   font-weight: 700;
   line-height: 1.25;
   color: #fff;
@@ -13166,8 +13177,8 @@ html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding-right: calc(var(--popup-u, 1.852vh) * 0.6);
-  font-size: calc(var(--popup-u, 1.852vh) * 1.05 * var(--detail-text-scale, 1));
-  line-height: 1.6;
+  font-size: calc(var(--popup-u, 1.852vh) * 1.05 * var(--overview-font, 1) * var(--detail-text-scale, 1));
+  line-height: 1.55;
   color: rgba(255, 255, 255, 0.88);
   white-space: pre-line;
 }
@@ -13198,11 +13209,11 @@ html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail
 
   .detail-overview-popup-title {
     margin-bottom: 2.5vw;
-    font-size: calc(5vw * var(--detail-text-scale, 1));
+    font-size: calc(5vw * var(--overview-font, 1) * var(--detail-text-scale, 1));
   }
 
   .detail-overview-popup-text {
-    font-size: calc(4vw * var(--detail-text-scale, 1));
+    font-size: calc(4vw * var(--overview-font, 1) * var(--detail-text-scale, 1));
   }
 }
 
@@ -13216,11 +13227,11 @@ html.apple-device #detail-view.catalog-detail-mode.detail-cinema #catalog-detail
   }
 
   .detail-overview-popup-title {
-    font-size: calc(5vh * var(--detail-text-scale, 1));
+    font-size: calc(5vh * var(--overview-font, 1) * var(--detail-text-scale, 1));
   }
 
   .detail-overview-popup-text {
-    font-size: calc(4.2vh * var(--detail-text-scale, 1));
+    font-size: calc(4.2vh * var(--overview-font, 1) * var(--detail-text-scale, 1));
   }
 }
 
@@ -14793,6 +14804,12 @@ html.apple-tv-ui #search-overlay {
   letter-spacing: 0.03em;
   color: #fff;
   background: rgba(255, 255, 255, 0.16);
+}
+
+#search-overlay .search-result-media-series {
+  font-weight: 700;
+  color: #bcdcff;
+  background: rgba(74, 158, 255, 0.24);
 }
 
 /* Колонка справа: размер, под ним сиды и пиры */
