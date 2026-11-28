@@ -27,7 +27,12 @@
  *   "decoder-mp2","decoder-flac","decoder-opus","decoder-vorbis","decoder-alac",
  *   "decoder-pcm_s16le","decoder-pcm_s24le","decoder-pcm_s16be","decoder-pcm_s24be",
  *   "decoder-pcm_bluray","decoder-pcm_dvd","decoder-pcm_f32le","encoder-aac","encoder-ac3",
- *   "bsf-aac_adtstoasc","bsf-extract_extradata"]'
+ *   "bsf-aac_adtstoasc","bsf-extract_extradata","encoder-flac","encoder-libopus"]'
+ * encoder-libopus — свой фрагмент (в libav.js есть только decoder-libopus):
+ *   configs/fragments/encoder-libopus/ = deps.txt, libs.txt, license.js из
+ *   decoder-libopus + ffmpeg-config.txt «--enable-libopus --enable-encoder=libopus».
+ *   Родной декодер opus ffmpeg без swresample отключает (WARNING в configure) —
+ *   так было и раньше.
  *   cd .. && make -j2 dist/libav-6.11.9.0.2-torrstream.js dist/libav-6.11.9.0.2-torrstream.wasm.js
  * (только эти цели: build-<вариант> собирает ещё thr/asm/dbg). h264/hevc —
  * демуксеру для DTS при B-кадрах, видео не перекодируется.

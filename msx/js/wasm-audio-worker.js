@@ -10,7 +10,7 @@
  * Сборка libav.js: VPS ~/wasm-build, libav.js v6.11.9.0.2 (ffmpeg 9.0.2),
  * конфиг torrstream (configs/mkconfig.js) — демуксеры matroska/mov/avi,
  * mp4-муксер, декодеры ac3/eac3/dca/truehd/mlp/aac/mp3/mp2/flac/vorbis/alac/
- * pcm*, h264/hevc (нужны демуксеру для DTS при B-кадрах), aac-кодер.
+ * pcm*, h264/hevc (нужны демуксеру для DTS при B-кадрах), кодеры aac/ac3/flac/libopus.
  *
  * Сообщения от страницы:
  *   {type:'open', url, base, audio, time}  — открыть файл (base — где wasm-audio/)
@@ -109,10 +109,11 @@ var vIdx = -1,
 var vTb, aTb;
 var outCodec = 'flac',
   copyAudio = false;
+var opusLevel = 5; // сложность libopus (0–10), m.opusLevel
 // Версия воркера — в «Диагностику» и «Об устройстве»: сервер TorrStream отдаёт
 // воркер из своего кэша зеркала (5 мин), а без зеркала — свою копию из
 // установки, и тогда страница новее воркера. Повышать при заметных правках
-var WORKER_REV = '1.0.68-tags';
+var WORKER_REV = '1.0.68-flac-opus';
 var dec = null,
   enc = null,
   mux = null;
@@ -918,7 +919,13 @@ function _open() {
     // Цель перекодирования: AAC 2.0 (по умолчанию) или AC3 (Dolby Digital) со
     // всеми каналами до 5.1 — на Tizen, где телевизор AC3 декодирует сам или
     // отдаёт саундбару (настройка «Преобразовать DTS в Dolby Digital»)
-    outCodec = m.encode === 'ac3' ? 'ac3' : 'aac';
+    // (проба: FLAC / Opus 2.0 — кодировать в разы дешевле AAC)
+    outCodec = {
+      ac3: 'ac3',
+      flac: 'flac',
+      opus: 'opus'
+    }[m.encode] || 'aac';
+    if (m.opusLevel >= 0 && m.opusLevel <= 10) opusLevel = m.opusLevel;
     net = {
       auth: m.auth || ''
     };
@@ -1334,15 +1341,21 @@ function _setupEncoder() {
     // AAC — всегда стерео: многоканальное сводим сами (downmixMatrix).
     // AC3 — каналы как есть, если такую раскладку он знает (до 5.1), иначе
     // (7.1, 6.1, редкие маски) сводим в 5.1 (ac3Matrix)
-    var channels = outCodec === 'aac' ? 2 : inChannels;
-    var layout = outCodec === 'aac' ? 0x3 : inLayout;
+    // FLAC и Opus — тоже стерео (у Opus 5.1 — другая раскладка, у FLAC 5.1 —
+    // 3–4 Мбит/с при лимите MSE на звук в Chrome около 12 МБ)
+    var stereo = outCodec !== 'ac3';
+    var channels = stereo ? 2 : inChannels;
+    var layout = stereo ? 0x3 : inLayout;
     var mix = null;
-    if (outCodec === 'aac') mix = channels === inChannels ? null : downmixMatrix(inLayout, inChannels);else if (outCodec === 'ac3' && !AC3_LAYOUTS[inLayout]) {
+    if (stereo) mix = channels === inChannels ? null : downmixMatrix(inLayout, inChannels);else if (outCodec === 'ac3' && !AC3_LAYOUTS[inLayout]) {
       layout = inLayout & 0x8 ? 0x60F : 0x607;
       channels = layout === 0x60F ? 6 : 5;
       mix = ac3Matrix(inLayout, inChannels, layout);
     }
-    var sr = fr.sample_rate;
+    var inSr = fr.sample_rate,
+      sr = inSr;
+    // libopus берёт только 48/24/16/12/8 кГц — 44,1 кГц и прочее переводим в 48
+    if (outCodec === 'opus' && [48000, 24000, 16000, 12000, 8000].indexOf(sr) < 0) sr = 48000;
     var opts = {
       ctx: {
         sample_rate: sr,
@@ -1375,9 +1388,21 @@ function _setupEncoder() {
       name = 'libopus';
       sfmt = libav.AV_SAMPLE_FMT_FLT;
       opts.ctx.bit_rate = channels > 2 ? 384000 : 160000;
+      // сложность кодера 0–10 (по умолчанию 10); ?wasm=opusN у страницы — отладка
+      opts.options = {
+        compression_level: String(opusLevel)
+      };
     }
     opts.ctx.sample_fmt = sfmt;
-    var r = yield libav.ff_init_encoder(name, opts);
+    var r;
+    try {
+      r = yield libav.ff_init_encoder(name, opts);
+    } catch (e) {
+      // FLAC/Opus нет в сборке (у браузера в кэше старая .wasm) — страница
+      // перезапустит со следующим кодеком (wasm-playback.js: audioFallback)
+      if (outCodec === 'flac' || outCodec === 'opus') throw codedError('encoder', 'Кодер ' + name + ': ' + (e && e.message || e));
+      throw e;
+    }
     enc = {
       c: r[1],
       frame: r[2],
@@ -1388,9 +1413,14 @@ function _setupEncoder() {
       layout: layout,
       sr: sr,
       inChannels: inChannels,
-      mix: mix
+      mix: mix,
+      rs: sr !== inSr ? {
+        step: inSr / sr,
+        pos: 0,
+        prev: null
+      } : null
     };
-    log('кодер ' + outCodec + ': ' + inChannels + ' → ' + channels + ' кан., ' + sr + ' Гц, кадр ' + enc.frameSize);
+    log('кодер ' + outCodec + (outCodec === 'opus' ? ' (сложность ' + opusLevel + ')' : '') + ': ' + inChannels + ' → ' + channels + ' кан., ' + (enc.rs ? inSr + ' → ' : '') + sr + ' Гц, кадр ' + enc.frameSize);
     // Странице — что на входе и что на выходе (строка «звук» в диагностике)
     postMessage({
       type: 'audio',
@@ -1524,7 +1554,7 @@ function pushFrames(frames, firstPts) {
       var src = toFloat(fr.data, fr.format);
       for (var k = 0; k < n; k++) for (var c3 = 0; c3 < ch; c3++) planes[c3][k] = src[k * ch + c3];
     }
-    planes = downmix(planes);
+    planes = resample(downmix(planes));
     if (!rechunk) rechunk = {
       planes: planes.map(function () {
         return new Float32Array(0);
@@ -1550,6 +1580,44 @@ function pushFrames(frames, firstPts) {
       rechunk.nextPts += fs;
     }
   }
+  return out;
+}
+
+/**
+ * Смена частоты для Opus (44,1 → 48 кГц): линейная интерполяция, потоком —
+ * последний сэмпл прошлого куска и дробная позиция переходят в следующий.
+ * Для фильмов редкость (почти всё 48 кГц), качество — как у простого ресемплера
+ */
+function resample(planes) {
+  var rs = enc.rs;
+  if (!rs || !planes[0].length) return planes;
+  var n = planes[0].length,
+    step = rs.step;
+  if (!rs.prev) rs.prev = planes.map(function (pl) {
+    return pl[0];
+  });
+  // позиция в координатах «prev = −1, planes[0] = 0»
+  var pos = rs.pos,
+    cnt = 0;
+  for (var p0 = pos; p0 < n - 1 + 1e-9; p0 += step) cnt++;
+  var out = planes.map(function () {
+    return new Float32Array(cnt);
+  });
+  for (var c = 0; c < planes.length; c++) {
+    var src = planes[c],
+      dst = out[c],
+      prev = rs.prev[c],
+      x = pos;
+    for (var i = 0; i < cnt; i++, x += step) {
+      var k = Math.floor(x),
+        f = x - k;
+      var a = k < 0 ? prev : src[k],
+        b = k + 1 < n ? src[k + 1] : src[n - 1];
+      dst[i] = a + (b - a) * f;
+    }
+    rs.prev[c] = src[n - 1];
+  }
+  rs.pos = pos + cnt * step - n; // ≥ −1: следующий кусок начнётся с prev
   return out;
 }
 function toFloat(d, format) {
