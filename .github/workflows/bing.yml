@@ -1,0 +1,50 @@
+# Список картинок дня Bing для заставки интерфейса (msx/js/screensaver.js).
+#
+# Раз в день собирает msx/cache/bing.json (tools/bing/build.js) и коммитит его в main,
+# если список поменялся. Именно в main, а не сразу в gh-pages: gh-pages каждые полчаса
+# пересобирает и numparser-bot — из main + releases, — и файл, положенный только в
+# gh-pages, пропадал при первой же его сборке (так 21–22 октября 2026 заставка и не
+# появлялась). Bing не ответил — в main остаётся прежний список.
+name: Bing wallpapers
+
+on:
+  # Картинка дня Bing меняется около 07:00 UTC — собираем чуть позже
+  schedule:
+    - cron: '20 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: bing-wallpapers
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build bing.json
+        run: node tools/bing/build.js msx/cache/bing.json
+
+      - name: Commit and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- msx/cache/bing.json && git ls-files --error-unmatch msx/cache/bing.json > /dev/null 2>&1; then
+            echo "Список не изменился"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add msx/cache/bing.json
+          git commit -q -m "Bing: картинки дня $(date -u +%Y-%m-%d)"
+          git pull -q --rebase origin main
+          git push -q origin HEAD:main
+          # Пуш от GITHUB_TOKEN не запускает другие workflow, а workflow_dispatch —
+          # запускает: пересобираем сайт сразу, не дожидаясь бота
+          gh workflow run gh-pages.yml --ref main

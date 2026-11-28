@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Документация TorrStream</title>
+    <meta name="description" content="Документация TorrStream: расширения, инструкция, список изменений.">
+    <meta name="theme-color" content="#080b14">
+    <style>
+        :root {
+            --bg: #080b14;
+            --panel: #111827;
+            --line: #1e2740;
+            --text: #eef2ff;
+            --muted: #8b9ac0;
+            --accent: #ff8c00;
+            --blue: #4a9eff;
+            --radius: 18px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            line-height: 1.55;
+        }
+
+        .wrap {
+            max-width: 760px;
+            margin: 0 auto;
+            padding: 40px 16px 64px;
+        }
+
+        .logo {
+            font-size: 15px;
+            font-weight: 800;
+            color: var(--text);
+            text-decoration: none;
+        }
+
+        .logo span {
+            color: var(--accent);
+        }
+
+        h1 {
+            margin: 18px 0 20px;
+            font-size: clamp(28px, 6vw, 40px);
+        }
+
+        .card {
+            display: block;
+            margin-top: 14px;
+            padding: 18px 22px;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            color: var(--text);
+            text-decoration: none;
+        }
+
+        .card:hover {
+            border-color: rgba(255, 140, 0, .45);
+        }
+
+        .card b {
+            display: block;
+            font-size: 18px;
+            margin-bottom: 4px;
+        }
+
+        .card span {
+            color: var(--muted);
+            font-size: 15px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="wrap">
+        <a class="logo" href="https://cash94.github.io/msx/guide/guide.html">Torr<span>Stream</span></a>
+        <h1>Документация</h1>
+        <a class="card" href="extensions/">
+            <b>Расширения</b>
+            <span>Как поставить расширение и как написать своё: быстрый старт, справочник API, примеры.</span>
+        </a>
+        <a class="card" href="https://cash94.github.io/msx/guide/guide.html">
+            <b>Описание и инструкция</b>
+            <span>Что умеет TorrStream и как его установить.</span>
+        </a>
+        <a class="card" href="https://cash94.github.io/changelog/">
+            <b>Что нового</b>
+            <span>Список изменений по версиям.</span>
+        </a>
+    </div>
+</body>
+
+</html>

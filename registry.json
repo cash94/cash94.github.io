@@ -1,0 +1,53 @@
+{
+  "modules": {
+    "rutube-proxy": {
+      "name": "rutube-proxy",
+      "version": "1.6.0",
+      "description": "Прокси для RuTube API с cookie",
+      "url": "https://cash94.github.io/torrstream-modules/rutube-proxy/module.js",
+      "sha256": "562368b20a64be95651bb8246b7420f7fce55538dff999aefaa78662a14d0d39"
+    },
+    "rus-catalog": {
+      "name": "rus-catalog",
+      "version": "1.1.0",
+      "description": "Подборка русских фильмов и сериалов.",
+      "url": "https://cash94.github.io/torrstream-modules/rus-catalog/rus-catalog.js",
+      "sha256": "7fbd210ebec11f65a97190ef900795c4b8da3805af3f5a1b8d1d272556b292ca"
+    },
+    "kinopoisk-collections": {
+      "name": "kinopoisk-collections",
+      "version": "3.4.1",
+      "description": "Подборки Кинопоиска рядами на главной (зомби, вампиры, катастрофы, мультфильмы) с маппингом в TMDB через зеркала сервера (запасной путь — свои из apiproxy.json) и логотипами названий; рейтинги Кинопоиска и IMDb для карточки фильма.",
+      "url": "https://cash94.github.io/torrstream-modules/kinopoisk-collections/module.js",
+      "sha256": "da90bdc8938f7cc9e454422bf9a9f9e5a6de1ff168b63477cabd02d31d001be7"
+    },
+    "skip-intro": {
+      "name": "skip-intro",
+      "version": "1.0.2",
+      "description": "Заставки и титры: api.introdb.app, чего у него нет — из tsskip",
+      "url": "https://cash94.github.io/torrstream-modules/skip-intro/module.js",
+      "sha256": "bfec2e34583ada7e6af2cb73993fb75a3f7147a6c943e5ff5f5c4294fc577b90"
+    },
+    "halloween-collection": {
+      "name": "halloween-collection",
+      "version": "1.0.1",
+      "description": "Сезонная подборка «Хэллоуин» по ключевому слову TMDB: ряд главной (20 фильмов) и категория каталога (все фильмы и сериалы). Показ — только в сезон, решает фронт.",
+      "url": "https://cash94.github.io/torrstream-modules/halloween-collection/module.js",
+      "sha256": "d51e6ec94058554a84558a5b402ee6ef5fdf5455e35c902feda61cda8752943a"
+    },
+    "smart-search": {
+      "name": "smart-search",
+      "version": "1.0.0",
+      "description": "Поиск по смыслу: «фильмы про гонки», «корейские сериалы про зомби», «комедии 90-х» — тема, жанр, страна и годы из текста запроса превращаются в подборку TMDB (discover). Около 290 тем; по названию ищет как раньше.",
+      "url": "https://cash94.github.io/torrstream-modules/smart-search/module.js",
+      "sha256": "92521fc3cbd964bdc9f584a991b89fddaa5754ed1cc96d6d42445338669c1305"
+    },
+    "user-ratings": {
+      "name": "user-ratings",
+      "version": "1.0.1",
+      "description": "Оценки зрителей в карточке фильма и сериала: «Огонь», «Лайк», «Дизлайк», «Какашка» и оценка зрителей по 10-балльной шкале рядом с IMDb. Видят все пользователи сервера, ставят вошедшие в аккаунт, один раз на фильм. Нужен сервер TorrStream 1.0.66+ (ctx.db).",
+      "url": "https://cash94.github.io/torrstream-modules/user-ratings/module.js",
+      "sha256": "d51e6ec94058554a84558a5b402ee6ef5fdf5455e35c902feda61cda8752943a"
+    }
+  }
+}
