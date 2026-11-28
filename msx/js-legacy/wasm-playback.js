@@ -125,7 +125,7 @@ var WasmPlayback = function () {
     var line;
     if (a.to === 'copy') line = from + ' как есть';else line = from + ' → ' + (a.to === 'ac3' ? 'AC3 (Dolby Digital)' : audioName(a.to)) + (a.outCh ? ' ' + chName(a.outCh) : '');
     if (a.coreOnly) line += ', только ядро DTS';
-    if (/^(ac3|flac|opus)$/.test(st.encode) && a.to !== st.encode && a.to !== 'copy') line += ' (' + (st.encode === 'ac3' ? 'AC3' : audioName(st.encode)) + ' просили — воркер старый, ' + (st.info && st.info.rev ? st.info.rev : 'без версии') + ')';else if (a.to === 'aac' && st.nativeOff && AppState.platform === 'vidaa') line += ' (не как есть: ' + (st.splitFailed ? 'MSE не открыл буфер: ' + st.splitFailed : 'связку видео + Dolby MSE не взял') + ')';else if (a.to !== 'copy' && a.to !== 'flac' && st.pcWhy) line += ' (' + st.pcWhy + ')';else if (a.to === 'aac' && ac3Available()) line += ' (не AC3: ' + (st.nativeOff ? st.splitFailed ? 'MSE не взял ac-3 ни в связке, ни отдельным буфером: ' + st.splitFailed : 'связку видео + ac-3 MSE не взял' : st.encodeWhy || '?') + ')';
+    if (/^(ac3|flac|opus)$/.test(st.encode) && a.to !== st.encode && a.to !== 'copy') line += ' (' + (st.encode === 'ac3' ? 'AC3' : audioName(st.encode)) + ' просили — воркер старый, ' + (st.info && st.info.rev ? st.info.rev : 'без версии') + ')';else if (a.to !== 'copy' && st.nativeOff && !ac3Available()) line += ' (не как есть: ' + (st.splitFailed ? 'MSE не открыл буфер: ' + st.splitFailed : 'связку видео + ' + (st.nativeCodec || 'звук') + ' MSE не взял') + ')';else if (a.to !== 'copy' && a.to !== 'flac' && st.pcWhy) line += ' (' + st.pcWhy + ')';else if (a.to === 'aac' && ac3Available()) line += ' (не AC3: ' + (st.nativeOff ? st.splitFailed ? 'MSE не взял ac-3 ни в связке, ни отдельным буфером: ' + st.splitFailed : 'связку видео + ac-3 MSE не взял' : st.encodeWhy || '?') + ')';
     if (st.info && st.info.split) line += ' · видео и звук — раздельные буферы MSE';
     return line;
   }
@@ -357,7 +357,8 @@ var WasmPlayback = function () {
       audio: st.opts.audio >= 0 ? st.opts.audio : 0,
       time: st.startTime,
       mvp: location.search.indexOf('wasm=mvp') !== -1,
-      native: st.nativeOff ? {} : nativeAudio(),
+      native: st.nativeOff ? {} : pcMode() ? pcNative(st) : nativeAudio(),
+      nativeOnly: pcMode(),
       encode: st.encode,
       opusLevel: st.opusLevel,
       split: st.split,
@@ -371,9 +372,39 @@ var WasmPlayback = function () {
       libavMux: location.search.indexOf('wasm=libavmux') !== -1
     });
   }
+  function pcMode() {
+    return !(AppState.platform === 'vidaa' || AppState.platform === 'tizen' || AppState.tizenApp);
+  }
+  var PC_NATIVE = {
+    aac: 'mp4a.40.2',
+    mp3: 'mp4a.6B',
+    flac: 'flac',
+    opus: 'opus',
+    ac3: 'ac-3',
+    eac3: 'ec-3'
+  };
+  var pcNativeLogged = '';
+  function pcNative(st) {
+    if (/[?&]wasm=(aac|flac|opus)/.test(location.search)) return {};
+    if (location.search.indexOf('wasm=native') !== -1) return nativeAudio();
+    var video = st.vCodecSeen || 'avc1.640028',
+      out = {},
+      seen = [];
+    for (var k in PC_NATIVE) {
+      var ok = typeOk('video/mp4; codecs="' + video + ',' + PC_NATIVE[k] + '"');
+      if (ok) out[k] = PC_NATIVE[k];
+      seen.push(PC_NATIVE[k] + (ok ? ' да' : ' нет'));
+    }
+    var line = seen.join(', ');
+    if (pcNativeLogged !== line) {
+      pcNativeLogged = line;
+      tsLog('🧩 WASM: звук как есть (MSE, связка с ' + video.split('.')[0] + '): ' + line);
+    }
+    return out;
+  }
   function pcAudio(st) {
     st.pcWhy = '';
-    if (AppState.platform === 'vidaa' || AppState.platform === 'tizen' || AppState.tizenApp) return;
+    if (!pcMode()) return;
     var force = /[?&]wasm=(aac|flac|opus)(\d*)/.exec(location.search);
     if (force) {
       st.encode = force[1];
@@ -491,6 +522,7 @@ var WasmPlayback = function () {
         pump();
       }
     } else if (m.type === 'stats') s.workMs = m.workMs;else if (m.type === 'cues') addCues(m.cues);else if (m.type === 'audio') {
+      if (m.codec && s.aCodecCur && m.codec !== s.aCodecCur && audioCodecChange(m.codec)) return;
       s.audio = m;
       var al = audioLine(s);
       tsLog('🧩 WASM: звук ' + al);
@@ -522,6 +554,13 @@ var WasmPlayback = function () {
   function restartWorker(flags) {
     for (var k in flags) s[k] = flags[k];
     s.info = null;
+    s.audio = null;
+    s.aCodecCur = '';
+    s.pendingType = '';
+    s.gen = 0;
+    s.needClear = false;
+    s.ended = false;
+    s.outT = 0;
     try {
       s.worker.terminate();
     } catch (e) {}
@@ -545,8 +584,28 @@ var WasmPlayback = function () {
   function pad2(n) {
     return ('0' + n).slice(-2);
   }
+  function audioCodecChange(codec) {
+    var vMime = 'video/mp4; codecs="' + s.info.vCodec + ',' + codec + '"';
+    var can = s.bufs.length && s.bufs.every(function (bf) {
+      return typeof bf.sb.changeType === 'function';
+    }) && typeOk(s.info.split ? 'audio/mp4; codecs="' + codec + '"' : vMime);
+    if (can) {
+      tsLog('🧩 WASM: звук дорожки — ' + codec + ' вместо ' + s.aCodecCur + ', меняю тип буфера (changeType)');
+      s.pendingType = codec;
+      return false;
+    }
+    console.warn('🧩 WASM: звук дорожки — ' + codec + ' вместо ' + s.aCodecCur + ', changeType нет — плеер заново с того же места');
+    s.startTime = s.video.currentTime;
+    s.startPending = true;
+    s.resumePlay = !s.video.paused;
+    restartWorker({});
+    return true;
+  }
+  function copiedAudio() {
+    return !!(s.audio && s.audio.to === 'copy');
+  }
   function audioFallback(m, why, short) {
-    if (!/^(flac|opus)$/.test(s.encode) || m.aCodec !== s.encode || /[?&]wasm=(flac|opus)/.test(location.search)) return false;
+    if (!/^(flac|opus)$/.test(s.encode) || m.aCodec !== s.encode || copiedAudio() || /[?&]wasm=(flac|opus)/.test(location.search)) return false;
     console.warn('🧩 WASM: ' + why + ' — звук не в ' + audioName(s.encode) + ', пробую следующий');
     var rej = {},
       k;
@@ -603,17 +662,20 @@ var WasmPlayback = function () {
         return;
       }
       if (vOnly && audioFallback(m, 'связку ' + mime + ' MSE не берёт', 'MSE не берёт с ' + m.vCodec.split('.')[0])) return;
-      if (vOnly && /^(ac-3|ec-3)$/.test(m.aCodec || '') && !s.nativeOff) {
-        console.warn('🧩 WASM: звук ' + m.aCodec + ' не в связке с видео — перевожу в AAC');
+      if (vOnly && (/^(ac-3|ec-3)$/.test(m.aCodec || '') || copiedAudio()) && !s.nativeOff) {
+        console.warn('🧩 WASM: звук ' + m.aCodec + ' не в связке с видео — перекодирую');
         restartWorker({
           nativeOff: true,
-          forceSplit: false
+          forceSplit: false,
+          nativeCodec: m.aCodec,
+          vCodecSeen: m.vCodec
         });
         return;
       }
       fail('video', vOnly ? 'Браузер не поддерживает связку видео и звука ' + m.vCodec + ' + ' + m.aCodec : 'Браузер не поддерживает видео ' + m.vCodec + (m.dv ? ' (Dolby Vision P' + m.dv.profile + ')' : m.hdr && m.hdr !== 'SDR' ? ' (HDR ' + m.hdr + ')' : ''));
       return;
     }
+    s.aCodecCur = m.aCodec || '';
     createSubTracks(m.streams);
     if (s.opts.onInfo) s.opts.onInfo(m);
     if (location.search.indexOf('wasm=dump') !== -1) {
@@ -643,12 +705,14 @@ var WasmPlayback = function () {
         });
       } catch (e) {
         if (!m.split && audioFallback(m, 'addSourceBuffer: ' + e.message, 'MSE не открыл буфер: ' + e.message)) return;
-        if ((m.split || /^(ac-3|ec-3)$/.test(m.aCodec || '')) && !st.nativeOff) {
-          console.warn('🧩 WASM: ' + (m.split ? 'раздельные буферы' : 'буфер ' + m.aCodec) + ' — ' + e.message + ', перевожу звук в AAC');
+        if ((m.split || /^(ac-3|ec-3)$/.test(m.aCodec || '') || copiedAudio()) && !st.nativeOff) {
+          console.warn('🧩 WASM: ' + (m.split ? 'раздельные буферы' : 'буфер ' + m.aCodec) + ' — ' + e.message + ', перекодирую звук');
           restartWorker({
             nativeOff: true,
             forceSplit: false,
-            splitFailed: e.message
+            splitFailed: e.message,
+            nativeCodec: m.aCodec,
+            vCodecSeen: m.vCodec
           });
           return;
         }
@@ -708,6 +772,27 @@ var WasmPlayback = function () {
       if (s.bufs.some(function (bf) {
         return bf.sb.updating;
       })) return;
+    }
+    if (s.pendingType) {
+      if (s.bufs.some(function (bf) {
+        return bf.sb.updating;
+      })) return;
+      var codec = s.pendingType;
+      s.pendingType = '';
+      try {
+        s.bufs.forEach(function (bf) {
+          if (bf.track === 'v') return;
+          bf.sb.changeType(bf.track === 'a' ? 'audio/mp4; codecs="' + codec + '"' : 'video/mp4; codecs="' + s.info.vCodec + ',' + codec + '"');
+        });
+        s.aCodecCur = codec;
+      } catch (e) {
+        console.warn('🧩 WASM: changeType — ' + e.message + ' — плеер заново с того же места');
+        s.startTime = s.video.currentTime;
+        s.startPending = true;
+        s.resumePlay = !s.video.paused;
+        restartWorker({});
+        return;
+      }
     }
     var t = s.video.currentTime;
     var bps = s.info.duration ? s.info.size / s.info.duration : 1e6;
@@ -828,6 +913,11 @@ var WasmPlayback = function () {
       s.video.currentTime = s.startTime;
     }
     s.startPending = false;
+    if (s.resumePlay) {
+      s.resumePlay = false;
+      var pp = s.video.play();
+      if (pp && pp.catch) pp.catch(function () {});
+    }
   }
   function onSeeking() {
     if (s.selfSeek) {
@@ -856,6 +946,7 @@ var WasmPlayback = function () {
   function switchAudio(index) {
     if (!s || !s.worker) return false;
     var t = s.video.currentTime;
+    s.opts.audio = index;
     restart({
       type: 'audio',
       index: index
@@ -937,7 +1028,7 @@ var WasmPlayback = function () {
         'ac-3': 'AC3',
         flac: 'FLAC',
         opus: 'Opus'
-      }[s.info && s.info.aCodec] || 'AAC') + ' ' + pct(w.encMs / cpu) + ', MP4 ' + pct(w.muxMs / cpu) + ')');
+      }[s.aCodecCur || s.info && s.info.aCodec] || 'AAC') + ' ' + pct(w.encMs / cpu) + ', MP4 ' + pct(w.muxMs / cpu) + ')');
     }
     if (active > 200 && w.mediaSec > 0) parts.push('итого ×' + (w.mediaSec / (active / 1000)).toFixed(1));
     if (mseN) parts.push('MSE ' + Math.round(mseMs / mseN) + ' мс/фрагмент');

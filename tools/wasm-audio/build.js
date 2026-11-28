@@ -15,7 +15,9 @@
  * Остальное в msx/js/wasm-audio/ — как вышло из сборки: фронтенд
  * libav-<ver>-torrstream.js (ES2015) и сам .wasm.wasm.
  *
- * Откуда сборка libav.js: VPS ~/wasm-build — emsdk latest + libav.js
+ * Откуда сборка libav.js: VPS 95.85.235.3 /home/monotest/wasm-build (сборка
+ *   от monotest, nice -n 19 make -j2 — там живой сервер) и копия на ПК
+ *   разработчика ~/wasm-build — emsdk 7.0.1 + libav.js
  * v6.11.9.0.2 (ffmpeg 9.0.2), конфиг torrstream:
  *   cd libav.js/configs && node mkconfig.js torrstream '["avformat","avcodec",
  *   "zlib","demuxer-webm","demuxer-mp4","demuxer-mpegts","demuxer-avi","muxer-mp4",
@@ -45,7 +47,7 @@
  *     unexpected section: Code». Клей .wasm.js у них общий (wasm-opt меняет
  *     только код, импорты/экспорты те же). Отладка на ПК: ?wasm=mvp у страницы.
  * Совместимая — после make, на VPS:
- *   B=~/wasm-build/emsdk/upstream/bin; W=dist/libav-6.11.9.0.2-torrstream.wasm.wasm
+ *   B=../emsdk/upstream/bin; W=dist/libav-6.11.9.0.2-torrstream.wasm.wasm
  *   $B/wasm-opt $W --enable-bulk-memory --enable-sign-ext --enable-nontrapping-float-to-int \
  *     --enable-mutable-globals --llvm-memory-copy-fill-lowering --signext-lowering \
  *     --llvm-nontrapping-fptoint-lowering -o step1.wasm

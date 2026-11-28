@@ -6,7 +6,7 @@
  * собирается во фрагментированный MP4 и уходит странице для MediaSource.
  * Текстовые субтитры (SRT/ASS/WebVTT) — репликами, все дорожки сразу.
  *
- * Сборка libav.js: VPS ~/wasm-build, libav.js v6.11.9.0.2 (ffmpeg 9.0.2),
+ * Сборка libav.js: VPS /home/monotest/wasm-build (tools/wasm-audio/build.js), libav.js v6.11.9.0.2 (ffmpeg 9.0.2),
  * конфиг torrstream (configs/mkconfig.js) — демуксеры matroska/mov/avi,
  * mp4-муксер, декодеры ac3/eac3/dca/truehd/mlp/aac/mp3/mp2/flac/vorbis/alac/
  * pcm*, h264/hevc (нужны демуксеру для DTS при B-кадрах), кодеры aac/ac3/flac/libopus.
@@ -88,7 +88,7 @@ var opusLevel = 5;   // сложность libopus (0–10), m.opusLevel
 // Версия воркера — в «Диагностику» и «Об устройстве»: сервер TorrStream отдаёт
 // воркер из своего кэша зеркала (5 мин), а без зеркала — свою копию из
 // установки, и тогда страница новее воркера. Повышать при заметных правках
-var WORKER_REV = '1.0.68-flac-opus';
+var WORKER_REV = '1.0.68-native-pc';
 var dec = null, enc = null, mux = null;
 var gen = 0, playhead = 0, outTime = 0, eof = false;
 var pending = null;           // {kind:'seek'|'audio', time, gen, index}
@@ -509,6 +509,9 @@ var COPY_OK = { aac: 'mp4a.40.2', opus: 'opus', flac: 'flac', mp3: 'mp4a.6B' };
 // телевизор декодирует Dolby сам, кодировать в AAC незачем, а кодер AAC —
 // почти вся работа воркера. Такой звук идёт как есть, со всеми каналами
 var nativeAudio = {};
+// ПК (wasm-playback.js: pcNative): как есть — только то, что страница
+// проверила в MSE (nativeAudio), без правила COPY_OK «стерео — как есть»
+var nativeOnly = false;
 
 function hex2(n) { return ('0' + (n & 255).toString(16)).slice(-2).toUpperCase(); }
 
@@ -627,6 +630,7 @@ async function open(m) {
   parallel = !!m.parallel;
   paceOn = m.pace !== false;
   nativeAudio = m.native || {};
+  nativeOnly = !!m.nativeOnly;
   // Сборка libav.js лежит не рядом с воркером (он идёт через маршрут сервера
   // или Blob): адрес папки wasm-audio/ присылает страница — зеркало или
   // локальный public/ при ?local=1
@@ -833,6 +837,10 @@ async function setupAudio() {
   // дорожки — SourceBuffer заведён под неё. Поэтому как есть только сам AC3,
   // остальное (AAC, E-AC3, DTS…) — в AC3
   if (outCodec === 'ac3') copyAudio = s.name === 'ac3';
+  else if (nativeOnly) {
+    // AAC без настройки кодека (ADTS) — только перекодировать
+    copyAudio = !!nativeAudio[s.name] && (s.name !== 'aac' || await libav.AVCodecParameters_extradata_size(s.codecpar) >= 2);
+  }
   else if (nativeAudio[s.name] && s.name !== 'aac') copyAudio = true;
   else if (COPY_OK[s.name] || nativeAudio[s.name]) {
     var ch = libav.AVCodecParameters_ch_layout_nb_channels ? await libav.AVCodecParameters_ch_layout_nb_channels(s.codecpar)
@@ -845,7 +853,8 @@ async function setupAudio() {
   if (copyAudio) {
     log('звук ' + s.name + ' — как есть, без перекодирования');
     var cch = libav.AVCodecParameters_ch_layout_nb_channels ? await libav.AVCodecParameters_ch_layout_nb_channels(s.codecpar) : 0;
-    postMessage({ type: 'audio', from: s.name, inCh: cch, to: 'copy', outCh: cch, want: outCodec });
+    // codec — строка MSE: при смене дорожки страница сменит тип буфера (changeType)
+    postMessage({ type: 'audio', from: s.name, inCh: cch, to: 'copy', outCh: cch, want: outCodec, codec: aCodecString() });
     return;
   }
   try {
@@ -949,7 +958,7 @@ async function setupEncoder(fr) {
     (enc.rs ? inSr + ' → ' : '') + sr + ' Гц, кадр ' + enc.frameSize);
   // Странице — что на входе и что на выходе (строка «звук» в диагностике)
   postMessage({ type: 'audio', from: aIdx >= 0 ? streams[aIdx].name : '', inCh: inChannels, to: outCodec, outCh: channels,
-    want: outCodec, sr: sr, coreOnly: !!(dec && dec.coreOnly) });
+    want: outCodec, sr: sr, coreOnly: !!(dec && dec.coreOnly), codec: aCodecString() });
 }
 
 /**

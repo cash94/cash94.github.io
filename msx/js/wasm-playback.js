@@ -164,9 +164,9 @@ var WasmPlayback = (function () {
     if (a.coreOnly) line += ', только ядро DTS';
     if (/^(ac3|flac|opus)$/.test(st.encode) && a.to !== st.encode && a.to !== 'copy')
       line += ' (' + (st.encode === 'ac3' ? 'AC3' : audioName(st.encode)) + ' просили — воркер старый, ' + (st.info && st.info.rev ? st.info.rev : 'без версии') + ')';
-    // VIDAA: Dolby как есть MSE не взял — откат в AAC (onInfo / addSourceBuffer)
-    else if (a.to === 'aac' && st.nativeOff && AppState.platform === 'vidaa')
-      line += ' (не как есть: ' + (st.splitFailed ? 'MSE не открыл буфер: ' + st.splitFailed : 'связку видео + Dolby MSE не взял') + ')';
+    // VIDAA / ПК: звук как есть MSE не взял — откат в перекодирование (onInfo / addSourceBuffer)
+    else if (a.to !== 'copy' && st.nativeOff && !ac3Available())
+      line += ' (не как есть: ' + (st.splitFailed ? 'MSE не открыл буфер: ' + st.splitFailed : 'связку видео + ' + (st.nativeCodec || 'звук') + ' MSE не взял') + ')';
     // ПК: FLAC → Opus → AAC — чем не взяли более дешёвый кодек
     else if (a.to !== 'copy' && a.to !== 'flac' && st.pcWhy) line += ' (' + st.pcWhy + ')';
     else if (a.to === 'aac' && ac3Available()) line += ' (не AC3: ' + (st.nativeOff ? (st.splitFailed ? 'MSE не взял ac-3 ни в связке, ни отдельным буфером: ' + st.splitFailed
@@ -376,7 +376,9 @@ var WasmPlayback = (function () {
     // ?wasm=mvp — отладка: совместимая сборка libav.js, как у браузеров до Chrome 75
     // Файл воркер читает только напрямую с TorrServer/MonoServer — не через сервер TorrStream
     st.worker.postMessage({ type: 'open', url: st.url, base: assetBase(), audio: st.opts.audio >= 0 ? st.opts.audio : 0, time: st.startTime,
-      mvp: location.search.indexOf('wasm=mvp') !== -1, native: st.nativeOff ? {} : nativeAudio(),
+      mvp: location.search.indexOf('wasm=mvp') !== -1, native: st.nativeOff ? {} : (pcMode() ? pcNative(st) : nativeAudio()),
+      // ПК: как есть — только то, что проверил pcNative (без «стерео — как есть»)
+      nativeOnly: pcMode(),
       // AC3 со всеми каналами вместо AAC 2.0 (Tizen); связку не взял — откат nativeOff
       encode: st.encode, opusLevel: st.opusLevel,
       // видео и звук отдельными потоками — в два SourceBuffer (см. splitWanted)
@@ -409,9 +411,37 @@ var WasmPlayback = (function () {
    * Отладка: ?wasm=aac / ?wasm=flac / ?wasm=opus (opus0…opus10 — сложность
    * кодера, по умолчанию 5) — только этот кодек, без проверки MSE
    */
+  /** Браузер на ПК / Safari — не Tizen и не VIDAA (у них свои правила звука) */
+  function pcMode() {
+    return !(AppState.platform === 'vidaa' || AppState.platform === 'tizen' || AppState.tizenApp);
+  }
+
+  /**
+   * ПК: какой звук браузер играет сам — его не перекодируем, каналы как в
+   * файле (AAC 5.1, Opus, FLAC, MP3; в Safari и Edge — ещё AC3/E-AC3).
+   * Проверяем связку с видео (с H.264, пока настоящего не знаем); не взял с
+   * настоящим — onInfo / addSourceBuffer перезапустят с перекодированием
+   * (nativeOff). ?wasm=aac|flac|opus — отладка кодера: как есть ничего
+   */
+  var PC_NATIVE = { aac: 'mp4a.40.2', mp3: 'mp4a.6B', flac: 'flac', opus: 'opus', ac3: 'ac-3', eac3: 'ec-3' };
+  var pcNativeLogged = '';
+  function pcNative(st) {
+    if (/[?&]wasm=(aac|flac|opus)/.test(location.search)) return {};
+    if (location.search.indexOf('wasm=native') !== -1) return nativeAudio();
+    var video = st.vCodecSeen || 'avc1.640028', out = {}, seen = [];
+    for (var k in PC_NATIVE) {
+      var ok = typeOk('video/mp4; codecs="' + video + ',' + PC_NATIVE[k] + '"');
+      if (ok) out[k] = PC_NATIVE[k];
+      seen.push(PC_NATIVE[k] + (ok ? ' да' : ' нет'));
+    }
+    var line = seen.join(', ');
+    if (pcNativeLogged !== line) { pcNativeLogged = line; tsLog('🧩 WASM: звук как есть (MSE, связка с ' + video.split('.')[0] + '): ' + line); }
+    return out;
+  }
+
   function pcAudio(st) {
     st.pcWhy = '';
-    if (AppState.platform === 'vidaa' || AppState.platform === 'tizen' || AppState.tizenApp) return;
+    if (!pcMode()) return;
     var force = /[?&]wasm=(aac|flac|opus)(\d*)/.exec(location.search);
     if (force) {
       st.encode = force[1];
@@ -510,6 +540,7 @@ var WasmPlayback = (function () {
     else if (m.type === 'stats') s.workMs = m.workMs;   // время работы воркера — для фризов (watchFreeze)
     else if (m.type === 'cues') addCues(m.cues);
     else if (m.type === 'audio') {
+      if (m.codec && s.aCodecCur && m.codec !== s.aCodecCur && audioCodecChange(m.codec)) return;
       s.audio = m;
       var al = audioLine(s);
       tsLog('🧩 WASM: звук ' + al);
@@ -534,7 +565,10 @@ var WasmPlayback = (function () {
    */
   function restartWorker(flags) {
     for (var k in flags) s[k] = flags[k];
-    s.info = null;
+    s.info = null; s.audio = null; s.aCodecCur = ''; s.pendingType = '';
+    // новый воркер считает поколения с 0 (перезапуск на ходу — после смены
+    // дорожки или перемотки у страницы уже не 0, и все фрагменты отбрасывались)
+    s.gen = 0; s.needClear = false; s.ended = false; s.outT = 0;
     try { s.worker.terminate(); } catch (e) { }
     if (s.objectUrl) {
       if (s.video.src === s.objectUrl) { s.video.removeAttribute('src'); try { s.video.load(); } catch (e) { } }
@@ -548,11 +582,36 @@ var WasmPlayback = (function () {
   function pad2(n) { return ('0' + n).slice(-2); }
 
   /**
+   * Смена дорожки, а строка кодека другая (AAC как есть → DTS в FLAC…):
+   * SourceBuffer заведён под старую. changeType (Chrome 70+, Safari 13.1+) —
+   * в pump перед первым фрагментом новой дорожки; нет его или MSE не берёт
+   * новую связку — весь плеер заново с того же места. true — сообщение
+   * 'audio' от этого воркера больше не нужно (перезапуск)
+   */
+  function audioCodecChange(codec) {
+    var vMime = 'video/mp4; codecs="' + s.info.vCodec + ',' + codec + '"';
+    var can = s.bufs.length && s.bufs.every(function (bf) { return typeof bf.sb.changeType === 'function'; }) &&
+      typeOk(s.info.split ? 'audio/mp4; codecs="' + codec + '"' : vMime);
+    if (can) {
+      tsLog('🧩 WASM: звук дорожки — ' + codec + ' вместо ' + s.aCodecCur + ', меняю тип буфера (changeType)');
+      s.pendingType = codec;
+      return false;
+    }
+    console.warn('🧩 WASM: звук дорожки — ' + codec + ' вместо ' + s.aCodecCur + ', changeType нет — плеер заново с того же места');
+    s.startTime = s.video.currentTime; s.startPending = true; s.resumePlay = !s.video.paused;
+    restartWorker({});
+    return true;
+  }
+
+  /**
    * FLAC/Opus (pcAudio) не прошёл с настоящим видео — тот же файл с того же
    * места со следующим кодеком (FLAC → Opus → AAC). false — откатываться некуда
    */
+  /** Звук этой дорожки воркер пропускает как есть (сообщение 'audio' приходит до 'info') */
+  function copiedAudio() { return !!(s.audio && s.audio.to === 'copy'); }
+
   function audioFallback(m, why, short) {
-    if (!/^(flac|opus)$/.test(s.encode) || m.aCodec !== s.encode || /[?&]wasm=(flac|opus)/.test(location.search)) return false;
+    if (!/^(flac|opus)$/.test(s.encode) || m.aCodec !== s.encode || copiedAudio() || /[?&]wasm=(flac|opus)/.test(location.search)) return false;
     console.warn('🧩 WASM: ' + why + ' — звук не в ' + audioName(s.encode) + ', пробую следующий');
     var rej = {}, k;
     for (k in s.audioRejected || {}) rej[k] = s.audioRejected[k];
@@ -606,17 +665,18 @@ var WasmPlayback = (function () {
       }
       // ПК: связку с этим видео MSE не берёт для FLAC/Opus — следующий кодек
       if (vOnly && audioFallback(m, 'связку ' + mime + ' MSE не берёт', 'MSE не берёт с ' + m.vCodec.split('.')[0])) return;
-      // Звук шёл как есть (VIDAA) или в AC3 (Tizen), а связку ТВ не берёт —
-      // тот же файл с переводом звука в AAC 2.0, без ошибки и с того же места
-      if (vOnly && /^(ac-3|ec-3)$/.test(m.aCodec || '') && !s.nativeOff) {
-        console.warn('🧩 WASM: звук ' + m.aCodec + ' не в связке с видео — перевожу в AAC');
-        restartWorker({ nativeOff: true, forceSplit: false });
+      // Звук шёл как есть (VIDAA, ПК) или в AC3 (Tizen), а связку не берёт —
+      // тот же файл с перекодированием звука, без ошибки и с того же места
+      if (vOnly && (/^(ac-3|ec-3)$/.test(m.aCodec || '') || copiedAudio()) && !s.nativeOff) {
+        console.warn('🧩 WASM: звук ' + m.aCodec + ' не в связке с видео — перекодирую');
+        restartWorker({ nativeOff: true, forceSplit: false, nativeCodec: m.aCodec, vCodecSeen: m.vCodec });
         return;
       }
       fail('video', vOnly ? 'Браузер не поддерживает связку видео и звука ' + m.vCodec + ' + ' + m.aCodec
         : 'Браузер не поддерживает видео ' + m.vCodec + (m.dv ? ' (Dolby Vision P' + m.dv.profile + ')' : m.hdr && m.hdr !== 'SDR' ? ' (HDR ' + m.hdr + ')' : ''));
       return;
     }
+    s.aCodecCur = m.aCodec || '';
     createSubTracks(m.streams);
     if (s.opts.onInfo) s.opts.onInfo(m);
     // ?wasm=dump — отладка: fMP4 не в MSE, а в WasmPlayback.dump() (ffprobe на ПК)
@@ -639,9 +699,9 @@ var WasmPlayback = (function () {
         // Раздельно с AC3 не взял — последний шанс: AAC 2.0 в одном буфере.
         // VIDAA: Dolby как есть — isTypeSupported сказал «да», а буфер не
         // открылся (как U06 со связкой) — тоже в AAC 2.0
-        if ((m.split || /^(ac-3|ec-3)$/.test(m.aCodec || '')) && !st.nativeOff) {
-          console.warn('🧩 WASM: ' + (m.split ? 'раздельные буферы' : 'буфер ' + m.aCodec) + ' — ' + e.message + ', перевожу звук в AAC');
-          restartWorker({ nativeOff: true, forceSplit: false, splitFailed: e.message });
+        if ((m.split || /^(ac-3|ec-3)$/.test(m.aCodec || '') || copiedAudio()) && !st.nativeOff) {
+          console.warn('🧩 WASM: ' + (m.split ? 'раздельные буферы' : 'буфер ' + m.aCodec) + ' — ' + e.message + ', перекодирую звук');
+          restartWorker({ nativeOff: true, forceSplit: false, splitFailed: e.message, nativeCodec: m.aCodec, vCodecSeen: m.vCodec });
           return;
         }
         fail('video', 'MediaSource: ' + e.message); return;
@@ -694,6 +754,23 @@ var WasmPlayback = (function () {
         if (bf.sb.buffered.length) bf.sb.remove(0, Infinity);
       });
       if (s.bufs.some(function (bf) { return bf.sb.updating; })) return;
+    }
+    if (s.pendingType) {
+      if (s.bufs.some(function (bf) { return bf.sb.updating; })) return;
+      var codec = s.pendingType;
+      s.pendingType = '';
+      try {
+        s.bufs.forEach(function (bf) {
+          if (bf.track === 'v') return;
+          bf.sb.changeType(bf.track === 'a' ? 'audio/mp4; codecs="' + codec + '"' : 'video/mp4; codecs="' + s.info.vCodec + ',' + codec + '"');
+        });
+        s.aCodecCur = codec;
+      } catch (e) {
+        console.warn('🧩 WASM: changeType — ' + e.message + ' — плеер заново с того же места');
+        s.startTime = s.video.currentTime; s.startPending = true; s.resumePlay = !s.video.paused;
+        restartWorker({});
+        return;
+      }
     }
     var t = s.video.currentTime;
     var bps = s.info.duration ? s.info.size / s.info.duration : 1e6;
@@ -809,6 +886,8 @@ var WasmPlayback = (function () {
       s.video.currentTime = s.startTime;
     }
     s.startPending = false;
+    // перезапуск на ходу (смена дорожки без changeType) — играло, играем дальше
+    if (s.resumePlay) { s.resumePlay = false; var pp = s.video.play(); if (pp && pp.catch) pp.catch(function () { }); }
   }
 
   // Перемотка за пределы собранного — воркер начинает с нового места
@@ -835,6 +914,7 @@ var WasmPlayback = (function () {
   function switchAudio(index) {
     if (!s || !s.worker) return false;
     var t = s.video.currentTime;
+    s.opts.audio = index;   // перезапуск плеера целиком (audioCodecChange) — с этой дорожкой
     restart({ type: 'audio', index: index }, t);
     s.selfSeek = true;
     s.video.currentTime = t;
@@ -907,7 +987,7 @@ var WasmPlayback = (function () {
       ', разбор ждал данных ' + pct(active > 0 ? w.waitMs / active : 0));
     if (cpu > 50 && w.mediaSec > 0) {
       parts.push('обработка ×' + (w.mediaSec / (cpu / 1000)).toFixed(1) + ' (разбор ' + pct(w.readMs / cpu) +
-        ', декодер звука ' + pct(w.decMs / cpu) + ', кодер ' + ({ 'ac-3': 'AC3', flac: 'FLAC', opus: 'Opus' }[s.info && s.info.aCodec] || 'AAC') + ' ' + pct(w.encMs / cpu) + ', MP4 ' + pct(w.muxMs / cpu) + ')');
+        ', декодер звука ' + pct(w.decMs / cpu) + ', кодер ' + ({ 'ac-3': 'AC3', flac: 'FLAC', opus: 'Opus' }[s.aCodecCur || (s.info && s.info.aCodec)] || 'AAC') + ' ' + pct(w.encMs / cpu) + ', MP4 ' + pct(w.muxMs / cpu) + ')');
     }
     if (active > 200 && w.mediaSec > 0) parts.push('итого ×' + (w.mediaSec / (active / 1000)).toFixed(1));
     if (mseN) parts.push('MSE ' + Math.round(mseMs / mseN) + ' мс/фрагмент');
